@@ -28,7 +28,7 @@ See doi.org/10.1007/s11222-006-8769-1 for more information.
 
 # Example
 ```@example de_update
-using DEMetropolis, Distributions
+using DifferentialEvolutionMetropolis, Distributions
 
 # Setup differential evolution update with custom parameters
 de_update = setup_de_update(γ = 1.0, β = Normal(0.0, 0.01))

@@ -26,7 +26,7 @@ See doi.org/10.1007/s11222-008-9104-9 for more information.
 
 # Example
 ```@example snooker_update
-using DEMetropolis, Distributions
+using DifferentialEvolutionMetropolis, Distributions
 
 # Setup snooker update with custom gamma distribution
 snooker_update = setup_snooker_update(γ = Uniform(0.1, 2.0))

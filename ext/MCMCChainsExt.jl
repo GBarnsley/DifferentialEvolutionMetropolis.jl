@@ -1,14 +1,14 @@
 module MCMCChainsExt
 
-import DEMetropolis
+import DifferentialEvolutionMetropolis
 import MCMCChains: Chains, replacenames
 import AbstractMCMC
 
-function DEMetropolis.convert(
+function DifferentialEvolutionMetropolis.convert(
         ::Type{Chains},
-        samples::Vector{DEMetropolis.DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
-    output = DEMetropolis.process_outputs(samples)
+    output = DifferentialEvolutionMetropolis.process_outputs(samples)
 
     new_ld = Array{T, 3}(undef, size(output.ld, 1), 1, size(output.ld, 2))
     #can replace with insertdims(output.ld, dims = 2) in julia 1.12+
@@ -27,7 +27,7 @@ function DEMetropolis.convert(
     chns = replacenames(
         chns, Dict(
             zip(
-                ["param_$i" for i in axes(array_out, 2)], vcat(DEMetropolis.generate_names(size(output.samples, 3)), ["ld"])
+                ["param_$i" for i in axes(array_out, 2)], vcat(DifferentialEvolutionMetropolis.generate_names(size(output.samples, 3)), ["ld"])
             )
         )
     )

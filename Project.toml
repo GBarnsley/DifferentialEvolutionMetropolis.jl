@@ -1,5 +1,5 @@
-name = "DEMetropolis"
-uuid = "b4be8cd2-ef9b-406c-8da0-f1f18fb2b05e"
+name = "DifferentialEvolutionMetropolis"
+uuid = "a5908a69-3cf8-4221-8182-38852cbc47b2"
 version = "2.0.0"
 authors = ["Greg Barnsley <gregory.barnsley@lshtm.ac.uk>"]
 

@@ -1,5 +1,5 @@
 using BenchmarkTools
-using AbstractMCMC, DEMetropolis, Distributions, LogDensityProblems, Random
+using AbstractMCMC, DifferentialEvolutionMetropolis, Distributions, LogDensityProblems, Random
 const SUITE = BenchmarkGroup()
 
 #simple ld

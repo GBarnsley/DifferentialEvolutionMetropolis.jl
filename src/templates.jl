@@ -22,7 +22,7 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -118,7 +118,7 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -211,7 +211,7 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)

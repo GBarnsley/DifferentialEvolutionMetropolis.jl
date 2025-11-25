@@ -1,4 +1,4 @@
-using Documenter, DEMetropolis, DocumenterInterLinks
+using Documenter, DifferentialEvolutionMetropolis, DocumenterInterLinks
 
 links = InterLinks(
     "MCMCDiagnosticTools" => "https://turinglang.org/MCMCDiagnosticTools.jl/stable/objects.inv"
@@ -12,9 +12,9 @@ makedocs(
         "tutorial.md",
         "custom.md",
     ],
-    modules = [DEMetropolis]
+    modules = [DifferentialEvolutionMetropolis]
 )
 
 deploydocs(
-    repo = "github.com/GBarnsley/DEMetropolis.jl.git",
+    repo = "github.com/GBarnsley/DifferentialEvolutionMetropolis.jl.git",
 )

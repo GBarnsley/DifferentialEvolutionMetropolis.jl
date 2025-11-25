@@ -1,4 +1,4 @@
-using AbstractMCMC, .DEMetropolis, Distributions, LogDensityProblems, Random
+using AbstractMCMC, .DifferentialEvolutionMetropolis, Distributions, LogDensityProblems, Random
 #simple ld
 struct IsotropicNormalModel{M <: AbstractVector{<:Real}}
     "mean of the isotropic Gaussian"

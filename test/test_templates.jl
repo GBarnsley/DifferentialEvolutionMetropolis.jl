@@ -16,7 +16,7 @@
         result_any = deMC(ld, 50, memory = false, chain_type = Any)
         @test isa(result_any, Vector)
         @test length(result_any) == 50
-        @test isa(result_any[1], DEMetropolis.DifferentialEvolutionSample)
+        @test isa(result_any[1], DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
 
         # Test MCMCChains.Chains output
         result_chains = deMC(ld, 50, memory = false, chain_type = Chains)
@@ -41,7 +41,7 @@
         @test isa(result_with_state, Tuple)
         @test length(result_with_state) == 2
         @test isa(result_with_state[1], DifferentialEvolutionOutput)  # processed samples
-        @test isa(result_with_state[2], DEMetropolis.DifferentialEvolutionState)  # final state
+        @test isa(result_with_state[2], DifferentialEvolutionMetropolis.DifferentialEvolutionState)  # final state
 
         # Test with burn-in and Chains output
         result_chains_burnin = deMC(
@@ -95,7 +95,7 @@
         )
         @test size(meta_array[1].samples) == (n_samples + n_burnin, n_total_chains, n_dims)
         @test size(meta_array[1].ld) == (n_samples + n_burnin, n_total_chains)
-        @test isa(meta_array[2], Vector{<:DEMetropolis.DifferentialEvolutionState})
+        @test isa(meta_array[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
 
         meta_chain = sample(
             ld, setup_subspace_sampling(), MCMCSerial(), n_samples + n_burnin, n_meta_chains;
@@ -108,7 +108,7 @@
             chain_type = Chains, num_warmup = n_burnin, save_final_state = true
         )
         @test size(meta_chain[1]) == (n_samples, n_dims + 1, n_total_chains)
-        @test isa(meta_chain[2], Vector{<:DEMetropolis.DifferentialEvolutionState})
+        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
 
         meta_chain = sample(
             ld, setup_subspace_sampling(), MCMCSerial(), n_samples + n_burnin, n_meta_chains;
@@ -126,7 +126,7 @@
         @test size(meta_chain[1]) == (n_samples, n_total_chains)
         @test size(FlexiChains.parameters(meta_chain[1]), 1) == n_dims   # parameters
         @test size(FlexiChains.extras(meta_chain[1]), 1) == 1   # ld
-        @test isa(meta_chain[2], Vector{<:DEMetropolis.DifferentialEvolutionState})
+        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
     end
 
     @testset "non memory runs" begin

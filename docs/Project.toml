@@ -1,6 +1,6 @@
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
-DEMetropolis = "b4be8cd2-ef9b-406c-8da0-f1f18fb2b05e"
+DifferentialEvolutionMetropolis = "a5908a69-3cf8-4221-8182-38852cbc47b2"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterInterLinks = "d12716ef-a0f6-4df4-a9f1-a5a34e75c656"
@@ -14,4 +14,4 @@ TransformVariables = "84d833dd-6860-57f9-a1a7-6da5db126cff"
 TransformedLogDensities = "f9bc47f6-f3f8-4f3b-ab21-f8bc73906f26"
 
 [sources]
-DEMetropolis = {path = "./.."}
+DifferentialEvolutionMetropolis = {path = "./.."}
