@@ -2,7 +2,7 @@
     @testset "Composite Setup" begin
         # Test single update
         single_sampler = setup_sampler_scheme(setup_de_update())
-        @test isa(single_sampler, DEMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(single_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
         @test length(single_sampler.updates) == 1
         @test length(single_sampler.update_weights) == 1
         @test single_sampler.update_weights[1] == 1.0
@@ -13,7 +13,7 @@
             setup_snooker_update(),
             setup_subspace_sampling()
         )
-        @test isa(multi_sampler, DEMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(multi_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
         @test length(multi_sampler.updates) == 3
         @test length(multi_sampler.update_weights) == 3
         @test all(multi_sampler.update_weights .== 1.0)
@@ -24,7 +24,7 @@
             setup_snooker_update(),
             w = [0.7, 0.3]
         )
-        @test isa(weighted_sampler, DEMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(weighted_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
         @test length(weighted_sampler.updates) == 2
         @test weighted_sampler.update_weights == [0.7, 0.3]
 
@@ -58,10 +58,10 @@
             de_sampler; memory = false, adapt = false
         )
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -72,10 +72,10 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -92,7 +92,7 @@
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DEMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 
     @testset "Sample using memory Composite (non-adaptive)" begin
@@ -113,10 +113,10 @@
             de_sampler; memory = true, adapt = false
         )
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -127,10 +127,10 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -147,7 +147,7 @@
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DEMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 
     @testset "Sample using Composite with adaptive subspace" begin
@@ -167,18 +167,18 @@
             de_sampler; memory = true, adapt = true
         )
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveComposite)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
         @test length(initial_state.adaptive_state.adaptive_states) == 2
         @test isa(
             initial_state.adaptive_state.adaptive_states[1],
-            DEMetropolis.DifferentialEvolutionAdaptiveSubspace
+            DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace
         )
         @test isa(
             initial_state.adaptive_state.adaptive_states[2],
-            DEMetropolis.DifferentialEvolutionAdaptiveStatic
+            DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic
         )
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
@@ -192,10 +192,10 @@
             rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state
         )
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveComposite)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
         @test length(initial_state.adaptive_state.adaptive_states) == 2
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
@@ -214,7 +214,7 @@
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DEMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 
     @testset "Sample using Composite with all non-adaptive" begin
@@ -234,10 +234,10 @@
             de_sampler; memory = true, adapt = true
         )
 
-        @test isa(sample_result, DEMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DEMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -255,7 +255,7 @@
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DEMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 
     @testset "Check composite adaptation works as intended" begin
@@ -285,7 +285,7 @@
 
         # Check that we have composite adaptive states
         @test all(
-            isa(state.adaptive_state, DEMetropolis.DifferentialEvolutionAdaptiveComposite)
+            isa(state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
                 for state in states
         )
         @test all(length(state.adaptive_state.adaptive_states) == 2 for state in states)
@@ -296,7 +296,7 @@
                 for state in states
         ]
         @test all(
-            isa(state, DEMetropolis.DifferentialEvolutionAdaptiveSubspace)
+            isa(state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
                 for state in subspace_adaptive_states
         )
 
@@ -326,7 +326,7 @@
         # Check that the DE sampler (second component) remains static
         de_adaptive_states = [state.adaptive_state.adaptive_states[2] for state in states]
         @test all(
-            isa(state, DEMetropolis.DifferentialEvolutionAdaptiveStatic)
+            isa(state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
                 for state in de_adaptive_states
         )
 

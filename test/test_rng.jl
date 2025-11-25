@@ -18,7 +18,7 @@
         #should be equal after deepcopy
         @test de_sampler.update_weights == de_sampler_old.update_weights
         for i in eachindex(de_sampler.updates)
-            if isa(de_sampler.updates[i], DEMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
+            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
                 @test de_sampler.updates[i].cr_spl == de_sampler_old.updates[i].cr_spl
                 @test de_sampler.updates[i].n_cr == de_sampler_old.updates[i].n_cr
                 @test de_sampler.updates[i].δ_spl == de_sampler_old.updates[i].δ_spl
@@ -56,7 +56,7 @@
         #should still be equal after deepcopy
         @test de_sampler.update_weights == de_sampler_old.update_weights
         for i in eachindex(de_sampler.updates)
-            if isa(de_sampler.updates[i], DEMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
+            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
                 @test de_sampler.updates[i].cr_spl == de_sampler_old.updates[i].cr_spl
                 @test de_sampler.updates[i].n_cr == de_sampler_old.updates[i].n_cr
                 @test de_sampler.updates[i].δ_spl == de_sampler_old.updates[i].δ_spl
@@ -201,7 +201,7 @@
             ordered_indices = Array{Int}(undef, n_chains - 1)
 
             res = [
-                DEMetropolis.fast_sample_chains!(
+                DifferentialEvolutionMetropolis.fast_sample_chains!(
                         rng,
                         x,
                         max_length,
@@ -222,7 +222,7 @@
             ordered_indices = Array{Int}(undef, n_chains_2)
 
             res = [
-                DEMetropolis.fast_sample_chains!(
+                DifferentialEvolutionMetropolis.fast_sample_chains!(
                         rng,
                         x,
                         max_length,
@@ -246,7 +246,7 @@
 
             disable_logging(Logging.Warn)
             res = [
-                DEMetropolis.fast_sample_chains!(
+                DifferentialEvolutionMetropolis.fast_sample_chains!(
                         rng,
                         x,
                         max_length,
@@ -257,7 +257,7 @@
                     for _ in 1:N_tests
             ]
             disable_logging(Logging.Info)
-            @test_logs (:warn, "Picking $n_chains chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains`.")  DEMetropolis.fast_sample_chains!(
+            @test_logs (:warn, "Picking $n_chains chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
                 rng,
                 x,
                 max_length,
@@ -276,7 +276,7 @@
 
             disable_logging(Logging.Warn)
             res = [
-                DEMetropolis.fast_sample_chains!(
+                DifferentialEvolutionMetropolis.fast_sample_chains!(
                         rng,
                         x,
                         max_length,
@@ -290,7 +290,7 @@
             disable_logging(Logging.Info)
 
 
-            @test_logs (:warn, "Picking $n_chains_2 chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains_2`.")  DEMetropolis.fast_sample_chains!(
+            @test_logs (:warn, "Picking $n_chains_2 chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains_2`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
                 rng,
                 x,
                 max_length,

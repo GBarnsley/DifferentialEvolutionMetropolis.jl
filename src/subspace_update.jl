@@ -49,7 +49,7 @@ See doi.org/10.1515/IJNSNS.2009.10.3.273 for more information.
 
 # Example
 ```@example subspace_sampling
-using DEMetropolis, Distributions
+using DifferentialEvolutionMetropolis, Distributions
 
 # Setup subspace sampling with custom crossover rate and delta
 subspace_config = setup_subspace_sampling(cr = Beta(1, 2), δ = 2)

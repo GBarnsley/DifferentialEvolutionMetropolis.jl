@@ -1,4 +1,4 @@
-module DEMetropolis
+module DifferentialEvolutionMetropolis
 export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme
 export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput

@@ -30,7 +30,7 @@ the stationary portion of the chains.
 
 # Example
 ```@example convergence
-using DEMetropolis, AbstractMCMC, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random, Distributions
 
 # Create a simple model
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)

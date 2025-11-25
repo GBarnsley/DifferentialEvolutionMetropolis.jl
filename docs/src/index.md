@@ -1,4 +1,4 @@
-# DEMetropolis Documentation
+# DifferentialEvolutionMetropolis Documentation
 
 Tools for sampling from log-densities using differential evolution algorithms.
 
@@ -22,7 +22,7 @@ I opted to implement my own version as I wanted a more flexible API and the subs
 
 ## Next Steps
 
-A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DEMetropolis/issues):
+A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
 - Implement multi-try and delayed rejection DREAM, I avoided these so far since I have been using these samplers for costly log-densities with relatively few parameters, such as one that solve an ODE.
 - Additional diagnostic checks and adaptive schemes.
 
@@ -54,10 +54,10 @@ setup_subspace_sampling
 ### Core Sampling Functions
 
 ```@docs
-DEMetropolis.step
-DEMetropolis.step_warmup
-DEMetropolis.fix_sampler
-DEMetropolis.fix_sampler_state
+DifferentialEvolutionMetropolis.step
+DifferentialEvolutionMetropolis.step_warmup
+DifferentialEvolutionMetropolis.fix_sampler
+DifferentialEvolutionMetropolis.fix_sampler_state
 ```
 
 ### Convergence and Stopping Criteria
@@ -68,7 +68,7 @@ r̂_stopping_criteria
 
 ### Output
 
-The output format can be modified with `chain_type`, the supported options are `Chains` from [MCMCChains](https://turinglang.org/MCMCChains.jl/stable/), `VNChain` from [FlexiChains](https://github.com/penelopeysm/FlexiChains.jl), `Any` which returns the basic `DEMetropolis.DifferentialEvolutionSample`, and the default option `DifferentialEvolutionOutput`. If `save_final_state = true` the format will be `(sample::requested format, final_state)`. If run in parallel using `step(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for both `Chains` and `DifferentialEvolutionOutput`, if the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
+The output format can be modified with `chain_type`, the supported options are `Chains` from [MCMCChains](https://turinglang.org/MCMCChains.jl/stable/), `VNChain` from [FlexiChains](https://github.com/penelopeysm/FlexiChains.jl), `Any` which returns the basic `DifferentialEvolutionMetropolis.DifferentialEvolutionSample`, and the default option `DifferentialEvolutionOutput`. If `save_final_state = true` the format will be `(sample::requested format, final_state)`. If run in parallel using `step(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for both `Chains` and `DifferentialEvolutionOutput`, if the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
 
 Note that support for `FlexiChains` is a bit underutilized as the all samplers currently require all of your parameters to have one type.
 

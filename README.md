@@ -1,25 +1,27 @@
-# DEMetropolis
+# DifferentialEvolutionMetropolis
 
-[![Build Status](https://github.com/GBarnsley/DEMetropolis.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GBarnsley/DEMetropolis.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://GBarnsley.github.io/DEMetropolis.jl/stable)
-[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://GBarnsley.github.io/DEMetropolis.jl/dev)
-[![codecov](https://codecov.io/gh/GBarnsley/DEMetropolis.jl/graph/badge.svg)](https://codecov.io/gh/GBarnsley/DEMetropolis.jl)
+[![Build Status](https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://GBarnsley.github.io/DifferentialEvolutionMetropolis.jl/stable)
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://GBarnsley.github.io/DifferentialEvolutionMetropolis.jl/dev)
+[![codecov](https://codecov.io/gh/GBarnsley/DifferentialEvolutionMetropolis.jl/graph/badge.svg)](https://codecov.io/gh/GBarnsley/DifferentialEvolutionMetropolis.jl)
 
 [![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 [![code style: runic](https://img.shields.io/badge/code_style-%E1%9A%B1%E1%9A%A2%E1%9A%BE%E1%9B%81%E1%9A%B2-black)](https://github.com/fredrikekre/Runic.jl)
 
 ## Overview
 
+NOTE: THIS PACKAGE HAS BEEN RENAMED FROM DEMetropolis TO DifferentialEvolutionMetropolis. PLEASE UPDATE YOUR DEPENDENCIES ACCORDINGLY!
+
 This package implements various differential evolution MCMC samplers in the Julia language, with some minor tweaks to simplify parallelism.
 
 These samplers excel at sampling from multimodal distributions. The package is designed to be flexible and extensible, allowing users to customize the sampling process by modifying the implemented samplers or defining your own samplers and sampler scheme.
 
-Please start with the [documentation](https://GBarnsley.github.io/DEMetropolis.jl/stable).
+Please start with the [documentation](https://GBarnsley.github.io/DifferentialEvolutionMetropolis.jl/stable).
 
 ## Example
 
 ```
-using DEMetropolis, TransformedLogDensities, TransformVariables
+using DifferentialEvolutionMetropolis, TransformedLogDensities, TransformVariables
 
 function ld_normal(x)
     sum(-(x .* x)/2)

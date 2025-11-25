@@ -1,7 +1,7 @@
 module MCMCDiagnosticToolsExt
 # stopping criteria that uses rhat from MCMCDiagnosticTools
 
-import DEMetropolis
+import DifferentialEvolutionMetropolis
 import MCMCDiagnosticTools: rhat
 import AbstractMCMC: LogDensityModel, sample, AbstractModel
 import Random: AbstractRNG, default_rng
@@ -40,7 +40,7 @@ the stationary portion of the chains.
 
 # Example
 ```@example convergence
-using DEMetropolis, AbstractMCMC, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random, Distributions
 
 # Create a simple model
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -56,12 +56,12 @@ chains = sample(rng, model_wrapper, sampler, r̂_stopping_criteria;
 
 See also [`MCMCDiagnosticTools.rhat`](@extref), [`deMCzs`](@ref), [`DREAMz`](@ref).
 """
-function DEMetropolis.r̂_stopping_criteria(
+function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         rng::AbstractRNG,
         model::AbstractModel,
-        sampler::DEMetropolis.AbstractDifferentialEvolutionSampler,
-        samples::Vector{DEMetropolis.DifferentialEvolutionSample{V, VV}},
-        state::DEMetropolis.DifferentialEvolutionState{T, A, L, M, V, VV},
+        sampler::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler,
+        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}},
+        state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, A, L, M, V, VV},
         iteration::Int;
         check_every::Int = 1000,
         maximum_R̂::T = 1.2,
@@ -70,9 +70,9 @@ function DEMetropolis.r̂_stopping_criteria(
         kwargs...
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A <: DEMetropolis.AbstractDifferentialEvolutionAdaptiveState{T},
-        M <: DEMetropolis.AbstractDifferentialEvolutionMemory{T},
-        L <: DEMetropolis.AbstractDifferentialEvolutionTemperatureLadder{T},
+        A <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T},
+        M <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionMemory{T},
+        L <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionTemperatureLadder{T},
     }
     if iteration % check_every != 0 || iteration < minimum_iterations
         return false
@@ -81,7 +81,7 @@ function DEMetropolis.r̂_stopping_criteria(
         return true
     else
         #check the last half of the sampling iterations
-        rhat_ = rhat(DEMetropolis.samples_to_array(samples[(iteration ÷ 2 + 1):end]))
+        rhat_ = rhat(DifferentialEvolutionMetropolis.samples_to_array(samples[(iteration ÷ 2 + 1):end]))
         println("Rhat: ", round.(rhat_, sigdigits = 3))
         if all(rhat_ .< maximum_R̂)
             return true
@@ -95,7 +95,7 @@ end
 """
     deMC(model_wrapper, epoch_size, epoch_limit; kwargs...)
 
-$(DEMetropolis.deMC_description)
+$(DifferentialEvolutionMetropolis.deMC_description)
 
 The algorithm runs until the R̂ diagnostic indicates convergence or the maximum number of iterations is reached.
 
@@ -107,17 +107,17 @@ The algorithm runs until the R̂ diagnostic indicates convergence or the maximum
 # Keyword Arguments
 - `warmup_epochs`: Number of warm-up epochs before convergence checking. Defaults to 5.
 - `maximum_R̂`: Convergence threshold for Gelman-Rubin diagnostic. Defaults to 1.2
-$(DEMetropolis.deMC_kwargs)
-$(DEMetropolis.template_chains_kwargs)
-$(DEMetropolis.generic_de_kwargs_no_mem)
-$(DEMetropolis.abstract_mcmc_kwargs)
+$(DifferentialEvolutionMetropolis.deMC_kwargs)
+$(DifferentialEvolutionMetropolis.template_chains_kwargs)
+$(DifferentialEvolutionMetropolis.generic_de_kwargs_no_mem)
+$(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Returns
 - depends on `chain_type`, and `save_final_state`
 
 # Example
 ```@example deMC_r
-using DEMetropolis, Random, Distributions, MCMCDiagnosticTools
+using DifferentialEvolutionMetropolis, Random, Distributions, MCMCDiagnosticTools
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -127,11 +127,11 @@ result = deMC(model_wrapper, 1000, 20; warmup_epochs = 5, n_chains = 10, paralle
 ```
 
 # Notes
-$(DEMetropolis.generic_notes)
+$(DifferentialEvolutionMetropolis.generic_notes)
 
 See also [`deMCzs`](@ref), [`DREAMz`](@ref), [`setup_de_update`](@ref), [`r̂_stopping_criteria`](@ref).
 """
-function DEMetropolis.deMC(
+function DifferentialEvolutionMetropolis.deMC(
         model_wrapper::LogDensityModel, epoch_size::Int, epoch_limit::Int;
         warmup_epochs::Int = 5, save_burnt::Bool = false, kwargs...
     )
@@ -140,9 +140,9 @@ function DEMetropolis.deMC(
         save_burnt, epoch_size, warmup_epochs, epoch_limit
     )
 
-    return DEMetropolis._deMC(
+    return DifferentialEvolutionMetropolis._deMC(
         model_wrapper,
-        DEMetropolis.r̂_stopping_criteria,
+        DifferentialEvolutionMetropolis.r̂_stopping_criteria,
         num_warmup,
         save_burnt;
         minimum_iterations = minimum_iterations,
@@ -155,7 +155,7 @@ end
 """
     deMCzs(model_wrapper, epoch_size, epoch_limit; kwargs...)
 
-$(DEMetropolis.deMCzs_description)
+$(DifferentialEvolutionMetropolis.deMCzs_description)
 
 The algorithm runs until the R̂ diagnostic indicates convergence or the maximum number of iterations is reached.
 
@@ -167,17 +167,17 @@ The algorithm runs until the R̂ diagnostic indicates convergence or the maximum
 # Keyword Arguments
 - `warmup_epochs`: Number of warm-up epochs before convergence checking. Defaults to 5.
 - `maximum_R̂`: Convergence threshold for Gelman-Rubin diagnostic. Defaults to 1.2
-$(DEMetropolis.deMCzs_kwargs)
-$(DEMetropolis.template_chains_kwargs)
-$(DEMetropolis.generic_de_kwargs)
-$(DEMetropolis.abstract_mcmc_kwargs)
+$(DifferentialEvolutionMetropolis.deMCzs_kwargs)
+$(DifferentialEvolutionMetropolis.template_chains_kwargs)
+$(DifferentialEvolutionMetropolis.generic_de_kwargs)
+$(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Returns
 - depends on `chain_type`, and `save_final_state`
 
 # Example
 ```@example deMCzs_r
-using DEMetropolis, Random, Distributions, MCMCDiagnosticTools
+using DifferentialEvolutionMetropolis, Random, Distributions, MCMCDiagnosticTools
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -187,11 +187,11 @@ result = deMCzs(model_wrapper, 1000; n_chains = 3, maximum_R̂ = 1.1)
 ```
 
 # Notes
-$(DEMetropolis.generic_notes)
+$(DifferentialEvolutionMetropolis.generic_notes)
 
 See also [`deMCzs`](@ref), [`DREAMz`](@ref), [`r̂_stopping_criteria`](@ref).
 """
-function DEMetropolis.deMCzs(
+function DifferentialEvolutionMetropolis.deMCzs(
         model_wrapper::LogDensityModel, epoch_size::Int, epoch_limit::Int;
         warmup_epochs::Int = 5, save_burnt::Bool = false, kwargs...
     )
@@ -200,9 +200,9 @@ function DEMetropolis.deMCzs(
         save_burnt, epoch_size, warmup_epochs, epoch_limit
     )
 
-    return DEMetropolis._deMCzs(
+    return DifferentialEvolutionMetropolis._deMCzs(
         model_wrapper,
-        DEMetropolis.r̂_stopping_criteria,
+        DifferentialEvolutionMetropolis.r̂_stopping_criteria,
         num_warmup,
         save_burnt;
         minimum_iterations = minimum_iterations,
@@ -215,7 +215,7 @@ end
 """
     DREAMz(model_wrapper, epoch_size, epoch_limit; kwargs...)
 
-$(DEMetropolis.DREAMz_description)
+$(DifferentialEvolutionMetropolis.DREAMz_description)
 
 The algorithm runs until the R̂ diagnostic indicates convergence or the maximum number of iterations is reached.
 
@@ -227,17 +227,17 @@ The algorithm runs until the R̂ diagnostic indicates convergence or the maximum
 # Keyword Arguments
 - `warmup_epochs`: Number of warm-up epochs before convergence checking. Defaults to 5.
 - `maximum_R̂`: Convergence threshold for Gelman-Rubin diagnostic. Defaults to 1.2
-$(DEMetropolis.DREAMz_kwargs)
-$(DEMetropolis.template_chains_kwargs)
-$(DEMetropolis.generic_de_kwargs)
-$(DEMetropolis.abstract_mcmc_kwargs)
+$(DifferentialEvolutionMetropolis.DREAMz_kwargs)
+$(DifferentialEvolutionMetropolis.template_chains_kwargs)
+$(DifferentialEvolutionMetropolis.generic_de_kwargs)
+$(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Returns
 - depends on `chain_type`, and `save_final_state`
 
 # Example
 ```@example DREAMz_r
-using DEMetropolis, Random, Distributions, MCMCDiagnosticTools
+using DifferentialEvolutionMetropolis, Random, Distributions, MCMCDiagnosticTools
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
@@ -247,11 +247,11 @@ result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
 ```
 
 # Notes
-$(DEMetropolis.generic_notes)
+$(DifferentialEvolutionMetropolis.generic_notes)
 
 See also [`deMCzs`](@ref), [`DREAMz`](@ref), [`setup_subspace_sampling`](@ref), [`r̂_stopping_criteria`](@ref).
 """
-function DEMetropolis.DREAMz(
+function DifferentialEvolutionMetropolis.DREAMz(
         model_wrapper::LogDensityModel, epoch_size::Int, epoch_limit::Int;
         warmup_epochs::Int = 5, save_burnt::Bool = false, kwargs...
     )
@@ -260,9 +260,9 @@ function DEMetropolis.DREAMz(
         save_burnt, epoch_size, warmup_epochs, epoch_limit
     )
 
-    return DEMetropolis._DREAMz(
+    return DifferentialEvolutionMetropolis._DREAMz(
         model_wrapper,
-        DEMetropolis.r̂_stopping_criteria,
+        DifferentialEvolutionMetropolis.r̂_stopping_criteria,
         num_warmup,
         save_burnt;
         minimum_iterations = minimum_iterations,

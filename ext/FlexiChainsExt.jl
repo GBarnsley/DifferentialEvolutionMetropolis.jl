@@ -1,12 +1,12 @@
 module FlexiChainsExt
 
-import DEMetropolis
+import DifferentialEvolutionMetropolis
 import FlexiChains: VNChain, FlexiChain, Parameter, Extra
 import AbstractMCMC
 
-function DEMetropolis.convert(
+function DifferentialEvolutionMetropolis.convert(
         ::Type{VNChain},
-        samples::Vector{DEMetropolis.DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
 
     n_its = length(samples)
@@ -14,7 +14,7 @@ function DEMetropolis.convert(
 
     param_names = vcat(
         Parameter.(
-            Symbol.(DEMetropolis.generate_names(length(samples[1].x[1]))),
+            Symbol.(DifferentialEvolutionMetropolis.generate_names(length(samples[1].x[1]))),
         ), Extra("ld")
     )
     sample_dicts = Array{Dict{Any, T}, 2}(undef, n_its, n_chains)

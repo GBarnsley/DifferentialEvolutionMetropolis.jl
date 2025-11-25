@@ -256,7 +256,7 @@ in the `adaptive_state`.
 
 # Example
 ```@example fix_sampler
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
 # fixed_sampler = fix_sampler(adaptive_sampler, state.adaptive_state)
@@ -290,7 +290,7 @@ adaptive components.
 
 # Example
 ```@example fix_sampler_state
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
 # fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
@@ -360,7 +360,7 @@ $(generic_de_kwargs)
 
 # Examples
 ```@example step_function
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # Setup
 rng = Random.default_rng()
@@ -428,7 +428,7 @@ function step(
     if isnothing(initial_position)
         x = [randn(rng, dimension(model)) for _ in 1:n_true_chains]
     else
-        push!(log, "DEMetropolis: adjusting provided initial positions...")
+        push!(log, "DifferentialEvolutionMetropolis: adjusting provided initial positions...")
         initial_position = copy.(initial_position)
         current_N = length(initial_position)
         current_pars = length(initial_position[1])
@@ -494,7 +494,7 @@ function step(
     rngs = [Random.seed!(copy(rng), rand(rng, UInt)) for _ in 1:length(x)]
 
     if memory
-        push!(log, "DEMetropolis: setting up memory...")
+        push!(log, "DifferentialEvolutionMetropolis: setting up memory...")
         mem_x = copy.(x)
         if !isnothing(extra_memory)
             push!(log, "   Appending initial extra memory")

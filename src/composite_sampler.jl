@@ -18,7 +18,7 @@ sampling strategies (e.g., DE updates with snooker updates) in a single sampler.
 
 # Examples
 ```@example sampler_scheme
-using DEMetropolis
+using DifferentialEvolutionMetropolis
 
 # Only snooker updates
 sampler1 = setup_sampler_scheme(setup_snooker_update())

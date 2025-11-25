@@ -96,7 +96,7 @@ function AbstractMCMC.chainsstack(
                 T, E,
             },
         }
-    ) where {T, E <: DEMetropolis.DifferentialEvolutionState}
+    ) where {T, E <: DifferentialEvolutionMetropolis.DifferentialEvolutionState}
     return (
         AbstractMCMC.chainsstack([c[1] for c in chns]),
         [c[2] for c in chns],

@@ -1,4 +1,4 @@
-using DEMetropolis
+using DifferentialEvolutionMetropolis
 using Test
 using LogDensityProblems, Random, Distributions, AbstractMCMC, StatsBase
 using Aqua
@@ -16,9 +16,9 @@ function backwards_compat_rng(seed)
     return rng
 end
 
-@testset "DEMetropolis.jl" begin
+@testset "DifferentialEvolutionMetropolis.jl" begin
     @testset "Aqua" begin
-        Aqua.test_all(DEMetropolis)
+        Aqua.test_all(DifferentialEvolutionMetropolis)
     end
 
     #define some common problems
@@ -73,7 +73,7 @@ end
 
     #if VERSION ≥ v"1.11"
     #    @testset "JET" begin
-    #        JET.test_package(DEMetropolis)
+    #        JET.test_package(DifferentialEvolutionMetropolis)
     #    end
     #end
 end

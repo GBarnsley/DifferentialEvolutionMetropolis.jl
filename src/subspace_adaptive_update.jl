@@ -97,7 +97,7 @@ based on the effectiveness of different parameter subsets.
 
 # Example
 ```@example step_warmup
-using DEMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions
 
 # Setup for warmup step example
 rng = Random.default_rng()

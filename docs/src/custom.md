@@ -1,6 +1,6 @@
 # Customizing your sampler
 
-This document describes how to extend `DEMetropolis.jl` with your own custom components. You can define custom stopping criteria, diagnostic checks, and proposal distributions (updates).
+This document describes how to extend `DifferentialEvolutionMetropolis.jl` with your own custom components. You can define custom stopping criteria, diagnostic checks, and proposal distributions (updates).
 
 ## Custom Stopping Criteria
 
@@ -32,7 +32,7 @@ The function should return `true` if sampling should stop, and `false` otherwise
 Here is an example of a very simple stopping criterion that stops sampling after a maximum number of iterations has been reached:
 
 ```julia
-using DEMetropolis, AbstractMCMC
+using DifferentialEvolutionMetropolis, AbstractMCMC
 
 function max_iterations_stopping(
     rng::AbstractRNG,
@@ -73,7 +73,7 @@ You can create your own proposal distributions by defining a new sampler type th
 The method signature for the proposal is:
 ```julia
 function proposal!(
-    state::DEMetropolis.DifferentialEvolutionState, 
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, 
     sampler::YourSampler, 
     current_state::Int
 )
@@ -91,16 +91,16 @@ The function should modify `state.xₚ[current_state] = proposed_position` and r
 Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:
 
 ```@example MHSampler
-using DEMetropolis, Distributions, Random
+using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
-struct MetropolisHastingsUpdate <: DEMetropolis.AbstractDifferentialEvolutionSampler
+struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
     proposal_distribution::MvNormal
 end
 
 # Implement the proposal function
-function DEMetropolis.proposal!(
-    state::DEMetropolis.DifferentialEvolutionState,
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::MetropolisHastingsUpdate,
     current_state::Int
 )
@@ -122,9 +122,9 @@ For proposals that require adaptation during warm-up, you need to implement the 
 You'll also need to define adaptive state structures and methods. Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
-using AbstractMCMC, DEMetropolis
+using AbstractMCMC, DifferentialEvolutionMetropolis
 # Define adaptive state
-struct AdaptiveMetropolisState{T<:Real} <:DEMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
+struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
     adaptation_count::Int
     running_mean::Vector{T}
@@ -132,7 +132,7 @@ struct AdaptiveMetropolisState{T<:Real} <:DEMetropolis.AbstractDifferentialEvolu
 end
 
 # Define the adaptive sampler  
-struct AdaptiveMetropolisUpdate{T<:Real} <: DEMetropolis.AbstractDifferentialEvolutionSampler
+struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
     initial_cov::Matrix{T}
     adapt_after::Int
     adapt_every::Int
@@ -152,7 +152,7 @@ function AdaptiveMetropolisUpdate(
 end
 
 # Initialize adaptive state
-function DEMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate{T}, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int) where {T}
+function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate{T}, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int) where {T}
     n_params = dimension(model_wrapper.logdensity)
     return AdaptiveMetropolisState{T}(
         copy(sampler.initial_cov),
@@ -163,13 +163,13 @@ function DEMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdat
 end
 
 # Fix sampler (convert adaptive to non-adaptive)
-function DEMetropolis.fix_sampler(sampler::AdaptiveMetropolisUpdate{T}, adaptive_state::AdaptiveMetropolisState{T}) where {T}
+function DifferentialEvolutionMetropolis.fix_sampler(sampler::AdaptiveMetropolisUpdate{T}, adaptive_state::AdaptiveMetropolisState{T}) where {T}
     return MetropolisHastingsUpdate(MvNormal(zeros(T, size(adaptive_state.proposal_cov, 1)), adaptive_state.proposal_cov))
 end
 
 # Proposal method (same as non-adaptive)
-function DEMetropolis.proposal!(
-    state::DEMetropolis.DifferentialEvolutionState,
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::AdaptiveMetropolisUpdate,
     current_state::Int
 )
@@ -184,7 +184,7 @@ function step_warmup(
     rng::AbstractRNG,
     model_wrapper::AbstractMCMC.LogDensityModel,
     sampler::AdaptiveMetropolisUpdate{T},
-    state::DEMetropolis.DifferentialEvolutionState{T, AdaptiveMetropolisState{T}};
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, AdaptiveMetropolisState{T}};
     parallel::Bool = false,
     kwargs...
 ) where {T<:Real}
