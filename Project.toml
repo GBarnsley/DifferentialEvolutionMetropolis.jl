@@ -1,6 +1,6 @@
 name = "DifferentialEvolutionMetropolis"
 uuid = "a5908a69-3cf8-4221-8182-38852cbc47b2"
-version = "2.0.0"
+version = "2.0.1"
 authors = ["Greg Barnsley <gregory.barnsley@lshtm.ac.uk>"]
 
 [deps]
