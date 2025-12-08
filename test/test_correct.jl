@@ -1,87 +1,48 @@
 @testset "Test correctness with MCMCTesting.jl" begin
     #basic example from (https://arxiv.org/pdf/2001.06465) inspired by MCMCTesting.jl
 
-    struct NormalNormalModel
-        σ::Float64
-        σ_ϵ::Float64
-        y::Float64
+    function sample_joint(rng::Random.AbstractRNG, model::IsotropicNormalModel)
+        rand.(rng, Normal.(model.mean, 1))
     end
-
-    function sample_joint(rng::Random.AbstractRNG, model::NormalNormalModel)
-        θ = rand(rng, Normal(0, model.σ), 2)
-        y = rand(rng, Normal(sum(θ), model.σ_ϵ))
-        θ, y
-    end
-
-    function complete_conditional(θ::Real, σ²::Real, σ²_ϵ::Real, y::Real)
-        μ = σ² / (σ²_ϵ + σ²) * (y - θ)
-        σ = 1 / sqrt(1 / σ²_ϵ + 1 / σ²)
-        Normal(μ, σ)
-    end
-
-    function gibbs_sample_θ(rng::Random.AbstractRNG, model::NormalNormalModel, θ::Vector{Float64})
-        θ = copy(θ)
-        y = model.y
-        σ² = model.σ^2
-        σ²_ϵ = model.σ_ϵ^2
-        θ[1] = rand(rng, complete_conditional(θ[2], σ², σ²_ϵ, y))
-        θ[2] = rand(rng, complete_conditional(θ[1], σ², σ²_ϵ, y))
-        θ
-    end
-
-    function LogDensityProblems.dimension(model::NormalNormalModel)
-        return 2
-    end
-
-    function LogDensityProblems.logdensity(model::NormalNormalModel, θ::Vector{Float64})
-        return logpdf(Normal(0, model.σ), θ[1]) +
-            logpdf(Normal(0, model.σ), θ[2]) +
-            logpdf(Normal(θ[1] + θ[2], model.σ_ϵ), model.y)
-    end
-
-    LogDensityProblems.capabilities(model::NormalNormalModel) = LogDensityProblems.LogDensityOrder{0}()
 
     function test_for_correctness!(
-            rng, p_values, sum_of_rank_of_ranks, update, base_model, sample_kwargs, n, L,
+            rng, p_values, sum_of_rank_of_ranks, update, base_model, sample_kwargs, thinning, n, L,
             M_sampler, initial_positions, complete_chain, ordinal_ranks
         )
         d = LogDensityProblems.dimension(base_model)
         n_chains = sample_kwargs.n_chains
         for attempt in 1:n
             M = rand(rng, M_sampler)
-            initial_positions[1], y = sample_joint(rng, base_model)
-            new_model = NormalNormalModel(base_model.σ, base_model.σ_ϵ, y)
-            for i in 2:length(initial_positions)
-                #gibbs sample to get initial positions with correct dependence on y
-                initial_positions[i] .= gibbs_sample_θ(rng, new_model, initial_positions[i - 1])
-            end
 
-            #randomly permute the initial position so its a bit fairer
-            initial_positions[1:n_chains] = initial_positions[randperm(rng, n_chains)]
+            for i in eachindex(initial_positions)
+                initial_positions[i] .= sample_joint(rng, base_model)
+            end
 
             if M < L
                 res = sample(
                     rng,
-                    AbstractMCMC.LogDensityModel(new_model),
+                    AbstractMCMC.LogDensityModel(base_model),
                     update,
                     L - M + 1;
                     initial_position = initial_positions,
+                    thinning = thinning,
                     sample_kwargs...
                 )
                 complete_chain[M:L, :, 1:(end - 1)] .= res.samples
                 complete_chain[M:L, :, end] .= res.ld
             else
                 complete_chain[M, :, 1:(end - 1)] .= cat(initial_positions[1:n_chains]...; dims = 2)'
-                complete_chain[M, :, end] .= [LogDensityProblems.logdensity(new_model, initial_positions[i]) for i in 1:n_chains]
+                complete_chain[M, :, end] .= [LogDensityProblems.logdensity(base_model, initial_positions[i]) for i in 1:n_chains]
             end
 
             if M > 1
                 res = sample(
                     rng,
-                    AbstractMCMC.LogDensityModel(new_model),
+                    AbstractMCMC.LogDensityModel(base_model),
                     update,
                     M;
                     initial_position = initial_positions,
+                    thinning = thinning,
                     sample_kwargs...
                 )
                 #append but ignore the value at M, its already on there
@@ -99,19 +60,24 @@
             end
 
             for parameter in 1:(d + 1)
-                sum_of_rank_of_ranks[:, parameter] .+= ordinalrank(ordinal_ranks[attempt, :, parameter])
+                sum_of_rank_of_ranks[1:n_chains, parameter] .+= ordinalrank(ordinal_ranks[attempt, :, parameter])
+                sum_of_rank_of_ranks[end, parameter] += 1
             end
         end
 
         #across iterations, assuming they are all independent, we'll use sum_of_rank_of_ranks to test within iterations later
         p_values .= 0.0 #holds test statistic for now
         expected = n * (n_chains) / L
+        n_v = zeros(Int, L, d + 1)
+        values = zeros(Float64, L, d + 1)
         for v in 1:L
             for p in 1:(d + 1)
-                n_v = count(==(v), ordinal_ranks[1:n, :, p][:])
-                p_values[p] += (n_v - expected)^2 / expected
+                n_v[v, p] = count(==(v), ordinal_ranks[1:n, :, p][:])
+                values[v, p] = (n_v[v, p] - expected)^2 / expected
+                p_values[p] += (n_v[v, p] - expected)^2 / expected
             end
         end
+
         #convert to p-values
         p_values .= ccdf.(Chisq(L - 1), p_values)
 
@@ -122,16 +88,24 @@
         return ((12 / (attempts * n_chains * (n_chains + 1))) * sum(sum_of_rank_of_ranks .^ 2)) - 3 * attempts * (n_chains + 1)
     end
 
+    function holm_procedure(p_values, α)
+        sorted_p_values = sort(p_values)
+
+        adjusted_min = minimum(sorted_p_values[sorted_p_values .> (α ./ (length(sorted_p_values) + 1 .- eachindex(sorted_p_values)))])
+
+        any(sorted_p_values .< adjusted_min) #adjustment for multiple testing
+    end
+
     function sequential_testing(
-            rng, update, base_model, L, α, k, Δ, initial_n, memory::Bool;
+            rng, update, base_model, L, α_between, α_across, k, Δ, n, thinning, memory::Bool;
             d = LogDensityProblems.dimension(base_model),
-            n_chains = memory ? 5 : 3 * d,
+            n_chains = memory ? 5 : d * 3,
             n_hot_chains = 0,
-            N₀ = memory ? max(5 * d - n_chains, n_chains + n_hot_chains) : 0
+            N₀ = memory ? max(10 * d - n_chains, n_chains + n_hot_chains) : 0
         )
         #setup for model
         sample_kwargs = (
-            memory = memory, N₀ = N₀, n_chains = n_chains, progress = false,
+            memory = memory, N₀ = N₀, n_chains = n_chains, progress = false, adapt = false,
             chain_type = DifferentialEvolutionOutput, silent = true, n_hot_chains = n_hot_chains,
         )
 
@@ -141,22 +115,21 @@
         n_positions = n_chains + N₀ + n_hot_chains
         initial_positions = [Vector{Float64}(undef, d) for i in 1:n_positions]
         complete_chain = Array{Float64, 3}(undef, L, n_chains, d + 1)
-        ordinal_ranks = Array{Int, 3}(undef, Δ * initial_n, n_chains, d + 1)
-        sum_of_rank_of_ranks = zeros(Int, n_chains, d + 1)
+        ordinal_ranks = Array{Int, 3}(undef, n, n_chains, d + 1)
+        sum_of_rank_of_ranks = zeros(Int, n_chains + 1, d + 1)
 
-        β = α / k
+        β = α_across / k
         γ = β^(1 / k)
-        n = initial_n
 
         p_values = Vector{Float64}(undef, d + 1)
 
         #sequential test for uniformity across iterations
         for i in 1:k
             test_for_correctness!(
-                rng, p_values, sum_of_rank_of_ranks, update, base_model, sample_kwargs, n, L,
+                rng, p_values, sum_of_rank_of_ranks, update, base_model, sample_kwargs, thinning, n, L,
                 M_sampler, initial_positions, complete_chain, ordinal_ranks
             )
-            q = minimum(p_values) * (d + 1)
+            q = minimum(p_values) * length(p_values)
             if q ≤ β
                 @warn "Failed rank-uniformity across all iterations test with p-value $(minimum(p_values))"
                 return false
@@ -165,23 +138,24 @@
             else
                 β = β / γ
                 if i == 1
-                    n *= Δ
+                    thinning *= Δ
                 end
             end
         end
 
         #test for uniformity within iterations
         #since we can only rank 1:n_chains we can calculate the number of attempts as
-        attempts = Int(sum(sum_of_rank_of_ranks, dims = 1)[1, 1] / sum(1:n_chains))
+        attempts = unique(sum_of_rank_of_ranks[end, :])[1]
+        sum_of_rank_of_ranks = sum_of_rank_of_ranks[1:n_chains, :]
 
-        statistic = maximum([friedman_statistic(sum_of_rank_of_ranks[:, p], attempts, n_chains) for p in 1:(d + 1)])
+        statistics = [friedman_statistic(sum_of_rank_of_ranks[:, p], attempts, n_chains) for p in 1:(d + 1)]
 
         # good approx when n_chains > 4 and attempts > 15
-        p_value_within = ccdf(Chisq(n_chains - 1), statistic)
+        p_values_within = ccdf.(Chisq(n_chains - 1), statistics)
 
-        if p_value_within < α
-            @warn "Failed rank-uniformity between DE-chains test with p-value $p_value_within"
-            W = statistic / (attempts * (n_chains - 1))
+        if holm_procedure(p_values_within, α_between) #adjustment for multiple testing
+            @warn "Failed rank-uniformity between DE-chains test with p-value $(minimum(p_values_within))"
+            W = maximum(statistics) / (attempts * (n_chains - 1))
             if W > 0.01
                 @warn "Large coefficient of concordance W = $W"
                 return false
@@ -194,12 +168,13 @@
     end
 
     rng = backwards_compat_rng(1234)
-    initial_n = 50
-    Δ = 10
+    n = 1000
+    Δ = 4
     L = 100
-    base_model = NormalNormalModel(1.0, 0.5, 0.0)
-    α = 0.05
-    k = 10
+    base_model = IsotropicNormalModel(zeros(Int, 6))
+    α_between = 10^-5
+    α_across = 10^-5
+    k = 7
 
     composite_update = setup_sampler_scheme(
         setup_de_update(n_dims = LogDensityProblems.dimension(base_model)),
@@ -208,22 +183,26 @@
     )
 
     @testset "Without memory" begin
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α, k, Δ, initial_n, false)
-        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α, k, Δ, initial_n, false)
-        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α, k, Δ, initial_n, false)
-        @test sequential_testing(rng, composite_update, base_model, L, α, k, Δ, initial_n, false)
+        thinning = 4
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
     end
     @testset "With memory" begin
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α, k, Δ, initial_n, true)
-        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α, k, Δ, initial_n, true)
-        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α, k, Δ, initial_n, true)
-        @test sequential_testing(rng, composite_update, base_model, L, α, k, Δ, initial_n, true)
+        thinning = 4
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 10, true)
+        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
     end
     @testset "With pt" begin
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α, k, Δ, initial_n, false; n_hot_chains = 5)
-        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α, k, Δ, initial_n, false; n_hot_chains = 5)
-        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α, k, Δ, initial_n, false; n_hot_chains = 5)
-        @test sequential_testing(rng, composite_update, base_model, L, α, k, Δ, initial_n, false; n_hot_chains = 5)
+        thinning = 2
+        n_chains = 3
+        n_hot_chains = LogDensityProblems.dimension(base_model) * 2 - n_chains
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 5, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
     end
-
 end
