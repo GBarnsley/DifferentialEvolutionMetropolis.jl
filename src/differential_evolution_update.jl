@@ -53,9 +53,9 @@ function setup_de_update(;
     end
 
     if check_args
-        if Distributions.minimum(γ) < 0
+        if minimum(γ) < 0
             error("Distribution of γ should be bounded above 0")
-        elseif Distributions.maximum(γ) ≤ 0
+        elseif maximum(γ) ≤ 0
             error("Distribution of γ should be able to return values above 0")
         end
         noise_checks(β, "β")
