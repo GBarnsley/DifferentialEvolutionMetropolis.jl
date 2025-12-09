@@ -1,12 +1,32 @@
 module FlexiChainsExt
 
-import DifferentialEvolutionMetropolis
+import DifferentialEvolutionMetropolis as DME
 import FlexiChains: VNChain, FlexiChain, Parameter, Extra
 import AbstractMCMC
 
-function DifferentialEvolutionMetropolis.convert(
+function AbstractMCMC.bundle_samples(
+        samples::Vector{DME.DifferentialEvolutionSample{V, VV}},
+        model_wrapper::AbstractMCMC.LogDensityModel,
+        sampler::DME.AbstractDifferentialEvolutionSampler,
+        state::DME.DifferentialEvolutionState,
+        ::Type{VNChain};
+        save_final_state::Bool = false,
+        kwargs...
+    ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
+    samples_ = DME.convert(VNChain, samples)
+    if save_final_state
+        return (
+            samples_,
+            state,
+        )
+    else
+        return samples_
+    end
+end
+
+function DME.convert(
         ::Type{VNChain},
-        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DME.DifferentialEvolutionSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
 
     n_its = length(samples)
@@ -14,7 +34,7 @@ function DifferentialEvolutionMetropolis.convert(
 
     param_names = vcat(
         Parameter.(
-            Symbol.(DifferentialEvolutionMetropolis.generate_names(length(samples[1].x[1]))),
+            Symbol.(DME.generate_names(length(samples[1].x[1]))),
         ), Extra("ld")
     )
     sample_dicts = Array{Dict{Any, T}, 2}(undef, n_its, n_chains)

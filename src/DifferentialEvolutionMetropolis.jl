@@ -7,9 +7,8 @@ export r̂_stopping_criteria
 
 import Distributions: UnivariateDistribution, DiscreteUnivariateDistribution,
     ContinuousUnivariateDistribution, DiscreteNonParametricSampler
-import Distributions: Sampleable, Discrete, Continuous, Univariate, sampler, params
-import Distributions: Dirac, Uniform, DiscreteUniform, Normal, Categorical, AliasTable,
-    DiscreteNonParametric
+import Distributions: Sampleable, Discrete, Continuous, Univariate, sampler
+import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParametric
 import Distributions
 
 import LogDensityProblems: logdensity, dimension
@@ -18,8 +17,7 @@ import StatsBase
 import LinearAlgebra: norm, normalize, dot
 import Random: AbstractRNG, default_rng
 import Random
-import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, AbstractModel,
-    sample, bundle_samples
+import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end

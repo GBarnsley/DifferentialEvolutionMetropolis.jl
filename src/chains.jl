@@ -445,11 +445,11 @@ function step(
                 "   Initial position is smaller than the requested (or required) n_chains (including hot chains). Expanding initial position."
             )
             x = cat(
+                initial_position,
                 [
                     randn(rng, eltype(initial_position[1]), current_pars)
                         for _ in 1:(n_true_chains - current_N)
                 ],
-                initial_position,
                 dims = 1
             )
         elseif memory
