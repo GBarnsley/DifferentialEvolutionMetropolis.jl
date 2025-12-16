@@ -1,6 +1,6 @@
 name = "DifferentialEvolutionMetropolis"
 uuid = "a5908a69-3cf8-4221-8182-38852cbc47b2"
-version = "2.0.1"
+version = "2.0.2"
 authors = ["Greg Barnsley <gregory.barnsley@lshtm.ac.uk>"]
 
 [deps]
@@ -28,7 +28,7 @@ MCMCDiagnosticToolsExt = "MCMCDiagnosticTools"
 AbstractMCMC = "5.8"
 Aqua = "0.8"
 Distributions = "0.25"
-FlexiChains = "0.1.6, 0.2"
+FlexiChains = "0.1.6, 0.2, 0.3"
 LinearAlgebra = "1.6"
 LogDensityProblems = "2.1"
 Logging = "1.6"
