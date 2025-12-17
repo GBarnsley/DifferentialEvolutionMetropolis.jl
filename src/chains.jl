@@ -519,12 +519,12 @@ function step(
         end
 
         total_memory_size = memory_size * n_true_chains
-        if memory_size == 1001
-            push!(log, "   Using default memory size of 1001, storing a maximum of $total_memory_size chains.")
-            push!(log, "   Consider setting memory_size keyword argument to control memory usage!")
-        elseif memory_size == num_warmup * 2
-            push!(log, "   Using memory size of $memory_size (2x num_warmup/n_burnin) to store a maximum of $total_memory_size chains.")
-            push!(log, "   Consider setting memory_size keyword argument to control memory usage!")
+        if (memory_size == 1001) & memory_refill
+            push!(log, "   Using memory refill with default memory size of 1001, storing a maximum of $total_memory_size chains.")
+            push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")
+        elseif (memory_size == (num_warmup * 2)) & memory_refill
+            push!(log, "   Using memory refill with default memory size of $memory_size (2x num_warmup/n_burnin) to store a maximum of $total_memory_size chains.")
+            push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")
         end
         true_memory = vcat(mem_x, [similar(mem_x[1]) for _ in 1:(total_memory_size - N₀)])
 
