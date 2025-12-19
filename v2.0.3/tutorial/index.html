@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Sampling from multimodal distributions · Differential Evolution Metropolis</title><meta name="title" content="Sampling from multimodal distributions · Differential Evolution Metropolis"/><meta property="og:title" content="Sampling from multimodal distributions · Differential Evolution Metropolis"/><meta property="twitter:title" content="Sampling from multimodal distributions · Differential Evolution Metropolis"/><meta name="description" content="Documentation for Differential Evolution Metropolis."/><meta property="og:description" content="Documentation for Differential Evolution Metropolis."/><meta property="twitter:description" content="Documentation for Differential Evolution Metropolis."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Differential Evolution Metropolis</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">DifferentialEvolutionMetropolis Documentation</a></li><li class="is-active"><a class="tocitem" href>Sampling from multimodal distributions</a><ul class="internal"><li><a class="tocitem" href="#Multimodal-Distributions"><span>Multimodal Distributions</span></a></li><li><a class="tocitem" href="#Sampling-with-DifferentialEvolutionMetropolis"><span>Sampling with DifferentialEvolutionMetropolis</span></a></li><li><a class="tocitem" href="#Custom-Scheme"><span>Custom Scheme</span></a></li><li><a class="tocitem" href="#Interpreting-Results"><span>Interpreting Results</span></a></li></ul></li><li><a class="tocitem" href="../custom/">Customizing your sampler</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Sampling from multimodal distributions</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Sampling from multimodal distributions</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl/blob/main/docs/src/tutorial.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Sampling-from-multimodal-distributions"><a class="docs-heading-anchor" href="#Sampling-from-multimodal-distributions">Sampling from multimodal distributions</a><a id="Sampling-from-multimodal-distributions-1"></a><a class="docs-heading-anchor-permalink" href="#Sampling-from-multimodal-distributions" title="Permalink"></a></h1><p>Let say you have a multimodal distribution, for example a mixture of two Gaussians. <code>DifferentialEvolutionMetropolis</code> implements differential evolution MCMC samplers (including deMC-zs and DREAMz) that are designed to sample from such distributions efficiently. Roughly these samplers work by generating new proposals based on many separate chains (or a history of sampled chains). In theory this allows the sampler to easily jump between modes of the distribution.</p><h2 id="Multimodal-Distributions"><a class="docs-heading-anchor" href="#Multimodal-Distributions">Multimodal Distributions</a><a id="Multimodal-Distributions-1"></a><a class="docs-heading-anchor-permalink" href="#Multimodal-Distributions" title="Permalink"></a></h2><p>First we need to implement a multimodal problem. We will assume that our data is generated by a mixture of two 2D-Gaussians with means 5 and -5 and a 65% bias towards the positive value. Then the distributions of the means will be multimodal and highly correlated with the probability. We can easily implement this using the <code>Distributions</code> package, which underpins most of the functionality in <code>DifferentialEvolutionMetropolis</code>.</p><pre><code class="language-julia hljs">using Distributions, Random
+
+mean = 5.0
+std = 2.0
+p = 0.65
+
+dist = MixtureModel([
+    Normal(mean, std),
+    Normal(-mean,  std)
+], [p, 1 - p]);
+
+#generate our data
+Random.seed!(1234)
+data = rand(dist, 1000)
+
+# setup our log density
+struct MixtureNormal
+    #data
+    data::Vector{Float64}
+    #prior parameters
+    prior_μ_σ::Float64
+    prior_σ_σ::Float64
+end
+
+#initialize the model
+model = MixtureNormal(data, 10.0, 10.0)
+
+# implement the log density function
+function (problem::MixtureNormal)(θ)
+    (; μ, p, σ) = θ
+    ld =
+        #priors
+        logpdf(Normal(0, problem.prior_σ_σ), σ) + #half-normal because σ &gt; 0
+        logpdf(Uniform(0, 1), p) #prior on mixture weight
+    μ_prior = Normal(0, problem.prior_μ_σ)
+    for μ_ in μ
+        ld += logpdf(μ_prior, μ_)
+    end
+    #likelihood
+    ll_model = MixtureModel(
+        [
+            Normal(μ[1], σ),
+            Normal(μ[2], σ)
+        ], [p, 1 - p]
+    )
+    for i in axes(problem.data, 1)
+        ld += logpdf(ll_model, data[i])
+    end
+    return ld
+end
+
+# to visualize our data
+using Plots
+plot(histogram(data, bins = 30, xlabel = &quot;Value&quot;, ylabel = &quot;Frequency&quot;, title = &quot;Histogram of Generated Data&quot;))</code></pre><img src="09c17298.svg" alt="Example block output"/><p>We can also transform our log density function, so we can provide real-valued inputs. This is much easier to work with.</p><pre><code class="language-julia hljs">using TransformedLogDensities, TransformVariables
+
+transformation = as((μ = as(Array, 2), p = as𝕀, σ = asℝ₊))
+transformed_ld = TransformedLogDensity(transformation, model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">TransformedLogDensity of dimension 4</code></pre><h2 id="Sampling-with-DifferentialEvolutionMetropolis"><a class="docs-heading-anchor" href="#Sampling-with-DifferentialEvolutionMetropolis">Sampling with DifferentialEvolutionMetropolis</a><a id="Sampling-with-DifferentialEvolutionMetropolis-1"></a><a class="docs-heading-anchor-permalink" href="#Sampling-with-DifferentialEvolutionMetropolis" title="Permalink"></a></h2><p>Now let&#39;s use <code>DifferentialEvolutionMetropolis</code> to sample from this multimodal distribution. Here we use the DREAMz sampler, which is well-suited for exploring complex, multimodal spaces. We increase the number of chains to allow the sampler to explore the distribution more effectively.</p><pre><code class="language-julia hljs">using DifferentialEvolutionMetropolis, AbstractMCMC
+
+model = AbstractMCMC.LogDensityModel(transformed_ld)
+
+# Sample using DREAMz with adaptive stopping based on convergence
+dreamz = DREAMz(model, 10000; n_chains = 6, progress = true);</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">DifferentialEvolutionOutput{Float64}([5.21998534854409 -4.894976983254473 … -5.087742914695565 -4.83442570392559; 5.21998534854409 -4.894976983254473 … -5.087742914695565 -4.83442570392559; … ; 5.049000586059232 5.004631403176455 … 5.104991390939873 -4.862454865810638; 5.049000586059232 5.004631403176455 … 5.104991390939873 -4.862454865810638;;; -4.8469965554551 5.027996226638525 … 5.0465482537637545 5.150332027081797; -4.8469965554551 5.027996226638525 … 5.0465482537637545 5.150332027081797; … ; -4.858237045439179 -4.909018318833721 … -5.2001033881941785 5.0627852246742995; -4.858237045439179 -4.909018318833721 … -5.2001033881941785 5.0627852246742995;;; 0.5792210658034845 -0.4847191413479646 … -0.46518688539725794 -0.6294469099417428; 0.5792210658034845 -0.4847191413479646 … -0.46518688539725794 -0.6294469099417428; … ; 0.5741268883486262 0.5878262939407015 … 0.641089187077828 -0.6207524068346807; 0.5741268883486262 0.5878262939407015 … 0.641089187077828 -0.6207524068346807;;; 0.6787448634143769 0.6394147922239041 … 0.7004646662467714 0.6818497234288529; 0.6787448634143769 0.6394147922239041 … 0.7004646662467714 0.6818497234288529; … ; 0.7091680027328165 0.6779301330123079 … 0.6756224919974223 0.6423091716582922; 0.7091680027328165 0.6779301330123079 … 0.6756224919974223 0.6423091716582922], [-2740.2668735143643 -2740.8953492429764 … -2742.8792654864524 -2739.478441961077; -2740.2668735143643 -2740.8953492429764 … -2742.8792654864524 -2739.478441961077; … ; -2740.036251028598 -2739.080494208638 … -2743.3906347740226 -2739.6092420635537; -2740.036251028598 -2739.080494208638 … -2743.3906347740226 -2739.6092420635537])</code></pre><p>Other implementations of the differential evolution MCMC algorithm are available in <code>DifferentialEvolutionMetropolis.jl</code>, such as <code>deMC</code> and <code>deMCzs</code>, which can be used similarly.</p><h2 id="Custom-Scheme"><a class="docs-heading-anchor" href="#Custom-Scheme">Custom Scheme</a><a id="Custom-Scheme-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Scheme" title="Permalink"></a></h2><p>DREAMz can be further customized. For example, we could include snooker updates alongside the DREAMz-like subspace sampling.</p><p>You can also modify aspects of the implemented sampling, for example tell DREAMz to use non-memory-based sampling with <code>DREAMz(...; memory = false)</code>, or you can define your own sampler scheme for more control over the sampling process.</p><p>This time we will use <code>MCMCChains.jl</code> to the handle the output.</p><pre><code class="language-julia hljs">using MCMCChains
+
+# Create a custom sampler scheme combining different update types
+custom_sampler = setup_sampler_scheme(
+    setup_subspace_sampling(), # a DREAM-like sampler that uses subspace sampling
+    setup_snooker_update(deterministic_γ = false), # a snooker update for better exploration
+    setup_de_update(); # standard DE update
+    w = [0.6, 0.2, 0.2] # weights for each update type
+);
+
+# Sample using AbstractMCMC.sample with custom stopping criteria
+custom_results = sample(
+    model,
+    custom_sampler,
+    r̂_stopping_criteria;
+    check_every = 10000,
+    maximum_R̂ = 1.05,
+    n_chains = 4,
+    N₀ = 100, # want good exploration of the space
+    memory = true,
+    parallel = true,
+    annealing = true,
+    num_warmup = 10000,
+    memory_size = 5000,
+    memory_refill = true,
+    chain_type = MCMCChains.Chains
+);</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Chains MCMC chain (9999×5×4 Array{Float64, 3}):
+
+Iterations        = 1:1:9999
+Number of chains  = 4
+Samples per chain = 9999
+parameters        = param_1, param_2, param_3, param_4, ld
+
+Use `describe(chains)` for summary statistics and quantiles.
+</code></pre><p>You can also define your own samplers for more specialized use cases by extending the abstract types.</p><h2 id="Interpreting-Results"><a class="docs-heading-anchor" href="#Interpreting-Results">Interpreting Results</a><a id="Interpreting-Results-1"></a><a class="docs-heading-anchor-permalink" href="#Interpreting-Results" title="Permalink"></a></h2><p>After running the sampler, you will have a collection of samples from the target distribution. These samples can be used to estimate summary statistics, credible intervals, and to assess the quality of your sampling.</p><h3 id="Assessing-Sampler-Performance:-ESS-and-R-hat"><a class="docs-heading-anchor" href="#Assessing-Sampler-Performance:-ESS-and-R-hat">Assessing Sampler Performance: ESS and R-hat</a><a id="Assessing-Sampler-Performance:-ESS-and-R-hat-1"></a><a class="docs-heading-anchor-permalink" href="#Assessing-Sampler-Performance:-ESS-and-R-hat" title="Permalink"></a></h3><p>To evaluate how well your sampler is performing, you can compute the effective sample size (ESS) and the R-hat diagnostic. These metrics help you determine if your chains have mixed well and if your estimates are reliable.</p><ul><li><strong>Effective Sample Size (ESS):</strong> This measures the number of independent samples your chains are equivalent to. Higher ESS values indicate more reliable estimates.</li><li><strong>R-hat Diagnostic:</strong> Also known as the Gelman-Rubin statistic, R-hat compares the variance within each chain to the variance between chains. Values close to 1 suggest good mixing and convergence; values much greater than 1 indicate potential problems.</li></ul><p>Below is an example of how to compute these diagnostics for the DifferentialEvolutionMetropolis samplers using <code>MCMCDiagnosticTools</code>:</p><pre><code class="language-julia hljs">using Statistics, MCMCDiagnosticTools
+
+# Compute diagnostics for DREAMz results
+ess_val = ess(dreamz.samples) ./ size(dreamz.samples, 1)
+rhat_val = maximum(rhat(dreamz.samples))
+
+println(&quot;DREAMz diagnostics:&quot;)
+println(&quot;  ESS per iteration: $ess_val&quot;)
+println(&quot;  R-hat: $rhat_val&quot;)
+
+# example trace plot
+plot(dreamz.samples[:, :, 1], xlabel = &quot;Iteration&quot;, ylabel = &quot;Value&quot;, title = &quot;Trace Plot for Mean 1 (DREAMz)&quot;)</code></pre><img src="ca38011a.svg" alt="Example block output"/><h3 id="Summarizing-Posterior-Samples"><a class="docs-heading-anchor" href="#Summarizing-Posterior-Samples">Summarizing Posterior Samples</a><a id="Summarizing-Posterior-Samples-1"></a><a class="docs-heading-anchor-permalink" href="#Summarizing-Posterior-Samples" title="Permalink"></a></h3><p>Once you have confirmed good mixing and convergence, you can summarize your posterior samples. For each parameter, you may want to compute the median and a credible interval (such as the 90% interval):</p><pre><code class="language-julia hljs">#need to transform the samples to original space, there is currently no nice way to do this
+custom_results = cat([dreamz.samples[:, c, :] for c in axes(dreamz.samples, 2)]...; dims = 1)
+for it in axes(custom_results, 1)
+    transformed_values = transform(transformation, Array(custom_results[it, :]))
+    custom_results[it, :] .= [transformed_values.μ..., transformed_values.p, transformed_values.σ]
+end
+
+#median for variance
+med = median(custom_results[:, 4])
+q05, q95 = quantile(custom_results[:, 4], [0.05, 0.95])
+println(&quot;Standard deviation: posterior median = $med, 90% CI = ($q05, $q95)&quot;)
+println(&quot;True standard deviation: $std&quot;)
+
+#not so sensible for p or means
+med = median(custom_results[:, 1])
+q05, q95 = quantile(custom_results[:, 1], [0.05, 0.95])
+println(&quot;Mean 1: posterior median = $med, 90% CI = ($q05, $q95)&quot;)
+println(&quot;True mean: $(mean)&quot;)
+
+#visualize the posteriors, expect multimodal distributions
+plot(histogram(custom_results[:, 1], bins = 30, xlabel = &quot;Mean 1&quot;, ylabel = &quot;Frequency&quot;), histogram(custom_results[:, 2], bins = 30, xlabel = &quot;Mean 2&quot;, ylabel = &quot;Frequency&quot;), histogram(custom_results[:, 3], bins = 30, xlabel = &quot;Probability&quot;, ylabel = &quot;Frequency&quot;), layout = (3, 1))
+
+#covariance
+plot(scatter(custom_results[:, 1], custom_results[:, 3], xlabel = &quot;Mean 1&quot;, ylabel = &quot;Probability of Normal 1&quot;), scatter(custom_results[:, 1], custom_results[:, 2], xlabel = &quot;Mean 1&quot;, ylabel = &quot;Mean 2&quot;), layout = (2, 1))</code></pre><img src="0123f0cc.svg" alt="Example block output"/><p>For more details, see the <a href="../#DifferentialEvolutionMetropolis-Documentation">DifferentialEvolutionMetropolis Documentation</a> and <a href="../custom/#Customizing-your-sampler">Customizing your sampler</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« DifferentialEvolutionMetropolis Documentation</a><a class="docs-footer-nextpage" href="../custom/">Customizing your sampler »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 19 December 2025 15:31">Friday 19 December 2025</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

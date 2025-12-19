@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Customizing your sampler · Differential Evolution Metropolis</title><meta name="title" content="Customizing your sampler · Differential Evolution Metropolis"/><meta property="og:title" content="Customizing your sampler · Differential Evolution Metropolis"/><meta property="twitter:title" content="Customizing your sampler · Differential Evolution Metropolis"/><meta name="description" content="Documentation for Differential Evolution Metropolis."/><meta property="og:description" content="Documentation for Differential Evolution Metropolis."/><meta property="twitter:description" content="Documentation for Differential Evolution Metropolis."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Differential Evolution Metropolis</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">DifferentialEvolutionMetropolis Documentation</a></li><li><a class="tocitem" href="../tutorial/">Sampling from multimodal distributions</a></li><li class="is-active"><a class="tocitem" href>Customizing your sampler</a><ul class="internal"><li><a class="tocitem" href="#Custom-Stopping-Criteria"><span>Custom Stopping Criteria</span></a></li><li><a class="tocitem" href="#Custom-Proposal-Distributions"><span>Custom Proposal Distributions</span></a></li><li><a class="tocitem" href="#Example:-Using-Custom-Components"><span>Example: Using Custom Components</span></a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Customizing your sampler</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Customizing your sampler</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/GBarnsley/DifferentialEvolutionMetropolis.jl/blob/main/docs/src/custom.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Customizing-your-sampler"><a class="docs-heading-anchor" href="#Customizing-your-sampler">Customizing your sampler</a><a id="Customizing-your-sampler-1"></a><a class="docs-heading-anchor-permalink" href="#Customizing-your-sampler" title="Permalink"></a></h1><p>This document describes how to extend <code>DifferentialEvolutionMetropolis.jl</code> with your own custom components. You can define custom stopping criteria, diagnostic checks, and proposal distributions (updates).</p><h2 id="Custom-Stopping-Criteria"><a class="docs-heading-anchor" href="#Custom-Stopping-Criteria">Custom Stopping Criteria</a><a id="Custom-Stopping-Criteria-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Stopping-Criteria" title="Permalink"></a></h2><p>To create a custom stopping criterion, you need to define a function that follows the AbstractMCMC interface, similar to <a href="../#DifferentialEvolutionMetropolis.r̂_stopping_criteria"><code>r̂_stopping_criteria</code></a> which is available if <code>MCMCDiagnosticTools.jl</code> is loaded. The function will be called during sampling to determine when to stop. See the <a href="https://turinglang.org/AbstractMCMC.jl/dev/api/#Sampling-a-single-chain">AbstractMCMC documentation</a> for details.</p><p>The stopping criterion function has the following signature:</p><pre><code class="language-julia hljs">function your_stopping_criteria(
+    rng::AbstractRNG,
+    model::AbstractModel, 
+    sampler::AbstractDifferentialEvolutionSampler,
+    samples::Vector{DifferentialEvolutionSample},
+    state::DifferentialEvolutionState,
+    iteration::Int;
+    kwargs...
+)</code></pre><ul><li><code>rng</code>: Random number generator (required by AbstractMCMC interface, usually unused)</li><li><code>model</code>: The model being sampled (required by interface, usually unused)  </li><li><code>sampler</code>: The differential evolution sampler (required by interface, usually unused)</li><li><code>samples</code>: Vector of all collected samples from all chains</li><li><code>state</code>: Current sampler state (required by interface, usually unused)</li><li><code>iteration</code>: Current iteration number</li><li><code>kwargs...</code>: Additional keyword arguments passed via <code>AbstractMCMC.sample</code></li></ul><p>The function should return <code>true</code> if sampling should stop, and <code>false</code> otherwise.</p><p>Here is an example of a very simple stopping criterion that stops sampling after a maximum number of iterations has been reached:</p><pre><code class="language-julia hljs">using DifferentialEvolutionMetropolis, AbstractMCMC
+
+function max_iterations_stopping(
+    rng::AbstractRNG,
+    model::AbstractModel,
+    sampler::AbstractDifferentialEvolutionSampler, 
+    samples::Vector{DifferentialEvolutionSample{V, VV}},
+    state::DifferentialEvolutionState{T, V, VV, A},
+    iteration::Int;
+    max_iterations::Int = 10000,
+    kwargs...
+) where {T&lt;:Real, V&lt;:AbstractVector{T}, VV&lt;:AbstractVector{V}, A&lt;:AbstractDifferentialEvolutionAdaptiveState{T}}
+    if iteration &gt;= max_iterations
+        println(&quot;Reached maximum iterations ($max_iterations), stopping.&quot;)
+        return true
+    end
+    return false
+end
+
+# Usage with AbstractMCMC.sample
+using LogDensityProblems
+
+model = LogDensityModel(your_log_density)
+sampler = setup_de_update()
+
+result = sample(
+    rng, 
+    model, 
+    sampler, 
+    max_iterations_stopping;
+    max_iterations = 5000,  # passed as keyword argument
+    n_chains = 4
+)</code></pre><h2 id="Custom-Proposal-Distributions"><a class="docs-heading-anchor" href="#Custom-Proposal-Distributions">Custom Proposal Distributions</a><a id="Custom-Proposal-Distributions-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Proposal-Distributions" title="Permalink"></a></h2><p>You can create your own proposal distributions by defining a new sampler type that subtypes <code>AbstractDifferentialEvolutionSampler</code> and implementing the <code>proposal</code> method.</p><p>The method signature for the proposal is:</p><pre><code class="language-julia hljs">function proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, 
+    sampler::YourSampler, 
+    current_state::Int
+)</code></pre><ul><li><code>state</code>: The current state containing all chain positions, log-densities, and chain specific rngs</li><li><code>sampler</code>: An instance of your custom sampler struct</li><li><code>current_state</code>: The index of the chain to be updated</li></ul><p>The function should modify <code>state.xₚ[current_state] = proposed_position</code> and return a named tuple with at least <code>(offset = hastings_correction)</code> where:</p><ul><li><code>proposed_position</code>: The proposed new position (vector)</li><li><code>offset</code>: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)</li></ul><p>Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:</p><pre><code class="language-julia hljs">using DifferentialEvolutionMetropolis, Distributions, Random
+
+# Define the struct for the sampler
+struct MetropolisHastingsUpdate &lt;: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+    proposal_distribution::MvNormal
+end
+
+# Implement the proposal function
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::MetropolisHastingsUpdate,
+    current_state::Int
+)
+    # Get the current position of this chain
+    x_current = state.x[current_state]
+
+    # Propose a new point (stored in state) using a random walk
+    state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
+
+    # The proposal is symmetric, so no Hastings correction needed
+    return (offset = 0.0)
+end</code></pre><h3 id="Adaptive-Proposals-with-step_warmup"><a class="docs-heading-anchor" href="#Adaptive-Proposals-with-step_warmup">Adaptive Proposals with step_warmup</a><a id="Adaptive-Proposals-with-step_warmup-1"></a><a class="docs-heading-anchor-permalink" href="#Adaptive-Proposals-with-step_warmup" title="Permalink"></a></h3><p>For proposals that require adaptation during warm-up, you need to implement the <code>step_warmup</code> as well. This is called during the warm-up phase. Unless you want your sampler to be always adaptive then you must implement <code>step</code>.</p><p>You&#39;ll also need to define adaptive state structures and methods. Here&#39;s an example of an adaptive Metropolis-Hastings sampler:</p><pre><code class="language-julia hljs">using AbstractMCMC, DifferentialEvolutionMetropolis
+# Define adaptive state
+struct AdaptiveMetropolisState{T&lt;:Real} &lt;:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
+    proposal_cov::Matrix{T}
+    adaptation_count::Int
+    running_mean::Vector{T}
+    running_cov::Matrix{T}
+end
+
+# Define the adaptive sampler
+struct AdaptiveMetropolisUpdate{T&lt;:Real} &lt;: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+    initial_cov::Matrix{T}
+    adapt_after::Int
+    adapt_every::Int
+    adapt_scale::T
+end
+
+# Constructor
+function AdaptiveMetropolisUpdate(
+    n_params::Int;
+    initial_std::Float64 = 0.1,
+    adapt_after::Int = 200,
+    adapt_every::Int = 100,
+    adapt_scale::Float64 = 2.38^2
+)
+    initial_cov = (initial_std^2) * I(n_params)
+    return AdaptiveMetropolisUpdate{Float64}(initial_cov, adapt_after, adapt_every, adapt_scale / n_params)
+end
+
+# Initialize adaptive state
+function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate{T}, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int) where {T}
+    n_params = dimension(model_wrapper.logdensity)
+    return AdaptiveMetropolisState{T}(
+        copy(sampler.initial_cov),
+        0,
+        zeros(T, n_params),
+        copy(sampler.initial_cov)
+    )
+end
+
+# Fix sampler (convert adaptive to non-adaptive)
+function DifferentialEvolutionMetropolis.fix_sampler(sampler::AdaptiveMetropolisUpdate{T}, adaptive_state::AdaptiveMetropolisState{T}) where {T}
+    return MetropolisHastingsUpdate(MvNormal(zeros(T, size(adaptive_state.proposal_cov, 1)), adaptive_state.proposal_cov))
+end
+
+# Proposal method (same as non-adaptive)
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::AdaptiveMetropolisUpdate,
+    current_state::Int
+)
+    x_current = state.x[current_state]
+    # Use current proposal covariance from adaptive state
+    state.xₚ[current_state] .= rand(rng, MvNormal(x_current, state.adaptive_state.proposal_cov))
+    return (offset = 0.0)
+end
+
+# Adaptive step during warm-up
+function step_warmup(
+    rng::AbstractRNG,
+    model_wrapper::AbstractMCMC.LogDensityModel,
+    sampler::AdaptiveMetropolisUpdate{T},
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, AdaptiveMetropolisState{T}};
+    parallel::Bool = false,
+    kwargs...
+) where {T&lt;:Real}
+
+    # Perform regular step
+    sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
+
+    # Update adaptive parameters
+    adapt_state = new_state.adaptive_state
+    new_count = adapt_state.adaptation_count + 1
+
+    # Only adapt after burn-in period and at specified intervals
+    if new_count &gt; sampler.adapt_after &amp;&amp; new_count % sampler.adapt_every == 0
+
+        # Compute empirical covariance from current chain positions
+        positions = reduce(hcat, new_state.x)&#39;  # Convert to matrix
+        empirical_cov = cov(positions)
+
+        # Update proposal covariance with regularization
+        new_proposal_cov = sampler.adapt_scale * empirical_cov + 1e-6 * I
+
+        # Update adaptive state
+        new_adaptive_state = AdaptiveMetropolisState{T}(
+            new_proposal_cov,
+            new_count,
+            adapt_state.running_mean,  # Could update these too
+            adapt_state.running_cov
+        )
+
+        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
+    else
+        # Just update the count
+        new_adaptive_state = AdaptiveMetropolisState{T}(
+            adapt_state.proposal_cov,
+            new_count,
+            adapt_state.running_mean,
+            adapt_state.running_cov
+        )
+        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
+    end
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">step_warmup (generic function with 1 method)</code></pre><h2 id="Example:-Using-Custom-Components"><a class="docs-heading-anchor" href="#Example:-Using-Custom-Components">Example: Using Custom Components</a><a id="Example:-Using-Custom-Components-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Using-Custom-Components" title="Permalink"></a></h2><p>Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:</p><pre><code class="language-julia hljs">using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
+
+# Set up a simple log-density to sample from (a 2D standard normal distribution)
+
+ld = TransformedLogDensity(as(Array, 2), x -&gt; -sum(x.^2) / 2)
+dimension(ld) = 2
+model = AbstractMCMC.LogDensityModel(ld)
+
+# Create custom samplers
+simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 * I))
+adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
+
+# Create a composite sampler scheme
+my_sampler_scheme = setup_sampler_scheme(
+    simple_mh,
+    adaptive_mh;
+    w = [0.3, 0.7]  # Use adaptive sampler 70% of the time
+)
+
+# Sample using AbstractMCMC.sample
+result = sample(
+    Random.default_rng(),
+    model,
+    my_sampler_scheme,
+    5000;
+    n_chains = 6,
+    num_warmup = 10000, #adaptive steps
+    memory = true,
+    parallel = false,
+    chain_type = DifferentialEvolutionOutput
+)
+
+plot(result.samples[:, :, 1])
+plot(result.samples[:, :, 2])</code></pre><img src="8cbae5a3.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tutorial/">« Sampling from multimodal distributions</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 19 December 2025 15:10">Friday 19 December 2025</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
