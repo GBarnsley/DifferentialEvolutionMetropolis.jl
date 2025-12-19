@@ -9,7 +9,6 @@ _generic_de_kwargs_1 = """
 - `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
   Defaults to `false`.
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
-- `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Overwrites memory options given at initialization, generally should only be of use if calling `step` directly.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.
 ## Memory-based Sampling Arguments
@@ -17,10 +16,9 @@ _generic_de_kwargs_1 = """
 _generic_de_kwargs_2 = """
 - `N₀`: Initial memory size for memory-based samplers. Should be ≥ `n_chains + n_hot_chains`.
   Defaults to `2 * n_chains + n_hot_chains`.
-- `memory_size`: Maximum number of positions retained per chain in memory. The effective total stored positions is
-    `memory_size * (n_chains + n_hot_chains)`. Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. Larger sizes can improve proposal diversity but
-    increase memory usage. Set with consideration of available RAM and expected run length.
+- `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Overwrites memory options given at initialization, generally should only be of use if calling `step` directly.
 - `memory_refill`: Whether to refill memory when full instead of extending the memory, will replace from the start. Defaults to `false`.
+- `memory_size`: Maximum number of positions preallocated per chain in memory. The effective number stored positions is `memory_size * (n_chains + n_hot_chains)`. Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. If `memory_refill = true` this is the maximum number stored before refilling, if  `memory_refill = false` once the memory is full, the array is extended by another `memory_size` worth of positions. Set with consideration of available RAM and expected run length.
 - `memory_thin_interval`: Thinning interval for memory updates. If > 0, only every `memory_thin_interval`-th
   position is stored in memory.
 ## Parallel Tempering and Simulated Annealing Arguments
@@ -53,11 +51,10 @@ abstract_mcmc_kwargs = """
 generic_notes = """
 - For non-memory samplers, `n_chains` should typically be ≥ dimension for good mixing
 - Memory-based samplers can work effectively with fewer chains than the problem dimension
-- The function handles dimension mismatches and provides informative warnings
 - Initial log-densities are computed automatically for all starting positions
 - When using parallel tempering (`n_hot_chains > 0`), only the cold chains (first `n_chains`)
   are returned in the sample, but all chains participate in the sampling process
-- Memory-based samplers with parallel tempering may issue warnings since hot chains typically
+- Memory-based samplers with parallel tempering will issue warnings since hot chains typically
   aren't necessary when using memory
 """
 

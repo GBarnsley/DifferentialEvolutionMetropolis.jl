@@ -213,9 +213,20 @@
         @test_logs match_mode = :any (
             :info, "   Initial memory size greater than N₀, truncating memory.",
         ) deMC(
-            ld, 100, initial_position = [randn(n_dims) for _ in 0:10], N₀ = 5, memory = true
+            ld, 100; initial_position = [randn(n_dims) for _ in 0:10], N₀ = 5, memory = true
         )
 
+        @test_logs match_mode = :any (
+            :info, "   Consider tailoring memory_size keyword argument to control memory usage!",
+        ) deMC(
+            ld, 100; memory = true, memory_refill = true
+        )
+
+        @test_logs match_mode = :any (
+            :info, "   Consider tailoring memory_size keyword argument to control memory usage!",
+        ) deMC(
+            ld, 100; n_burnin = 0, memory = true, memory_refill = true
+        )
         disable_logging(Logging.Info)
     end
 end
