@@ -143,7 +143,7 @@ function step_warmup(
 
         Threads.@threads for i in eachindex(x)
             prop = proposal!(state, fixed_sampler, i)
-            accepted = update_chain!(model, state, prop.offset, i)
+            accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
             cr_update[i] = findfirst(prop.cr .== adaptive_state.cr_spl.support)
             if accepted
                 Δ_update[i] += sum(

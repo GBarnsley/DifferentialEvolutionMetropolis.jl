@@ -116,7 +116,7 @@ function update_state(
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
     }
     return DifferentialEvolutionState(
-        x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory
+        x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models
     )
 end
 
@@ -142,7 +142,7 @@ function update_state(
         memory = update_memory!!(memory, x)
     end
     return DifferentialEvolutionState(
-        x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory
+        x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models
     )
 end
 
@@ -221,7 +221,7 @@ function step(
     if parallel
         Threads.@threads for i in eachindex(x)
             offset, = proposal!(state, sampler, i)
-            update_chain!(model, state, offset, i)
+            update_chain!(state.chain_models[i], state, offset, i)
         end
     else
         for i in eachindex(x)
@@ -306,7 +306,7 @@ function fix_sampler_state(
         DifferentialEvolutionState(
             state.x, state.ld, state.xₚ, state.ldₚ, state.rngs,
             DifferentialEvolutionAdaptiveStatic{T}(),
-            state.temperature_ladder, state.memory
+            state.temperature_ladder, state.memory, state.chain_models
         )
 end
 
@@ -475,10 +475,11 @@ function step(
         @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
 
+    chain_models = Any[deepcopy(model) for _ in eachindex(x)]
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
-            ld[i] = logdensity(model, x[i])
+            ld[i] = logdensity(chain_models[i], x[i])
         end
     else
         ld = [logdensity(model, xi) for xi in x]
@@ -555,7 +556,8 @@ function step(
     end
 
     state = DifferentialEvolutionState(
-        x, ld, copy.(x), copy(ld), rngs, adaptive_state, temperature_ladder_struct, memory
+        x, ld, copy.(x), copy(ld), rngs, adaptive_state, temperature_ladder_struct, memory,
+        chain_models
     )
 
     return create_sample(state), state

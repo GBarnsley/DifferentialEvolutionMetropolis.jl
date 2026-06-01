@@ -50,6 +50,8 @@ struct DifferentialEvolutionState{
     temperature_ladder::L
     "memory structure"
     memory::M
+    "per-chain model copies for thread-safe parallel logdensity evaluation"
+    chain_models::Vector{Any}
 end
 
 """
