@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 **Run all tests:**
-```julia
-using Pkg; Pkg.test("DifferentialEvolutionMetropolis")
+```bash
+julia --project=. -e"Pkg.test()"
 ```
 
 **Run a single test file** (from a Julia REPL with the package loaded):
