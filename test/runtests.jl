@@ -53,6 +53,7 @@ end
     include("test_rng.jl")
     include("test_threadsafe.jl")
     include("test_temperature.jl")
+    include("test_hmc.jl")
     include("test_correct.jl")
 
     @testset "lack of Diagnostics Tools" begin

@@ -1,5 +1,5 @@
 module DifferentialEvolutionMetropolis
-export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme
+export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_hmc_update
 export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
@@ -87,6 +87,7 @@ struct DifferentialEvolutionOutput{T <: Real}
 end
 
 include("docs.jl")
+include("hmc.jl")
 include("temperature.jl")
 include("memory.jl")
 include("fast_sample.jl")
