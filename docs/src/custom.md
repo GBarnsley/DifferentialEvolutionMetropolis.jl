@@ -124,7 +124,7 @@ You'll also need to define adaptive state structures and methods. Here's an exam
 ```@example MHSampler
 using AbstractMCMC, DifferentialEvolutionMetropolis
 # Define adaptive state
-struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
+mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
     adaptation_count::Int
     running_mean::Vector{T}
@@ -184,7 +184,7 @@ function step_warmup(
     rng::AbstractRNG,
     model_wrapper::AbstractMCMC.LogDensityModel,
     sampler::AdaptiveMetropolisUpdate{T},
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, AdaptiveMetropolisState{T}};
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, <:AdaptiveMetropolisState{T}};
     parallel::Bool = false,
     kwargs...
 ) where {T<:Real}
@@ -192,39 +192,22 @@ function step_warmup(
     # Perform regular step
     sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
     
-    # Update adaptive parameters
+    # Update adaptive parameters in-place
     adapt_state = new_state.adaptive_state
-    new_count = adapt_state.adaptation_count + 1
+    adapt_state.adaptation_count += 1
     
     # Only adapt after burn-in period and at specified intervals
-    if new_count > sampler.adapt_after && new_count % sampler.adapt_every == 0
+    if adapt_state.adaptation_count > sampler.adapt_after && adapt_state.adaptation_count % sampler.adapt_every == 0
         
         # Compute empirical covariance from current chain positions
         positions = reduce(hcat, new_state.x)'  # Convert to matrix
         empirical_cov = cov(positions)
         
-        # Update proposal covariance with regularization
-        new_proposal_cov = sampler.adapt_scale * empirical_cov + 1e-6 * I
-        
-        # Update adaptive state
-        new_adaptive_state = AdaptiveMetropolisState{T}(
-            new_proposal_cov,
-            new_count,
-            adapt_state.running_mean,  # Could update these too
-            adapt_state.running_cov
-        )
-        
-        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
-    else
-        # Just update the count
-        new_adaptive_state = AdaptiveMetropolisState{T}(
-            adapt_state.proposal_cov,
-            new_count,
-            adapt_state.running_mean,
-            adapt_state.running_cov
-        )
-        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
+        # Update proposal covariance with regularization in-place
+        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I
     end
+    
+    return sample, new_state
 end
 ```
 

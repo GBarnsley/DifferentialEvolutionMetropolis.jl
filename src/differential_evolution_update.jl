@@ -1,6 +1,9 @@
-struct DifferentialEvolutionSampler <: AbstractDifferentialEvolutionSampler
-    γ_spl::Sampleable{Univariate, <:Union{Continuous, Discrete}}
-    β_spl::Sampleable{Univariate, Continuous}
+struct DifferentialEvolutionSampler{
+        G <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
+        B <: Sampleable{Univariate, Continuous},
+    } <: AbstractDifferentialEvolutionSampler
+    γ_spl::G
+    β_spl::B
 end
 
 """
@@ -77,7 +80,7 @@ function proposal!(
         sampler::DifferentialEvolutionSampler, current_state::Int
     )
     # Propose a new position.
-    x₁, x₂ = pick_chains(state, current_state, 2)
+    x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂
         state.xₚ[current_state] .= x₁
         return (offset = -Inf)
