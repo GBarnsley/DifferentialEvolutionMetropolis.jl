@@ -3,7 +3,7 @@ module AdvancedHMCExt
 import DifferentialEvolutionMetropolis as DEM
 import AdvancedHMC
 import AdvancedHMC: AbstractHMCSampler, AbstractMetric, AbstractIntegrator,
-    AbstractMCMCKernel, Hamiltonian, phasepoint, transition, StanHMCAdaptor
+    AbstractMCMCKernel, Hamiltonian, phasepoint, transition, StanHMCAdaptor, find_good_stepsize
 const AHMCAdapt = AdvancedHMC.Adaptation
 import AdvancedHMC.Adaptation: AbstractAdaptor
 import AbstractMCMC
@@ -23,59 +23,51 @@ struct DifferentialEvolutionStockAdaptorMetric <: AbstractDifferentialEvolutionM
 # Types
 # -----------------------------------------------------------------------------
 
-abstract type AbstractDifferentialEvolutionHMCSampler <: DEM.AbstractDifferentialEvolutionSampler end
-
 """
-    DifferentialEvolutionHMCSampler(sampler, metric_strategy)
+    DifferentialEvolutionHMCSampler(metric_strategy, metric, integrator, κ, adaptor)
 
-Wraps an AdvancedHMC sampler so it can live in a composite's `updates` vector.
-Constructed via `DifferentialEvolutionMetropolis.setup_hmc_update`.
+One HMC update for a composite scheme. It stores the AdvancedHMC modular pieces directly
+— `metric`, `integrator`, kernel `κ`, and `adaptor` — rather than a `NUTS`/`HMC`/`HMCDA`
+wrapper, because every per-step operation (running a trajectory, refining the step size,
+refreshing the mass matrix) works on these pieces. The wrapper is decomposed into them
+once in `setup_hmc_update` and then discarded.
+
+Immutable, like every sampler in this package. The pieces are built at their final size in
+`setup_hmc_update` (which is why it needs `n_dims`); only the step *size* is unknown until a
+position exists, so it is refined on the first warmup step. `fix_sampler` returns another
+`DifferentialEvolutionHMCSampler` carrying the *adapted* pieces, which is how the frozen
+metric/`κ` reach the post-warmup `step`.
 """
-struct DifferentialEvolutionHMCSampler{S <: AbstractHMCSampler, MS <: AbstractDifferentialEvolutionMetricStrategy} <:
-    AbstractDifferentialEvolutionHMCSampler
-    sampler::S
+struct DifferentialEvolutionHMCSampler{
+        MS <: AbstractDifferentialEvolutionMetricStrategy,
+        M <: AbstractMetric, I <: AbstractIntegrator,
+        K <: AbstractMCMCKernel, A <: AbstractAdaptor,
+    } <: DEM.AbstractDifferentialEvolutionSampler
     metric_strategy::MS
+    metric::M
+    integrator::I
+    κ::K
+    adaptor::A
 end
 
 """
-    HMCAdaptiveState{T, MS}
+    HMCAdaptiveState{T}
 
-The shared modular HMC pieces — one set per HMC update, NOT one per chain. This lives in
-the sampler *state* (`state.adaptive_state`) and is mutated during warmup; the immutable
-sampler never holds it. `metric`/`integrator`/`κ`/`adaptor` are the AdvancedHMC objects
-of the same name.
+The shared, evolving HMC pieces — one set per HMC update, NOT one per chain. This lives in
+the sampler *state* (`state.adaptive_state`) and is mutated during warmup as the metric and
+step size adapt; the immutable sampler never holds it. Fields are AdvancedHMC's own
+abstract types.
 
-They are built eagerly in `initialize_adaptive_state` (the integrator/κ/adaptor with a
-placeholder step size, since only the step-size *value* needs a chain position, via
-`find_good_stepsize`). The step size is refined in place on the first HMC step
-(`refine_step_size!`); `initialized` guards that one-off.
+`metric`/`integrator`/`κ`/`adaptor` start as copies of the sampler's pieces. The metric and
+adaptor are mutated/replaced as adaptation proceeds; the step size is refined on the first
+HMC step (`refine_step_size!`), guarded by `initialized`.
 """
-mutable struct HMCAdaptiveState{T <: Real, MS <: AbstractDifferentialEvolutionMetricStrategy} <:
-    DEM.AbstractDifferentialEvolutionAdaptiveState{T}
+mutable struct HMCAdaptiveState{T <: Real} <: DEM.AbstractDifferentialEvolutionAdaptiveState{T}
     metric::AbstractMetric
     integrator::AbstractIntegrator
     κ::AbstractMCMCKernel
     adaptor::AbstractAdaptor
-    metric_strategy::MS
     initialized::Bool
-end
-
-"""
-    DifferentialEvolutionFixedHMCSampler(sampler, metric_strategy, metric, κ)
-
-The immutable, frozen sampler returned by `fix_sampler`. It carries the adapted
-`metric` and kernel `κ` *by reference* — they are immutable AdvancedHMC objects shared
-from the final adaptive state, so no copy is made. The post-warmup `step` reads them
-straight off the sampler, which is how it reaches the frozen pieces even when the
-surrounding composite state hides which `sampler_id` we are. No adaptive state lives on
-the sampler.
-"""
-struct DifferentialEvolutionFixedHMCSampler{S <: AbstractHMCSampler, MS <: AbstractDifferentialEvolutionMetricStrategy, M <: AbstractMetric, K <: AbstractMCMCKernel} <:
-    AbstractDifferentialEvolutionHMCSampler
-    sampler::S
-    metric_strategy::MS
-    metric::M
-    κ::K
 end
 
 # -----------------------------------------------------------------------------
@@ -84,22 +76,37 @@ end
 
 function DEM.setup_hmc_update(
         sampler::AbstractHMCSampler;
+        n_dims::Int = 0,
         metric_strategy::AbstractDifferentialEvolutionMetricStrategy = DifferentialEvolutionStockAdaptorMetric()
     )
-    return DifferentialEvolutionHMCSampler(sampler, metric_strategy)
+    # Decompose the wrapper into its modular pieces here, then discard it. AdvancedHMC's
+    # `NUTS`/`HMC`/`HMCDA` store the metric as a *symbol* (e.g. `:diagonal`) and only size it
+    # once the model is known; we size it up front instead, so `n_dims` is required for those.
+    # A hand-built `HMCSampler` already carries a sized metric, so `n_dims` is optional there.
+    if sampler.metric isa Symbol && n_dims ≤ 0
+        error(
+            "setup_hmc_update needs the parameter dimension to size the metric for a " *
+                "`$(sampler.metric)` metric; pass `n_dims = <number of parameters>`."
+        )
+    end
+    T = AdvancedHMC.sampler_eltype(sampler)
+    metric = AdvancedHMC.make_metric(sampler.metric, T, n_dims)
+    integrator = AdvancedHMC.make_integrator(sampler, oneunit(T))
+    κ = AdvancedHMC.make_kernel(sampler, integrator)
+    adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
+    return DifferentialEvolutionHMCSampler(metric_strategy, metric, integrator, κ, adaptor)
 end
 
 """
     initialize_adaptive_state(::DifferentialEvolutionHMCSampler, model_wrapper, n_chains)
 
-Allocate a fully-typed `HMCAdaptiveState`. The metric and a placeholder
-integrator/kernel/adaptor are built here (their types depend only on the sampler and
-the dimension); only the step-size *value* is deferred to the first HMC step, where a
-chain position becomes available for `find_good_stepsize`.
+Build a fresh `HMCAdaptiveState` for this run from copies of the sampler's pieces (the
+metric and adaptor carry mutable adaptation state, so each run needs its own). Enforce that
+the metric was sized for this model and that the target is differentiable.
 
-This is also where the gradient requirement is enforced: DE is gradient-free, but HMC
-needs a first-order target, so we fail loudly here if the model is order-0 rather than
-silently assuming the wrapper carries a gradient.
+The gradient requirement is checked here: DE is gradient-free, but HMC needs a first-order
+target, so we fail loudly if the model is order-0 rather than silently assuming the wrapper
+carries a gradient.
 """
 function DEM.initialize_adaptive_state(
         sampler::DifferentialEvolutionHMCSampler, model_wrapper::LogDensityModel, n_chains::Int
@@ -117,36 +124,32 @@ function DEM.initialize_adaptive_state(
                 "is also a valid target for the DE updates in the same scheme."
         )
     end
-    spl = sampler.sampler
-    ms = sampler.metric_strategy
-    metric = AdvancedHMC.make_metric(spl, ℓ)
-    # Placeholder step size: only fixes the integrator/κ/adaptor TYPES. The value is
-    # replaced by `find_good_stepsize` at the ensemble on the first step.
-    ϵ₀ = oneunit(AdvancedHMC.sampler_eltype(spl))
-    integrator = AdvancedHMC.make_integrator(spl, ϵ₀)
-    κ = AdvancedHMC.make_kernel(spl, integrator)
-    adaptor = AdvancedHMC.make_adaptor(spl, metric, integrator)
-    return HMCAdaptiveState{Float64, typeof(ms)}(
-        metric, integrator, κ, adaptor, ms, false
+    d = LogDensityProblems.dimension(ℓ)
+    size(sampler.metric, 1) == d || error(
+        "setup_hmc_update was given `n_dims = $(size(sampler.metric, 1))` but the model has " *
+            "$d parameters; pass the matching `n_dims`."
+    )
+    return HMCAdaptiveState{Float64}(
+        deepcopy(sampler.metric), sampler.integrator, sampler.κ, deepcopy(sampler.adaptor), false
     )
 end
 
 """
     fix_sampler(::DifferentialEvolutionHMCSampler, ::HMCAdaptiveState)
 
-Return a `DifferentialEvolutionFixedHMCSampler` that shares the adaptive state's current
-`metric` and `κ` by reference (they are immutable, so no copy). During warmup the
-adaptive state is still evolving, so these snapshots are only used post-warmup, when the
-state no longer changes and the snapshot is the frozen result.
+Return a `DifferentialEvolutionHMCSampler` carrying the adaptive state's current pieces by
+reference (they are immutable, so no copy). During warmup the adaptive state is still
+evolving, so this snapshot only matters post-warmup, when it is the frozen result the
+sampling `step` reads.
 """
-function DEM.fix_sampler(sampler::DifferentialEvolutionHMCSampler, adaptive_state::HMCAdaptiveState)
-    return DifferentialEvolutionFixedHMCSampler(
-        sampler.sampler, sampler.metric_strategy, adaptive_state.metric, adaptive_state.κ
+function DEM.fix_sampler(sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState)
+    return DifferentialEvolutionHMCSampler(
+        sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor
     )
 end
 
 # -----------------------------------------------------------------------------
-# Lazy initialisation of the shared modular pieces
+# Step-size refinement and metric refresh (operate on the pieces, never the wrapper)
 # -----------------------------------------------------------------------------
 
 # Representative point for `find_good_stepsize`. The mean is adequate for a unimodal
@@ -164,22 +167,26 @@ function refresh_pieces_from_adaptor!(astate::HMCAdaptiveState, ℓ)
 end
 
 # First-step lazy work: replace the placeholder step size with `find_good_stepsize`
-# evaluated at the ensemble, rebuild the ϵ-dependent pieces (so dual averaging anchors
-# on the real ϵ), and lay out the adaptor's windowed schedule.
+# evaluated at the ensemble, re-anchor the configured step-size adaptor on it, push it into
+# the integrator/κ, and lay out the adaptor's windowed schedule.
 function refine_step_size!(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::AbstractDifferentialEvolutionHMCSampler,
-        state, astate::HMCAdaptiveState; n_adapts::Int
+        rng::AbstractRNG, model_wrapper::LogDensityModel, astate::HMCAdaptiveState, state;
+        n_adapts::Int
     )
-    spl = sampler.sampler
     ℓ = model_wrapper.logdensity
     h = Hamiltonian(astate.metric, ℓ)
-    ϵ = AdvancedHMC.make_step_size(rng, spl, h, ensemble_mean(state.x))
-    astate.integrator = AdvancedHMC.make_integrator(spl, ϵ)
-    astate.κ = AdvancedHMC.make_kernel(spl, astate.integrator)
-    astate.adaptor = AdvancedHMC.make_adaptor(spl, astate.metric, astate.integrator)
-    # `n_adapts` only lays out the windowed mass-matrix schedule; the cursor advances
-    # per `pooled_adapt!` call (once per HMC step), so it is in HMC-step units. The
-    # total warmup length is a safe upper bound — we may walk only a prefix of it.
+    ϵ = find_good_stepsize(rng, h, ensemble_mean(state.x))
+    # Re-anchor the user's step-size adaptor in place rather than rebuilding it, so its type
+    # and dual-averaging settings are preserved: set its step size and `reset!`, which
+    # recomputes the dual-averaging target μ from the new ϵ.
+    ssa = astate.adaptor.ssa
+    ssa.state.ϵ = ϵ
+    AHMCAdapt.reset!(ssa)
+    astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
+    astate.integrator = astate.κ.τ.integrator
+    # `n_adapts` only lays out the windowed mass-matrix schedule; the cursor advances per
+    # `pooled_adapt!` call (once per HMC step), so it is in HMC-step units. The total warmup
+    # length is a safe upper bound — we may walk only a prefix of it.
     AHMCAdapt.initialize!(astate.adaptor, n_adapts)
     astate.initialized = true
     return nothing
@@ -188,19 +195,19 @@ end
 # -----------------------------------------------------------------------------
 # The trajectory loop (shared by warmup and sampling)
 #
-# For each chain: build a Hamiltonian from the shared metric, draw a fresh phase
-# point at the chain's current position (full momentum refresh), take one HMC
-# transition, and read the accepted position / log-density / acceptance-rate back.
-# HMC does its own Metropolis accept/reject inside `transition`, so we write the
-# accepted result straight into `xₚ`/`ldₚ` (proposal-and-accept in one) — NO outer
-# DEM MH correction, which would double-count.
+# For each chain: build a Hamiltonian from the shared metric, draw a fresh phase point at
+# the chain's current position (full momentum refresh), take one HMC transition, and read
+# the accepted position / log-density / acceptance-rate back. HMC does its own Metropolis
+# accept/reject inside `transition`, so we write the accepted result straight into
+# `xₚ`/`ldₚ` (proposal-and-accept in one) — NO outer DEM MH correction, which would
+# double-count.
 # -----------------------------------------------------------------------------
 
 function run_trajectory!(state, metric, κ, i::Int, model)
     # The metric is shared read-only across chains (its `M⁻¹`/`sqrtM⁻¹` are only read by
-    # `neg_energy`/momentum sampling for the diagonal and unit metrics used here). A
-    # dense metric carries a `_temp` scratch buffer that would race if shared — that
-    # metric is not used by the threaded path.
+    # `neg_energy`/momentum sampling for the diagonal and unit metrics used here). A dense
+    # metric carries a `_temp` scratch buffer that would race if shared — that metric is
+    # not used by the threaded path.
     h = Hamiltonian(metric, model)
     z = phasepoint(state.rngs[i], state.x[i], h)
     t = transition(state.rngs[i], h, κ, z)
@@ -213,8 +220,8 @@ function run_trajectories!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, state,
         metric::AbstractMetric, κ::AbstractMCMCKernel, parallel::Bool
     )
-    # Derive per-chain RNGs from the master rng so `step` depends only on `rng` and
-    # `state`, mirroring the DE updates and keeping each thread on its own RNG.
+    # Derive per-chain RNGs from the master rng so `step` depends only on `rng` and `state`,
+    # mirroring the DE updates and keeping each thread on its own RNG.
     for i in eachindex(state.rngs)
         Random.seed!(state.rngs[i], rand(rng, UInt))
     end
@@ -240,18 +247,18 @@ end
 """
     pooled_adapt!(adaptor, Xₚ, α)
 
-Drive a `StanHMCAdaptor` from the whole `N`-chain population in one step, producing a
-single pooled metric shared by every chain.
+Drive a `StanHMCAdaptor` from the whole `N`-chain population in one step, producing a single
+pooled metric shared by every chain.
 
 Two stock calling conventions are avoided. `adapt!(adaptor, X::Matrix, α)` resizes the
 preconditioner to `D×N` and estimates `N` independent per-chain metrics, not one pooled
 metric. Looping `adapt!(adaptor, xᵢ, αᵢ)` once per chain advances the dual-averaging
 step-size schedule `N×` per step, collapsing ϵ to an early, too-small value.
 
-Instead this replicates `StanHMCAdaptor`'s windowing once per HMC step: one dual-
-averaging update from the mean acceptance rate, and `N` position pushes into the
-mass-matrix Welford estimator (which stays `D`-dimensional). The window cursor ticks
-once per HMC step, so `n_adapts` counts HMC steps.
+Instead this replicates `StanHMCAdaptor`'s windowing once per HMC step: one dual-averaging
+update from the mean acceptance rate, and `N` position pushes into the mass-matrix Welford
+estimator (which stays `D`-dimensional). The window cursor ticks once per HMC step, so
+`n_adapts` counts HMC steps.
 """
 function pooled_adapt!(adaptor::StanHMCAdaptor, Xₚ, α)
     adaptor.state.i += 1
@@ -286,22 +293,21 @@ end
 # Dispatch into the DEM stepping interface
 # -----------------------------------------------------------------------------
 
-# Warmup: threaded trajectory loop, then adapt. Reached for both a bare
-# `DifferentialEvolutionHMCSampler` (direct use) and a `DifferentialEvolutionFixedHMCSampler`
-# (the composite warmup path); in both cases the live `HMCAdaptiveState` is in the state,
-# and the trajectory + adaptation run off that.
+# Warmup: threaded trajectory loop off the live `HMCAdaptiveState`, then adapt it. Reached
+# both for direct use and for the composite warmup path (where the sampler is a frozen
+# snapshot but the live pieces still come from the state).
 function step_warmup(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::AbstractDifferentialEvolutionHMCSampler,
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
         parallel::Bool = false, update_memory::Bool = true,
         num_warmup::Int = 1000, kwargs...
     ) where {T <: Real}
     astate = state.adaptive_state
     if !astate.initialized
-        refine_step_size!(rng, model_wrapper, sampler, state, astate; n_adapts = num_warmup)
+        refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
     end
     α = run_trajectories!(rng, model_wrapper, state, astate.metric, astate.κ, parallel)
-    adapt_metric!(astate.metric_strategy, model_wrapper, state, astate, α)
+    adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
     return DEM.create_sample(state),
         DEM.update_state(
             state; x = state.xₚ, ld = state.ldₚ, xₚ = state.x, ldₚ = state.ld,
@@ -309,31 +315,13 @@ function step_warmup(
         )
 end
 
-# Direct (non-composite) post-warmup use: the state still carries the `HMCAdaptiveState`,
-# so freeze its pieces into a `DifferentialEvolutionFixedHMCSampler` and step with that.
-# (If warmup never ran, pin the step size first.) This bypasses the generic
-# `fix_sampler_state` path, which would otherwise collide with the static `step`.
+# Post-warmup (frozen): threaded trajectory loop, no adaptation, reading the frozen
+# metric/κ off the sampler. The state's adaptive field is the static one here, because the
+# generic `fix_sampler_state`/composite machinery has already fixed the sampler and
+# collapsed the state — mirroring how the DE subspace sampler reaches this same point.
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
-        state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
-        kwargs...
-    ) where {T <: Real}
-    astate = state.adaptive_state
-    if !astate.initialized
-        refine_step_size!(rng, model_wrapper, sampler, state, astate; n_adapts = 0)
-    end
-    return step(rng, model_wrapper, DEM.fix_sampler(sampler, astate), state; kwargs...)
-end
-
-# Post-warmup (frozen): threaded trajectory loop, no adaptation, reading the frozen
-# `metric`/`κ` straight off the immutable sampler. The state's adaptive field is the
-# composite adaptive state (composite path) or the `HMCAdaptiveState` (direct path) —
-# never the static one, so this cannot collide with the static sampling `step`.
-function step(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionFixedHMCSampler,
-        state::DEM.DifferentialEvolutionState{
-            T, <:Union{HMCAdaptiveState{T}, DEM.DifferentialEvolutionAdaptiveComposite{T}},
-        };
+        state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
     run_trajectories!(rng, model_wrapper, state, sampler.metric, sampler.κ, parallel)

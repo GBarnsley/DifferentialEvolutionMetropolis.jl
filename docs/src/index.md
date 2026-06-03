@@ -49,6 +49,7 @@ setup_sampler_scheme
 setup_de_update
 setup_snooker_update
 setup_subspace_sampling
+setup_hmc_update
 ```
 
 ### Core Sampling Functions

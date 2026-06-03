@@ -32,9 +32,35 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     grad_model = ADgradient(:ForwardDiff, raw_model)
     model = AbstractMCMC.LogDensityModel(grad_model)
 
+    @testset "a symbol-metric sampler needs n_dims" begin
+        # NUTS/HMC/HMCDA store the metric as a symbol, so the dimension must be supplied.
+        @test_throws ErrorException DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8))
+    end
+
+    @testset "accepts a hand-built HMCSampler (kernel, metric, adaptor)" begin
+        # An HMCSampler already carries a sized metric, so n_dims is optional here.
+        d = length(μ)
+        metric = DiagEuclideanMetric(d)
+        integrator = Leapfrog(0.1)
+        κ = HMCKernel(Trajectory{MultinomialTS}(integrator, GeneralisedNoUTurn(10, 1000.0)))
+        adaptor = StanHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.8, integrator))
+        scheme = setup_sampler_scheme(
+            DifferentialEvolutionMetropolis.setup_hmc_update(HMCSampler(κ, metric, adaptor))
+        )
+        out = sample(
+            backwards_compat_rng(5), model, scheme, 800;
+            n_chains = 6, num_warmup = 300, memory = true, progress = false,
+            chain_type = DifferentialEvolutionOutput
+        )
+        flat = reshape(out.samples, :, length(μ))
+        post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
+        @test isapprox(post_mean, μ; atol = 0.15)
+        @test isapprox(cov(flat), Σ; atol = 0.25)
+    end
+
     @testset "gradient requirement fails loudly on order-0 target" begin
         order0 = AbstractMCMC.LogDensityModel(raw_model)
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8)))
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         @test_throws ErrorException sample(
             backwards_compat_rng(1), order0, scheme, 50;
             n_chains = 6, num_warmup = 20, memory = false, progress = false
@@ -62,7 +88,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     # historical pool even though its own kernel does not read it) and with memory
     # disabled, to cover both update_state paths.
     @testset "recovers a unimodal Gaussian (mean & covariance)" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8)))
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
@@ -77,7 +103,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
 
     @testset "warmup → sampling freezes ϵ and the metric" begin
         rng = backwards_compat_rng(99)
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8)))
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 6, num_warmup = 200, memory = false, silent = true)
         for _ in 1:200
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 200)
@@ -105,7 +131,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
 
     @testset "interleaves with DE updates in a composite" begin
         scheme = setup_sampler_scheme(
-            DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8)),
+            DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)),
             setup_de_update();
             w = [0.5, 0.5]
         )
@@ -121,7 +147,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     end
 
     @testset "threaded trajectory loop matches the serial result statistically" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8)))
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         out = sample(
             backwards_compat_rng(13), model, scheme, 800;
             n_chains = 6, num_warmup = 300, parallel = true, progress = false,

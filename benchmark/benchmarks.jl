@@ -1,5 +1,6 @@
 using BenchmarkTools
 using AbstractMCMC, DifferentialEvolutionMetropolis, Distributions, LogDensityProblems, Random
+using AdvancedHMC, ForwardDiff, LogDensityProblemsAD
 const SUITE = BenchmarkGroup()
 
 #simple ld
@@ -55,6 +56,20 @@ __,
     n_chains = n_chains, n_hot_chains = 10, annealing_steps = 5
 )
 
+#HMC update: needs a gradient, so wrap the same density with ForwardDiff
+hmc_model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, IsotropicNormalModel(zeros(5))))
+hmc_update = setup_hmc_update(NUTS(0.8); n_dims = 5)
+__,
+    hmc_initial_state = AbstractMCMC.step(
+    rng, hmc_model, hmc_update; memory = false,
+    initial_position = initial_position, n_chains = n_chains
+)
+__,
+    hmc_initial_state_memory = AbstractMCMC.step(
+    rng, hmc_model, hmc_update; memory = true,
+    initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
+)
+
 SUITE["MemoryLess"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
     SUITE["MemoryLess"][name] = @benchmarkable(
@@ -62,6 +77,10 @@ for (update, name) in zip(updates, names)
         setup = (rng = copy($rng); state = deepcopy($initial_state))
     )
 end
+SUITE["MemoryLess"]["hmc_update"] = @benchmarkable(
+    AbstractMCMC.step(rng, $hmc_model, $hmc_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
+)
 
 SUITE["Memory"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
@@ -70,6 +89,10 @@ for (update, name) in zip(updates, names)
         setup = (rng = copy($rng); state = deepcopy($initial_state_memory))
     )
 end
+SUITE["Memory"]["hmc_update"] = @benchmarkable(
+    AbstractMCMC.step(rng, $hmc_model, $hmc_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_initial_state_memory))
+)
 
 SUITE["Adaptive"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates[3:3], names[3:3])
@@ -78,6 +101,10 @@ for (update, name) in zip(updates[3:3], names[3:3])
         setup = (rng = copy($rng); state = deepcopy($initial_state_adaptive))
     )
 end
+SUITE["Adaptive"]["hmc_update"] = @benchmarkable(
+    AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
+)
 
 SUITE["pt"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
