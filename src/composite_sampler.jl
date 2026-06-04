@@ -153,9 +153,8 @@ function step_warmup(
 
     return sample,
         update_state(
-            state;
-            update_memory = update_memory, x = substate.x, ld = substate.ld, xₚ = substate.xₚ, ldₚ = substate.ldₚ,
-            temperature_ladder = substate.temperature_ladder
+            state; new_state = substate,
+            update_memory = update_memory, temperature_ladder = substate.temperature_ladder
         )
 end
 

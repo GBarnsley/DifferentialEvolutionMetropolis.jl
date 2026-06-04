@@ -70,81 +70,97 @@ end
 is_enabled(option::Val{true}) = true
 is_enabled(option::Val{false}) = false
 
+function _update_state(
+        state::DifferentialEvolutionState{
+            T, A1, L1, M, V, VV, R, Model, V1, V2,
+        },
+        swap_positions,
+        memory::AbstractDifferentialEvolutionMemory{T},
+        adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T},
+        temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T},
+        rngs::Vector{<:AbstractRNG},
+        new_state::DifferentialEvolutionState{
+            T, A2, L2, M, V, VV, R, Model, V1, V2,
+        },
+    ) where {
+        T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
+        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        M <: AbstractDifferentialEvolutionMemory{T}, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model,
+    }
+    if is_enabled(swap_positions)
+        #swap over x and xₚ for the next update
+        return DifferentialEvolutionState(
+            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view
+        )
+    else
+        #already swapped elsewhere
+        return DifferentialEvolutionState(
+            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view
+        )
+    end
+end
+
 function update_state(
         state::DifferentialEvolutionState{
-            T, A, L, M, V, VV,
+            T, A1, L1, M, V, VV, R, Model, V1, V2,
         };
         swap_positions = Val(false),
         memory::DifferentialEvolutionMemoryless{T} = state.memory,
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
-        x::VV = state.x,
-        ld::V = state.ld,
-        xₚ::VV = state.xₚ,
-        ldₚ::V = state.ldₚ,
-        x_smpl_view::V1 = state.x_smpl_view,
-        ld_smpl_view::V2 = state.ld_smpl_view,
-        xₚ_smpl_view::V1 = state.xₚ_smpl_view,
-        ldₚ_smpl_view::V2 = state.ldₚ_smpl_view,
+        new_state::DifferentialEvolutionState{
+            T, A2, L2, M, V, VV, R, Model, V1, V2,
+        } = state,
         kwargs...
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: DifferentialEvolutionMemoryless{T}, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model,
     }
-    if is_enabled(swap_positions)
-        #swap over x and xₚ for the next update
-        return DifferentialEvolutionState(
-            xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, x, ld, xₚ_smpl_view, ldₚ_smpl_view, x_smpl_view, ld_smpl_view
-        )
-    else
-        #already swapped elsewhere
-        return DifferentialEvolutionState(
-            x, ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, xₚ, ldₚ, x_smpl_view, ld_smpl_view, xₚ_smpl_view, ldₚ_smpl_view
-        )
-    end
+    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state)
 end
 
 function update_state(
-        state::DifferentialEvolutionState{T, A, L, M, V, VV};
+        state::DifferentialEvolutionState{
+            T, A1, L1, M, V, VV, R, Model, V1, V2,
+        };
         swap_positions = Val(false),
         memory::M = state.memory,
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
-        x::VV = state.x,
-        ld::V = state.ld,
-        xₚ::VV = state.xₚ,
-        ldₚ::V = state.ldₚ,
-        x_smpl_view::V1 = state.x_smpl_view,
-        ld_smpl_view::V2 = state.ld_smpl_view,
-        xₚ_smpl_view::V1 = state.xₚ_smpl_view,
-        ldₚ_smpl_view::V2 = state.ldₚ_smpl_view,
-        update_memory::Bool = false,
-        kwargs...
+        new_state::DifferentialEvolutionState{
+            T, A2, L2, M, V, VV, R, Model, V1, V2,
+        } = state,
+        update_memory::Bool = false
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemoryFormat{T, VV},
         V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model,
     }
     if update_memory
-        memory = update_memory!!(memory, x)
+        if is_enabled(swap_positions)
+            memory = update_memory!!(memory, new_state.xₚ)
+        else
+            #already swapped
+            memory = update_memory!!(memory, new_state.x)
+        end
     end
-    if is_enabled(swap_positions)
-        #swap over x and xₚ for the next update
-        return DifferentialEvolutionState(
-            xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, x, ld, xₚ_smpl_view, ldₚ_smpl_view, x_smpl_view, ld_smpl_view
-        )
-    else
-        #already swapped elsewhere
-        return DifferentialEvolutionState(
-            x, ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, xₚ, ldₚ, x_smpl_view, ld_smpl_view, xₚ_smpl_view, ldₚ_smpl_view
-        )
-    end
+    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state)
 end
 
 function update_chain!(model, state, offset, i)
@@ -321,8 +337,7 @@ function step(
 
     return sample,
         update_state(
-            state; x = new_state.x, ld = new_state.ld, xₚ = new_state.xₚ,
-            ldₚ = new_state.ldₚ, update_memory = update_memory,
+            state; new_state = new_state, update_memory = update_memory,
             temperature_ladder = new_state.temperature_ladder
         )
 end
