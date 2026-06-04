@@ -66,7 +66,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     return (offset = 0.0)
 end</code></pre><h3 id="Adaptive-Proposals-with-step_warmup"><a class="docs-heading-anchor" href="#Adaptive-Proposals-with-step_warmup">Adaptive Proposals with step_warmup</a><a id="Adaptive-Proposals-with-step_warmup-1"></a><a class="docs-heading-anchor-permalink" href="#Adaptive-Proposals-with-step_warmup" title="Permalink"></a></h3><p>For proposals that require adaptation during warm-up, you need to implement the <code>step_warmup</code> as well. This is called during the warm-up phase. Unless you want your sampler to be always adaptive then you must implement <code>step</code>.</p><p>You&#39;ll also need to define adaptive state structures and methods. Here&#39;s an example of an adaptive Metropolis-Hastings sampler:</p><pre><code class="language-julia hljs">using AbstractMCMC, DifferentialEvolutionMetropolis
 # Define adaptive state
-struct AdaptiveMetropolisState{T&lt;:Real} &lt;:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
+mutable struct AdaptiveMetropolisState{T&lt;:Real} &lt;:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
     adaptation_count::Int
     running_mean::Vector{T}
@@ -126,7 +126,7 @@ function step_warmup(
     rng::AbstractRNG,
     model_wrapper::AbstractMCMC.LogDensityModel,
     sampler::AdaptiveMetropolisUpdate{T},
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, AdaptiveMetropolisState{T}};
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, &lt;:AdaptiveMetropolisState{T}};
     parallel::Bool = false,
     kwargs...
 ) where {T&lt;:Real}
@@ -134,39 +134,22 @@ function step_warmup(
     # Perform regular step
     sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
 
-    # Update adaptive parameters
+    # Update adaptive parameters in-place
     adapt_state = new_state.adaptive_state
-    new_count = adapt_state.adaptation_count + 1
+    adapt_state.adaptation_count += 1
 
     # Only adapt after burn-in period and at specified intervals
-    if new_count &gt; sampler.adapt_after &amp;&amp; new_count % sampler.adapt_every == 0
+    if adapt_state.adaptation_count &gt; sampler.adapt_after &amp;&amp; adapt_state.adaptation_count % sampler.adapt_every == 0
 
         # Compute empirical covariance from current chain positions
         positions = reduce(hcat, new_state.x)&#39;  # Convert to matrix
         empirical_cov = cov(positions)
 
-        # Update proposal covariance with regularization
-        new_proposal_cov = sampler.adapt_scale * empirical_cov + 1e-6 * I
-
-        # Update adaptive state
-        new_adaptive_state = AdaptiveMetropolisState{T}(
-            new_proposal_cov,
-            new_count,
-            adapt_state.running_mean,  # Could update these too
-            adapt_state.running_cov
-        )
-
-        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
-    else
-        # Just update the count
-        new_adaptive_state = AdaptiveMetropolisState{T}(
-            adapt_state.proposal_cov,
-            new_count,
-            adapt_state.running_mean,
-            adapt_state.running_cov
-        )
-        return sample, update_state(new_state; adaptive_state = new_adaptive_state)
+        # Update proposal covariance with regularization in-place
+        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I
     end
+
+    return sample, new_state
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">step_warmup (generic function with 1 method)</code></pre><h2 id="Example:-Using-Custom-Components"><a class="docs-heading-anchor" href="#Example:-Using-Custom-Components">Example: Using Custom Components</a><a id="Example:-Using-Custom-Components-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Using-Custom-Components" title="Permalink"></a></h2><p>Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:</p><pre><code class="language-julia hljs">using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
 
 # Set up a simple log-density to sample from (a 2D standard normal distribution)
@@ -200,4 +183,4 @@ result = sample(
 )
 
 plot(result.samples[:, :, 1])
-plot(result.samples[:, :, 2])</code></pre><img src="e077f489.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tutorial/">« Sampling from multimodal distributions</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Monday 1 June 2026 18:24">Monday 1 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(result.samples[:, :, 2])</code></pre><img src="ad06413e.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tutorial/">« Sampling from multimodal distributions</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 4 June 2026 13:14">Thursday 4 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
