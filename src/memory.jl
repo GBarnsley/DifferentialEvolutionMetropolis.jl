@@ -1,9 +1,8 @@
 #no memory
-struct DifferentialEvolutionMemoryless{T, V <: SubArray} <: AbstractDifferentialEvolutionMemory{T}
+struct DifferentialEvolutionMemoryless{T} <: AbstractDifferentialEvolutionMemory{T}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
-    positions_view_INTERNAL::Vector{V}
 end
 
 #abstract memory-full type
@@ -16,14 +15,13 @@ AbstractDifferentialEvolutionMemory{T} end
 abstract type AbstractDifferentialEvolutionMemoryFillMethod end
 
 #full memory, refreshing from the start
-struct DifferentialEvolutionMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod, V <: SubArray} <:
+struct DifferentialEvolutionMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod} <:
     AbstractDifferentialEvolutionMemoryFormat{T, VV}
     mem_x::VV
     fill::F
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
-    positions_view_INTERNAL::Vector{V}
 end
 
 function update_memory!!(
@@ -42,7 +40,7 @@ function update_memory!!(
 end
 
 #non-full memory, filling up to a max size then extending or refilling
-struct DifferentialEvolutionMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod, V <: SubArray} <:
+struct DifferentialEvolutionMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod} <:
     AbstractDifferentialEvolutionMemoryFormat{T, VV}
     mem_x::VV
     fill::F
@@ -51,7 +49,6 @@ struct DifferentialEvolutionMemoryFill{T, VV <: AbstractVector{<:AbstractVector{
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
-    positions_view_INTERNAL::Vector{V}
 end
 
 function update_memory!!(
@@ -66,7 +63,7 @@ function update_memory!!(
 
     if memory.fill.position == length(memory.mem_x)
         if memory.refill
-            memory = DifferentialEvolutionMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL, memory.positions_view_INTERNAL)
+            memory = DifferentialEvolutionMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
             memory.fill.position = 0
         else
             #increase memory size
