@@ -40,11 +40,10 @@ function setup_sampler_scheme(
 end
 
 struct DifferentialEvolutionCompositeSampler{
-        T <: Real, A <: AbstractDifferentialEvolutionSampler,
-    } <:
-    AbstractDifferentialEvolutionSampler
-    updates::Vector{A}
-    update_weights::Vector{T} #should this be a non-parameteric type?
+        T <: Real, S <: Tuple{Vararg{AbstractDifferentialEvolutionSampler}},
+    } <: AbstractDifferentialEvolutionSampler
+    updates::S
+    update_weights::Vector{T}
     function DifferentialEvolutionCompositeSampler(
             updates::Vector{A}, update_weights::Vector{T}
         ) where {T <: Real, A <: AbstractDifferentialEvolutionSampler}
@@ -54,7 +53,8 @@ struct DifferentialEvolutionCompositeSampler{
         if any(update_weights .< 0)
             error("Update weights must be non-negative")
         end
-        return new{T, A}(updates, update_weights)
+        tuple_updates = Tuple(updates)
+        return new{T, typeof(tuple_updates)}(tuple_updates, update_weights)
     end
 end
 
@@ -74,9 +74,15 @@ function step(
 end
 
 #if there are adaptive states, we need to keep track of them
-struct DifferentialEvolutionAdaptiveComposite{T <: Real} <:
-    AbstractDifferentialEvolutionAdaptiveState{T}
-    adaptive_states::Vector{AbstractDifferentialEvolutionAdaptiveState{T}}
+struct DifferentialEvolutionAdaptiveComposite{
+        T <: Real,
+        A <: Tuple{ #compat for <1.12
+            AbstractDifferentialEvolutionAdaptiveState{T},
+            Vararg{AbstractDifferentialEvolutionAdaptiveState{T}},
+        },
+    } <: AbstractDifferentialEvolutionAdaptiveState{T}
+
+    adaptive_states::A
 end
 
 # no updates to adaptive step
@@ -85,7 +91,7 @@ function step(
         model_wrapper::LogDensityModel,
         sampler::DifferentialEvolutionCompositeSampler,
         state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveComposite{T},
+            T, <:DifferentialEvolutionAdaptiveComposite{T},
         };
         kwargs...
     ) where {T <: Real}
@@ -128,7 +134,7 @@ function step_warmup(
         model_wrapper::LogDensityModel,
         sampler::DifferentialEvolutionCompositeSampler,
         state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveComposite{T},
+            T, <:DifferentialEvolutionAdaptiveComposite{T},
         };
         update_memory::Bool = true,
         kwargs...
@@ -144,8 +150,6 @@ function step_warmup(
 
     sample,
         substate = step_warmup(rng, model_wrapper, fixed_sampler, fixed_state; kwargs...)
-
-    state.adaptive_state.adaptive_states[sampler_id] = substate.adaptive_state
 
     return sample,
         update_state(
@@ -168,6 +172,7 @@ function initialize_adaptive_state(
     if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
         return DifferentialEvolutionAdaptiveStatic{T}()
     else
-        return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states)
+        tuple_states = Tuple(adaptive_states)
+        return DifferentialEvolutionAdaptiveComposite{T, typeof(tuple_states)}(Tuple(adaptive_states))
     end
 end

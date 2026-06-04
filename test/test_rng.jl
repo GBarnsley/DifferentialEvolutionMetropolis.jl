@@ -201,19 +201,22 @@
             ordered_indices = Array{Int}(undef, n_chains - 1)
 
             res = [
-                DifferentialEvolutionMetropolis.fast_sample_chains!(
-                        rng,
-                        x,
-                        max_length,
-                        n_chains,
-                        indices,
-                        ordered_indices
-                    )
+                begin
+                        DifferentialEvolutionMetropolis.fast_sample_chains!(
+                            rng,
+                            x,
+                            max_length,
+                            n_chains,
+                            indices,
+                            ordered_indices
+                        )
+                        copy(indices)
+                    end
                     for _ in 1:N_tests
             ]
 
             @test all(length(unique(r)) == n_chains for r in res)
-            @test all(all(findlast(r[i:i] .== x) ≤ max_length for i in 1:n_chains) for r in res)
+            @test all(all(r[i] ≤ max_length for i in 1:n_chains) for r in res)
         end
         @testset "current_chain" begin
             current_chain = 3
@@ -222,20 +225,23 @@
             ordered_indices = Array{Int}(undef, n_chains_2)
 
             res = [
-                DifferentialEvolutionMetropolis.fast_sample_chains!(
-                        rng,
-                        x,
-                        max_length,
-                        n_chains_2,
-                        indices,
-                        ordered_indices,
-                        current_chain
-                    )
+                begin
+                        DifferentialEvolutionMetropolis.fast_sample_chains!(
+                            rng,
+                            x,
+                            max_length,
+                            n_chains_2,
+                            indices,
+                            ordered_indices,
+                            current_chain
+                        )
+                        copy(indices)
+                    end
                     for _ in 1:N_tests
             ]
 
             @test all(length(unique(r)) == n_chains_2 for r in res)
-            @test all(all(findlast(r[i:i] .== x) ≤ max_length for i in 1:n_chains_2) for r in res)
+            @test all(all(r[i] ≤ max_length for i in 1:n_chains_2) for r in res)
             @test all(all(r[i] != current_chain for i in 1:n_chains_2) for r in res)
         end
 
@@ -246,27 +252,32 @@
 
             disable_logging(Logging.Warn)
             res = [
-                DifferentialEvolutionMetropolis.fast_sample_chains!(
-                        rng,
-                        x,
-                        max_length,
-                        n_chains,
-                        indices,
-                        ordered_indices
-                    )
+                begin
+                        DifferentialEvolutionMetropolis.fast_sample_chains!(
+                            rng,
+                            x,
+                            max_length,
+                            n_chains,
+                            indices,
+                            ordered_indices
+                        )
+                        copy(indices)
+                    end
                     for _ in 1:N_tests
             ]
             disable_logging(Logging.Info)
-            @test_logs (:warn, "Picking $n_chains chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
+            indices_warn = Vector{Int}(undef, 2)
+            ordered_indices_warn = Array{Int}(undef, 1)
+            @test_logs (:warn, "Picking $n_chains chains but only 2 preallocated, consider setting `n_preallocated_indices = $n_chains`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
                 rng,
                 x,
                 max_length,
                 n_chains,
-                indices,
-                ordered_indices
+                indices_warn,
+                ordered_indices_warn
             )
             @test all(length(unique(r)) == n_chains for r in res)
-            @test all(all(findlast(r[i:i] .== x) ≤ max_length for i in 1:n_chains) for r in res)
+            @test all(all(r[i] ≤ max_length for i in 1:n_chains) for r in res)
         end
         @testset "current_chain" begin
             current_chain = 3
@@ -276,31 +287,36 @@
 
             disable_logging(Logging.Warn)
             res = [
-                DifferentialEvolutionMetropolis.fast_sample_chains!(
-                        rng,
-                        x,
-                        max_length,
-                        n_chains_2,
-                        indices,
-                        ordered_indices,
-                        current_chain
-                    )
+                begin
+                        DifferentialEvolutionMetropolis.fast_sample_chains!(
+                            rng,
+                            x,
+                            max_length,
+                            n_chains_2,
+                            indices,
+                            ordered_indices,
+                            current_chain
+                        )
+                        copy(indices)
+                    end
                     for _ in 1:N_tests
             ]
             disable_logging(Logging.Info)
 
 
-            @test_logs (:warn, "Picking $n_chains_2 chains but only $(length(indices)) preallocated, consider setting `n_preallocated_indices = $n_chains_2`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
+            indices_warn = Vector{Int}(undef, 2)
+            ordered_indices_warn = Array{Int}(undef, 1)
+            @test_logs (:warn, "Picking $n_chains_2 chains but only 2 preallocated, consider setting `n_preallocated_indices = $n_chains_2`.")  DifferentialEvolutionMetropolis.fast_sample_chains!(
                 rng,
                 x,
                 max_length,
                 n_chains_2,
-                indices,
-                ordered_indices,
+                indices_warn,
+                ordered_indices_warn,
                 current_chain
             )
             @test all(length(unique(r)) == n_chains_2 for r in res)
-            @test all(all(findlast(r[i:i] .== x) ≤ max_length for i in 1:n_chains_2) for r in res)
+            @test all(all(r[i] ≤ max_length for i in 1:n_chains_2) for r in res)
             @test all(all(r[i] != current_chain for i in 1:n_chains_2) for r in res)
         end
     end

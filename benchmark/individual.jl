@@ -1,4 +1,4 @@
-using AbstractMCMC, .DifferentialEvolutionMetropolis, Distributions, LogDensityProblems, Random
+using AbstractMCMC, DifferentialEvolutionMetropolis, Distributions, LogDensityProblems, Random
 #simple ld
 struct IsotropicNormalModel{M <: AbstractVector{<:Real}}
     "mean of the isotropic Gaussian"
@@ -44,8 +44,8 @@ function run_steps!(n, rng, am_model, update, initial_state)
     return
 end
 
-@profview run_steps!(500, rng, am_model, update, initial_state)
-@profview_allocs run_steps!(1000, rng, am_model, update, initial_state) sample_rate = 0.1
+#@profview run_steps!(500, rng, am_model, update, initial_state)
+#@profview_allocs run_steps!(1000, rng, am_model, update, initial_state) sample_rate = 0.1
 
 @benchmark AbstractMCMC.step_warmup(rng, $am_model, $update, state) setup = (
     rng = copy($rng); state = deepcopy($initial_state)
