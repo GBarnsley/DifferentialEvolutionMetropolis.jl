@@ -158,4 +158,28 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
         @test isapprox(post_mean, μ; atol = 0.15)
         @test all(isfinite, flat)
     end
+
+    @testset "a dense metric is thread-safe on the parallel trajectory loop" begin
+        # A `DenseEuclideanMetric` carries a `_temp` scratch buffer that `neg_energy` writes
+        # every leapfrog step; `run_trajectories!` gives each chain a private-scratch copy so
+        # the shared buffer cannot race. With per-chain RNGs the parallel run must reproduce the
+        # same-seed serial run exactly — a race on `_temp` would perturb the threaded result.
+        runit(parallel) = reshape(
+            sample(
+                backwards_compat_rng(13), model,
+                setup_sampler_scheme(
+                    DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = length(μ))
+                ),
+                800; n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
+                progress = false, chain_type = DifferentialEvolutionOutput
+            ).samples, :, length(μ)
+        )
+        serial = runit(false)
+        threaded = runit(true)
+        @test all(isfinite, threaded)
+        @test isapprox(
+            vec(sum(serial; dims = 1) ./ size(serial, 1)), μ; atol = 0.2
+        )
+        @test threaded == serial
+    end
 end
