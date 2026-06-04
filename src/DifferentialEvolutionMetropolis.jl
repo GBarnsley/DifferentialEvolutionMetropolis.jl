@@ -33,16 +33,12 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray,
     }
     "current position"
     x::VV
     "log density at current position"
     ld::V
-    "preallocated next position"
-    xₚ::VV
-    "preallocated next log densities"
-    ldₚ::V
     "random states"
     rngs::Vector{R}
     "struct for holding the status of the adaptive scheme"
@@ -53,6 +49,53 @@ struct DifferentialEvolutionState{
     memory::M
     "per-chain model copies for thread-safe parallel logdensity evaluation"
     chain_models::Vector{Model}
+    "preallocated next position"
+    xₚ::VV
+    "preallocated next log densities"
+    ldₚ::V
+    "views of x and ld that actually sample from (i.e. the cold chains if parallel tempering)"
+    x_smpl_view::V1
+    ld_smpl_view::V2
+    xₚ_smpl_view::V1
+    ldₚ_smpl_view::V2
+end
+
+function DifferentialEvolutionState(
+        rng::R,
+        x::VV,
+        ld::V,
+        adaptive_state::A,
+        temperature_ladder::L,
+        memory::M,
+        chain_models::Vector{Model}
+    ) where {
+        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
+        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        M <: AbstractDifferentialEvolutionMemory{T},
+        V <: AbstractVector{T}, VV <: AbstractVector{V},
+        R <: AbstractRNG, Model,
+    }
+
+    rngs = [Random.seed!(copy(rng), rand(rng, UInt)) for _ in 1:length(x)]
+    xₚ = copy.(x)
+    ldₚ = copy(ld)
+    x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
+    xₚ_smpl_view, ldₚ_smpl_view = setup_view(xₚ, ldₚ, temperature_ladder)
+    return DifferentialEvolutionState(
+        x,
+        ld,
+        rngs,
+        adaptive_state,
+        temperature_ladder,
+        memory,
+        chain_models,
+        xₚ,
+        ldₚ,
+        x_smpl_view,
+        ld_smpl_view,
+        xₚ_smpl_view,
+        ldₚ_smpl_view
+    )
 end
 
 """

@@ -190,7 +190,7 @@ function step_warmup(
         update_state(
             state;
             update_memory = update_memory,
-            x = state.xₚ, ld = state.ldₚ, xₚ = state.x, ldₚ = state.ld
+            swap_positions = Val(true)
         )
 end
 
