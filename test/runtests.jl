@@ -52,6 +52,7 @@ end
     include("test_composite.jl")
     include("test_rng.jl")
     include("test_threadsafe.jl")
+    include("test_swapping.jl")
     include("test_temperature.jl")
     include("test_hmc.jl")
     include("test_hmc_population_metric.jl")
