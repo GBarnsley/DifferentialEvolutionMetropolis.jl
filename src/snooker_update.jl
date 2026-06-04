@@ -1,5 +1,5 @@
-struct DifferentialEvolutionSnookerSampler <: AbstractDifferentialEvolutionSampler
-    γ_spl::Sampleable{Univariate, <:Union{Continuous, Discrete}}
+struct DifferentialEvolutionSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDifferentialEvolutionSampler
+    γ_spl::G
 end
 
 """
@@ -65,7 +65,7 @@ function proposal!(
         sampler::DifferentialEvolutionSnookerSampler, current_state::Int
     )
     # Propose a new position.
-    x₁, x₂, xₐ = pick_chains(state, current_state, 3)
+    x₁, x₂, xₐ = pick_chains(state, current_state, Val(3))
 
     if xₐ == state.x[current_state] || x₁ == x₂
         state.xₚ[current_state] .= x₁

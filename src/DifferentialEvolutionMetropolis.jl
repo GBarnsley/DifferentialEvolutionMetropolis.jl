@@ -33,6 +33,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
+        R <: AbstractRNG, Model,
     }
     "current position"
     x::VV
@@ -43,7 +44,7 @@ struct DifferentialEvolutionState{
     "preallocated next log densities"
     ldₚ::V
     "random states"
-    rngs::Vector{<:AbstractRNG}
+    rngs::Vector{R}
     "struct for holding the status of the adaptive scheme"
     adaptive_state::A
     "temperature ladder"
@@ -51,7 +52,7 @@ struct DifferentialEvolutionState{
     "memory structure"
     memory::M
     "per-chain model copies for thread-safe parallel logdensity evaluation"
-    chain_models::Vector{Any}
+    chain_models::Vector{Model}
 end
 
 """

@@ -1,21 +1,31 @@
 abstract type AbstractDifferentialEvolutionSubspaceSampler <:
 AbstractDifferentialEvolutionSampler end
 
-struct DifferentialEvolutionSubspaceSampler <: AbstractDifferentialEvolutionSubspaceSampler
-    cr_spl::Sampleable{Univariate, <:Union{Continuous, Discrete}}
+struct DifferentialEvolutionSubspaceSampler{
+        C <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
+        D <: Sampleable{Univariate, Discrete},
+        E <: Sampleable{Univariate, Continuous},
+        F <: Sampleable{Univariate, Continuous},
+    } <: AbstractDifferentialEvolutionSubspaceSampler
+    cr_spl::C
     n_cr::Int
-    δ_spl::Sampleable{Univariate, Discrete}
-    ϵ_spl::Sampleable{Univariate, Continuous}
-    e_spl::Sampleable{Univariate, Continuous}
+    δ_spl::D
+    ϵ_spl::E
+    e_spl::F
 end
 
-struct DifferentialEvolutionSubspaceSamplerFixedGamma{T <: Real} <:
-    AbstractDifferentialEvolutionSubspaceSampler
-    cr_spl::Sampleable{Univariate, <:Union{Continuous, Discrete}}
+struct DifferentialEvolutionSubspaceSamplerFixedGamma{
+        T <: Real,
+        C <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
+        D <: Sampleable{Univariate, Discrete},
+        E <: Sampleable{Univariate, Continuous},
+        F <: Sampleable{Univariate, Continuous},
+    } <: AbstractDifferentialEvolutionSubspaceSampler
+    cr_spl::C
     n_cr::Int
-    δ_spl::Sampleable{Univariate, Discrete}
-    ϵ_spl::Sampleable{Univariate, Continuous}
-    e_spl::Sampleable{Univariate, Continuous}
+    δ_spl::D
+    ϵ_spl::E
+    e_spl::F
     γ::T
 end
 
@@ -109,7 +119,7 @@ function setup_subspace_sampling(;
                 error("γ should be ≥ 0")
             end
         end
-        DifferentialEvolutionSubspaceSamplerFixedGamma{eltype(γ)}(
+        DifferentialEvolutionSubspaceSamplerFixedGamma(
             sampler(cr),
             n_cr,
             sampler(δ),
@@ -153,7 +163,7 @@ function proposal!(
     #generate candidate
     for _ in 1:δ
         #pick to random chains find the difference and add to the candidate
-        x₁, x₂ = pick_chains(state, current_state, 2)
+        x₁, x₂ = pick_chains(state, current_state, Val(2))
         xₚ[to_update] .+= x₁[to_update] .- x₂[to_update]
     end
 

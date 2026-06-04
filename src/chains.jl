@@ -19,8 +19,8 @@ function create_sample(
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
     }
     return DifferentialEvolutionSample(
-        copy.(state.xₚ[state.temperature_ladder.cold_chains]),
-        copy(state.ldₚ[state.temperature_ladder.cold_chains])
+        copy.(state.temperature_ladder.xₚ_cc_view),
+        copy(state.temperature_ladder.ldₚ_cc_view)
     )
 end
 
@@ -37,69 +37,59 @@ function create_sample(
     )
 end
 
-function pick_chains(
-        state::DifferentialEvolutionState{T, A, L, DifferentialEvolutionMemoryless{T}},
+@generated function pick_chains(
+        state::DifferentialEvolutionState{T, A, L, M},
         current_chain::Int,
-        n_chains::Int
-    ) where {
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-    }
-    return fast_sample_chains!(
-        state.rngs[current_chain],
-        state.x,
-        length(state.x),
-        n_chains,
-        state.memory.indices_INTERNAL[current_chain],
-        state.memory.ordered_indices_INTERNAL[current_chain],
-        current_chain
-    )
+        ::Val{N}
+    ) where {T, A, L, M <: DifferentialEvolutionMemoryless, N}
+    exprs = [:(x[indices[$i]]) for i in 1:N]
+    return quote
+        rng = state.rngs[current_chain]
+        x = state.x
+        memory = state.memory
+        indices = memory.indices_INTERNAL[current_chain]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        fast_sample_chains!(
+            rng,
+            x,
+            length(x),
+            $N,
+            indices,
+            ordered_indices,
+            current_chain
+        )
+        return ($(exprs...),)
+    end
 end
 
-function pick_chains(
+@generated function pick_chains(
         state::DifferentialEvolutionState{T, A, L, M, V, VV},
         current_chain::Int,
-        n_chains::Int
-    ) where {
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        V <: AbstractVector{T}, VV <: AbstractVector{V},
-        M <: AbstractDifferentialEvolutionMemoryFormat{T, VV},
-    }
-    return fast_sample_chains!(
-        state.rngs[current_chain],
-        state.memory.mem_x,
-        length(state.memory.mem_x),
-        n_chains,
-        state.memory.indices_INTERNAL[current_chain],
-        state.memory.ordered_indices_INTERNAL[current_chain]
-    )
-end
-
-function pick_chains(
-        state::DifferentialEvolutionState{
-            T, A, L, DifferentialEvolutionMemoryFill{T, VV}, V, VV,
-        },
-        current_chain::Int,
-        n_chains::Int
-    ) where {
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        V <: AbstractVector{T}, VV <: AbstractVector{V},
-    }
-    return fast_sample_chains!(
-        state.rngs[current_chain],
-        state.memory.mem_x,
-        state.memory.fill.position,
-        n_chains,
-        state.memory.indices_INTERNAL[current_chain],
-        state.memory.ordered_indices_INTERNAL[current_chain]
-    )
+        ::Val{N}
+    ) where {T, A, L, V, VV, M <: AbstractDifferentialEvolutionMemoryFormat{T, VV}, N}
+    exprs = [:(mem_x[indices[$i]]) for i in 1:N]
+    limit_expr = M <: DifferentialEvolutionMemoryFill ? :(memory.fill.position) : :(length(mem_x))
+    return quote
+        rng = state.rngs[current_chain]
+        memory = state.memory
+        mem_x = memory.mem_x
+        indices = memory.indices_INTERNAL[current_chain]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        fast_sample_chains!(
+            rng,
+            mem_x,
+            $limit_expr,
+            $N,
+            indices,
+            ordered_indices
+        )
+        return ($(exprs...),)
+    end
 end
 
 function update_state(
         state::DifferentialEvolutionState{
-            T, A, L, DifferentialEvolutionMemoryless{T}, V, VV,
+            T, A, L, M, V, VV,
         };
         memory::DifferentialEvolutionMemoryless{T} = state.memory,
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
@@ -114,6 +104,7 @@ function update_state(
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
         A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
+        M <: DifferentialEvolutionMemoryless{T},
     }
     return DifferentialEvolutionState(
         x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models
@@ -475,7 +466,7 @@ function step(
         @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
 
-    chain_models = Any[deepcopy(model) for _ in eachindex(x)]
+    chain_models = [deepcopy(model) for _ in eachindex(x)]
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
@@ -488,8 +479,6 @@ function step(
     if memory && n_hot_chains > 0
         @warn "Memory-based samplers do not typically require hot chains. Consider setting n_hot_chains=0."
     end
-
-    temperature_ladder_struct = setup_temperature_struct(temperature_ladder)
 
     # Initialize per-chain RNGs deterministically from the provided rng.
     rngs = [Random.seed!(copy(rng), rand(rng, UInt)) for _ in 1:length(x)]
@@ -539,24 +528,34 @@ function step(
             memory_method = DifferentialEvolutionMemoryFillEvery(N₀, n_true_chains)
         end
 
-        memory = DifferentialEvolutionMemoryFill{T, typeof(mem_x)}(
+        positions = [fill(1, n_preallocated_indices) for _ in 1:n_true_chains]
+        positions_views = [view(true_memory, pos) for pos in positions]
+        memory = DifferentialEvolutionMemoryFill{T, typeof(mem_x), typeof(memory_method), eltype(positions_views)}(
             true_memory, memory_method, memory_refill, length(true_memory),
-            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
+            positions,
+            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains],
+            positions_views
         )
     else
-        memory = DifferentialEvolutionMemoryless{T}(
+        positions = [fill(1, n_preallocated_indices) for _ in 1:n_true_chains]
+        positions_views = [view(x, pos) for pos in positions]
+        memory = DifferentialEvolutionMemoryless{T, eltype(positions_views)}(
+            positions,
             [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains]
+            positions_views
         )
     end
+
+    xₚ = copy.(x)
+    ldₚ = copy(ld)
+    temperature_ladder_struct = setup_temperature_struct(xₚ, ldₚ, temperature_ladder)
 
     if !silent
         print_log(log)
     end
 
     state = DifferentialEvolutionState(
-        x, ld, copy.(x), copy(ld), rngs, adaptive_state, temperature_ladder_struct, memory,
+        x, ld, xₚ, ldₚ, rngs, adaptive_state, temperature_ladder_struct, memory,
         chain_models
     )
 

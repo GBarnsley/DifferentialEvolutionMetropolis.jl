@@ -1,11 +1,11 @@
-mutable struct DifferentialEvolutionAdaptiveSubspace{T <: Real} <:
+mutable struct DifferentialEvolutionAdaptiveSubspace{T <: Real, C <: DiscreteNonParametricSampler} <:
     AbstractDifferentialEvolutionAdaptiveState{T}
     "attempts for each crossover probability"
     L::Vector{Int}
     "squared normalised jumping distance for each crossover probability for each crossover probability"
     Δ::Vector{T}
     "distribution for crossover probabilities"
-    cr_spl::DiscreteNonParametricSampler
+    cr_spl::C
     "running count for variance calculation"
     var_count::Int
     "running mean for each dimension"
@@ -115,7 +115,7 @@ function step_warmup(
         model_wrapper::LogDensityModel,
         sampler::AbstractDifferentialEvolutionSubspaceSampler,
         state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveSubspace{T},
+            T, <:DifferentialEvolutionAdaptiveSubspace{T},
         };
         update_memory::Bool = true,
         parallel::Bool = false,
@@ -229,7 +229,7 @@ function initialize_adaptive_state(
         var_m2 = zeros(T, d)
         delta = zeros(T, d)
         variance = ones(T, d)
-        return DifferentialEvolutionAdaptiveSubspace{T}(
+        return DifferentialEvolutionAdaptiveSubspace{T, typeof(cr_spl)}(
             L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance
         )
     end
