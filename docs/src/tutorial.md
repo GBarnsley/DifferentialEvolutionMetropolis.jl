@@ -56,7 +56,7 @@ function (problem::MixtureNormal)(θ)
         ], [p, 1 - p]
     )
     for i in axes(problem.data, 1)
-        ld += logpdf(ll_model, data[i])
+        ld += logpdf(ll_model, problem.data[i])
     end
     return ld
 end

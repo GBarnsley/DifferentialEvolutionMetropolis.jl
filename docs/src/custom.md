@@ -122,7 +122,7 @@ For proposals that require adaptation during warm-up, you need to implement the 
 You'll also need to define adaptive state structures and methods. Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
-using AbstractMCMC, DifferentialEvolutionMetropolis
+using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
@@ -175,7 +175,7 @@ function DifferentialEvolutionMetropolis.proposal!(
 )
     x_current = state.x[current_state]
     # Use current proposal covariance from adaptive state
-    state.xₚ[current_state] .= rand(rng, MvNormal(x_current, state.adaptive_state.proposal_cov))
+    state.xₚ[current_state] .= rand(state.rngs[current_state], MvNormal(x_current, state.adaptive_state.proposal_cov))
     return (offset = 0.0)
 end
 

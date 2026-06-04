@@ -72,7 +72,7 @@ is_enabled(option::Val{false}) = false
 
 function _update_state(
         state::DifferentialEvolutionState{
-            T, A1, L1, M, V, VV, R, Model, V1, V2,
+            T, A1, L1, M1, V, VV, R, Model, V1, V2,
         },
         swap_positions,
         memory::AbstractDifferentialEvolutionMemory{T},
@@ -80,7 +80,7 @@ function _update_state(
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T},
         rngs::Vector{<:AbstractRNG},
         new_state::DifferentialEvolutionState{
-            T, A2, L2, M, V, VV, R, Model, V1, V2,
+            T, A2, L2, M2, V, VV, R, Model, V1, V2,
         },
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
@@ -88,7 +88,9 @@ function _update_state(
         L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
         A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
         L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemory{T}, V1 <: SubArray, V2 <: SubArray,
+        M1 <: AbstractDifferentialEvolutionMemory{T},
+        M2 <: AbstractDifferentialEvolutionMemory{T},
+        V1 <: SubArray, V2 <: SubArray,
         R <: AbstractRNG, Model,
     }
     if is_enabled(swap_positions)
@@ -106,7 +108,7 @@ end
 
 function update_state(
         state::DifferentialEvolutionState{
-            T, A1, L1, M, V, VV, R, Model, V1, V2,
+            T, A1, L1, M1, V, VV, R, Model, V1, V2,
         };
         swap_positions = Val(false),
         memory::DifferentialEvolutionMemoryless{T} = state.memory,
@@ -114,7 +116,7 @@ function update_state(
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
         new_state::DifferentialEvolutionState{
-            T, A2, L2, M, V, VV, R, Model, V1, V2,
+            T, A2, L2, M2, V, VV, R, Model, V1, V2,
         } = state,
         kwargs...
     ) where {
@@ -123,7 +125,9 @@ function update_state(
         L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
         A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
         L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: DifferentialEvolutionMemoryless{T}, V1 <: SubArray, V2 <: SubArray,
+        M1 <: DifferentialEvolutionMemoryless{T},
+        M2 <: AbstractDifferentialEvolutionMemory{T},
+        V1 <: SubArray, V2 <: SubArray,
         R <: AbstractRNG, Model,
     }
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state)
@@ -131,15 +135,15 @@ end
 
 function update_state(
         state::DifferentialEvolutionState{
-            T, A1, L1, M, V, VV, R, Model, V1, V2,
+            T, A1, L1, M1, V, VV, R, Model, V1, V2,
         };
         swap_positions = Val(false),
-        memory::M = state.memory,
+        memory::M1 = state.memory,
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
         new_state::DifferentialEvolutionState{
-            T, A2, L2, M, V, VV, R, Model, V1, V2,
+            T, A2, L2, M2, V, VV, R, Model, V1, V2,
         } = state,
         update_memory::Bool = false
     ) where {
@@ -148,7 +152,8 @@ function update_state(
         L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
         A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
         L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemoryFormat{T, VV},
+        M1 <: AbstractDifferentialEvolutionMemoryFormat{T, VV},
+        M2 <: AbstractDifferentialEvolutionMemory{T},
         V1 <: SubArray, V2 <: SubArray,
         R <: AbstractRNG, Model,
     }
