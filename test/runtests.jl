@@ -55,7 +55,7 @@ end
     include("test_swapping.jl")
     include("test_temperature.jl")
     include("test_hmc.jl")
-    include("test_hmc_population_metric.jl")
+    include("test_hmc_memory_metric.jl")
     include("test_correct.jl")
 
     @testset "lack of Diagnostics Tools" begin

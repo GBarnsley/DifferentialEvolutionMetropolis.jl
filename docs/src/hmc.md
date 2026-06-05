@@ -92,22 +92,27 @@ nothing # hide
 
 Both styles produce the same kind of update; the comparison below uses the `NUTS()` form.
 
-### Estimating the metric from the population
+### Estimating the metric from the memory archive
 
 By default the HMC update tunes its mass matrix the usual AdvancedHMC way: every chain's
 position is fed into a windowed Welford estimator once per warm-up step, and the mass matrix is
 committed at the end of each adaptation window (the estimator resetting between windows). That
 already pools across the whole population, but it only ever sees the *current* window's draws.
 Because this package also keeps a historical archive when `memory = true`, the metric can
-instead be estimated from that much larger pool. Passing [`population_metric`](@ref) as the
+instead be estimated from that much larger pool. Passing [`memory_metric`](@ref) as the
 `metric_strategy` replaces the windowed adaptor with a covariance computed in one batch over the
-population — the memory archive when memory is enabled (thousands of past positions), otherwise
-the live chains — recomputed wholesale each step rather than accumulated online; the step size
-keeps adapting through dual averaging as before.
+memory archive (thousands of past positions), recomputed wholesale every `every` warm-up steps
+rather than accumulated online; the step size keeps adapting through dual averaging as before.
+
+Because it reads the archive, [`memory_metric`](@ref) **requires `memory = true`** and is
+**incompatible with parallel tempering** (there the archive interleaves hot-chain positions, so
+the covariance would mix temperatures); both raise an error on the first warm-up step. Annealing
+is fine — its chains all cool to the cold target, so the archive ends up a clean cold-target
+sample.
 
 ```@example HMC
-pop_hmc_update = setup_hmc_update(
-    NUTS(0.8); n_dims = D, metric_strategy = population_metric()
+mem_hmc_update = setup_hmc_update(
+    NUTS(0.8); n_dims = D, metric_strategy = memory_metric()
 )
 nothing # hide
 ```
@@ -117,11 +122,11 @@ The estimate takes the *shape* of the metric the update was built with. With the
 gives the **full covariance**, so the metric captures correlations between parameters — the main
 reason to estimate from a large archive in the first place, since thousands of stored draws make
 a full `D×D` covariance well-conditioned where a single chain's warm-up window would not. A dense
-population metric is built simply by handing `setup_hmc_update` a dense AdvancedHMC sampler:
+memory metric is built simply by handing `setup_hmc_update` a dense AdvancedHMC sampler:
 
 ```@example HMC
-dense_pop_update = setup_hmc_update(
-    NUTS(0.8; metric = :dense); n_dims = D, metric_strategy = population_metric()
+dense_mem_update = setup_hmc_update(
+    NUTS(0.8; metric = :dense); n_dims = D, metric_strategy = memory_metric()
 )
 nothing # hide
 ```
@@ -141,7 +146,7 @@ cannot race. Two keywords tune either shape:
 ```@example HMC
 # A more conservative variant: shrink toward isotropy and recompute every 10 warm-up steps.
 conservative = setup_hmc_update(
-    NUTS(0.8); n_dims = D, metric_strategy = population_metric(; shrinkage = 0.25, every = 10)
+    NUTS(0.8); n_dims = D, metric_strategy = memory_metric(; shrinkage = 0.25, every = 10)
 )
 nothing # hide
 ```
@@ -150,8 +155,9 @@ nothing # hide
 
 We compare the HMC update on its own, the subspace update on its own, the composite that weights
 the two equally, and a fourth scheme that is the same composite but with the HMC kernel using a
-[`population_metric`](@ref) instead of the stock windowed adaptor — so we can see whether
-estimating the metric from the population helps on this target. All are ordinary
+[`memory_metric`](@ref) instead of the stock windowed adaptor — so we can see whether estimating
+the metric from the memory archive helps on this target (the runs below all use `memory = true`
+and no tempering, which is what `memory_metric` requires). All are ordinary
 [`setup_sampler_scheme`](@ref) objects.
 
 ```@example HMC
@@ -162,8 +168,8 @@ composite = setup_sampler_scheme(
     setup_subspace_sampling();
     w = [0.5, 0.5]
 )
-pop_composite = setup_sampler_scheme(
-    setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = D, metric_strategy = population_metric()),
+mem_composite = setup_sampler_scheme(
+    setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = D, metric_strategy = memory_metric()),
     setup_subspace_sampling();
     w = [0.5, 0.5]
 )
@@ -215,13 +221,13 @@ results = (
     NUTS = evaluate(nuts_only),
     subspace = evaluate(subspace_only),
     composite = evaluate(composite),
-    population = evaluate(pop_composite),
+    memory = evaluate(mem_composite),
 )
 
 true_mean = P_WIDE * A + (1 - P_WIDE) * (-A)
 println("true E[v] = ", round(true_mean; digits = 2), ",  true P(v>0) = ", P_WIDE, "\n")
 println(rpad("sampler", 12), rpad("E[v]", 9), rpad("P(v>0)", 10), rpad("ESS(v)", 9), "time (s)")
-for name in (:NUTS, :subspace, :composite, :population)
+for name in (:NUTS, :subspace, :composite, :memory)
     r = results[name]
     println(
         rpad(string(name), 12),
@@ -244,15 +250,15 @@ funnel forces very deep trajectories. The **composite** recovers both the mean a
 weight: the population moves carry chains between the two mouths while the HMC kernel follows
 the funnel's curvature within each, at a fraction of NUTS's cost.
 
-The **population**-metric composite is the cautionary case, and a useful one. It is better than
+The **memory**-metric composite is the cautionary case, and a useful one. It is better than
 NUTS alone but clearly worse than the stock composite: its mean is biased back toward the wide
 mouth and `P(v > 0)` drifts above the true `0.65`. The reason is structural rather than a tuning
-artefact. When the population straddles two *separated* modes, its pooled covariance is dominated
+artefact. When the archive straddles two *separated* modes, its pooled covariance is dominated
 by the between-mode spread (`Σ_total = Σ_within + Σ_between`), so the estimated metric reflects the
 gap between the mouths, not the geometry inside either — and the HMC kernel ends up over-scaled
 along the very axis that separates them, pulling mass toward the heavier mode. A single pooled
 metric, diagonal or dense, simply cannot describe two modes at once; the diagonal variant behaves
-the same way, confirming the issue is the pooling, not the metric's shape. `population_metric`
+the same way, confirming the issue is the pooling, not the metric's shape. `memory_metric`
 pays off on unimodal or curved-but-connected targets — where the archive is a clean sample of one
 geometry — not on a target whose whole difficulty is that its modes are far apart.
 
@@ -260,7 +266,7 @@ geometry — not on a target whose whole difficulty is that its modes are far ap
 
 Plotting the recovered marginal of `v` against the truth makes the difference plain. The
 composite tracks the true bimodal density; subspace misplaces the mass between the modes; NUTS
-struggles to populate the narrow neck at all; and the population-metric composite sits between
+struggles to populate the narrow neck at all; and the memory-metric composite sits between
 the composite and NUTS, leaning toward the wide mouth.
 
 ```@example HMC
@@ -275,7 +281,7 @@ plt = plot(
     xlabel = "v  (log scale)", ylabel = "density",
     title = "Posterior of the scale parameter",
 )
-for (name, c) in zip((:NUTS, :subspace, :composite, :population), (:orange, :red, :green, :purple))
+for (name, c) in zip((:NUTS, :subspace, :composite, :memory), (:orange, :red, :green, :purple))
     stephist!(plt, results[name].v; normalize = :pdf, lw = 2, color = c, label = string(name))
 end
 plt
@@ -285,8 +291,8 @@ On this funnel the stock composite is the clear winner, but the broader lesson i
 the sampler — and the metric — to the geometry. Differential evolution moves excel when modes are
 alike up to a shift, and gradient information is what lets a sampler follow a scale that changes
 across the space; the HMC update lets you bring both to bear in a single scheme. Estimating the
-metric from the population is a further lever, but a pooled covariance describes one geometry, so
-it helps on unimodal or connected targets and hurts on separated modes — here the windowed adaptor
-is the better default. As always, benchmark on your own posterior — gradients are not free, on
-smoother targets the population moves may already be enough, and the best metric strategy depends
-on whether your population is a sample of one mode or several.
+metric from the memory archive is a further lever, but a pooled covariance describes one geometry,
+so it helps on unimodal or connected targets and hurts on separated modes — here the windowed
+adaptor is the better default. As always, benchmark on your own posterior — gradients are not free,
+on smoother targets the population moves may already be enough, and the best metric strategy
+depends on whether your archive is a sample of one mode or several.

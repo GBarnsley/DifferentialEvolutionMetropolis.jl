@@ -12,16 +12,13 @@ import LogDensityProblems
 import Random
 import Random: AbstractRNG
 
-# Selects how the metric is produced during adaptation. Dispatched on by `adapt_metric!`,
-# so a metric scheme can be swapped without touching the trajectory loop.
+# Selects how the metric is produced during adaptation.
 abstract type AbstractDifferentialEvolutionMetricStrategy end
 
 """Produce the metric by driving AdvancedHMC's `StanHMCAdaptor` directly."""
 struct DifferentialEvolutionStockAdaptorMetric <: AbstractDifferentialEvolutionMetricStrategy end
 
-# Reject a strategy/metric combination at construction time (`setup_hmc_update`), before any
-# sampling, so an incompatible pairing fails fast rather than mid-warmup. The default accepts
-# every metric; strategies with metric-type requirements override it (see Stage 2).
+# Reject an incompatible strategy/metric pairing at construction; the default accepts every metric.
 validate_metric_strategy(::AbstractDifferentialEvolutionMetricStrategy, ::AbstractMetric) = nothing
 
 # -----------------------------------------------------------------------------
@@ -53,11 +50,10 @@ struct DifferentialEvolutionHMCSampler{
     integrator::I
     κ::K
     adaptor::A
-    # Pre-allocated per-chain scratch metrics for the threaded loop (empty unless the metric
-    # needs private scratch — see `needs_private_scratch`). On the frozen sampler this is the
-    # same vector the adaptive state owns, passed by reference by `fix_sampler`, so the
-    # post-warmup `step` reuses it without allocating.
-    chain_metrics::Vector{AbstractMetric}
+    # Per-chain metric slots; cold/hot are the chains HMC advances / carries over unchanged.
+    chain_metrics::Vector{M}
+    cold::Vector{Int}
+    hot::Vector{Int}
 end
 
 """
@@ -65,22 +61,36 @@ end
 
 The shared, evolving HMC pieces — one set per HMC update, NOT one per chain. This lives in
 the sampler *state* (`state.adaptive_state`) and is mutated during warmup as the metric and
-step size adapt; the immutable sampler never holds it. Fields are AdvancedHMC's own
-abstract types.
+step size adapt; the immutable sampler never holds it. Concretely parametrised on the
+AdvancedHMC piece types, which `renew`/`update` preserve across adaptation.
 
 `metric`/`integrator`/`κ`/`adaptor` start as copies of the sampler's pieces. The metric and
 adaptor are mutated/replaced as adaptation proceeds; the step size is refined on the first
 HMC step (`refine_step_size!`), guarded by `initialized`.
 """
-mutable struct HMCAdaptiveState{T <: Real} <: DEM.AbstractDifferentialEvolutionAdaptiveState{T}
-    metric::AbstractMetric
-    integrator::AbstractIntegrator
-    κ::AbstractMCMCKernel
-    adaptor::AbstractAdaptor
+mutable struct HMCAdaptiveState{
+        T <: Real, M <: AbstractMetric, I <: AbstractIntegrator,
+        K <: AbstractMCMCKernel, A <: AbstractAdaptor,
+    } <: DEM.AbstractDifferentialEvolutionAdaptiveState{T}
+    metric::M
+    integrator::I
+    κ::K
+    adaptor::A
     initialized::Bool
-    # Per-chain scratch metrics, allocated once in `initialize_adaptive_state` and reused every
-    # step (never rebuilt in the loop). Empty unless the metric needs private scratch.
-    chain_metrics::Vector{AbstractMetric}
+    # Per-chain metric slots; cold/hot chain indices (empty until resolved on the first warmup step).
+    chain_metrics::Vector{M}
+    cold::Vector{Int}
+    hot::Vector{Int}
+end
+
+# `T` has no field, so it cannot be inferred; take it explicitly and infer the piece types.
+function HMCAdaptiveState{T}(
+        metric::M, integrator::I, κ::K, adaptor::A, initialized::Bool,
+        chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}
+    ) where {T <: Real, M <: AbstractMetric, I <: AbstractIntegrator, K <: AbstractMCMCKernel, A <: AbstractAdaptor}
+    return HMCAdaptiveState{T, M, I, K, A}(
+        metric, integrator, κ, adaptor, initialized, chain_metrics, cold, hot
+    )
 end
 
 # -----------------------------------------------------------------------------
@@ -92,10 +102,8 @@ function DEM.setup_hmc_update(
         n_dims::Int = 0,
         metric_strategy::AbstractDifferentialEvolutionMetricStrategy = DifferentialEvolutionStockAdaptorMetric()
     )
-    # Decompose the wrapper into its modular pieces here, then discard it. AdvancedHMC's
-    # `NUTS`/`HMC`/`HMCDA` store the metric as a *symbol* (e.g. `:diagonal`) and only size it
-    # once the model is known; we size it up front instead, so `n_dims` is required for those.
-    # A hand-built `HMCSampler` already carries a sized metric, so `n_dims` is optional there.
+    # `NUTS`/`HMC`/`HMCDA` store the metric as a symbol and size it lazily, so they need `n_dims`;
+    # a hand-built `HMCSampler` already carries a sized metric.
     if sampler.metric isa Symbol && n_dims ≤ 0
         error(
             "setup_hmc_update needs the parameter dimension to size the metric for a " *
@@ -108,10 +116,8 @@ function DEM.setup_hmc_update(
     integrator = AdvancedHMC.make_integrator(sampler, oneunit(T))
     κ = AdvancedHMC.make_kernel(sampler, integrator)
     adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
-    # No chains exist yet, so the per-chain scratch is empty; it is sized in
-    # `initialize_adaptive_state` and reaches the frozen sampler through `fix_sampler`.
     return DifferentialEvolutionHMCSampler(
-        metric_strategy, metric, integrator, κ, adaptor, AbstractMetric[]
+        metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[], Int[], Int[]
     )
 end
 
@@ -147,15 +153,14 @@ function DEM.initialize_adaptive_state(
         "setup_hmc_update was given `n_dims = $(size(sampler.metric, 1))` but the model has " *
             "$d parameters; pass the matching `n_dims`."
     )
-    # Pre-allocate one private-scratch metric per chain when the metric needs it (a dense
-    # metric's `_temp` would otherwise race across the threaded loop). Allocated once here and
-    # refreshed in place each step — never rebuilt inside the trajectory loop. Diagonal/unit
-    # metrics are safe to share, so they get no copies (an empty vector).
-    chain_metrics = needs_private_scratch(sampler.metric) ?
-        AbstractMetric[deepcopy(sampler.metric) for _ in 1:n_chains] : AbstractMetric[]
+    # Only a dense metric needs distinct per-chain copies (its `_temp` races); others share a slot.
+    metric = deepcopy(sampler.metric)
+    chain_metrics = needs_private_scratch(metric) ?
+        [deepcopy(metric) for _ in 1:n_chains] :
+        Vector{typeof(metric)}(undef, n_chains)
     return HMCAdaptiveState{Float64}(
-        deepcopy(sampler.metric), sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics
+        metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
+        false, chain_metrics, Int[], Int[]
     )
 end
 
@@ -168,25 +173,20 @@ evolving, so this snapshot only matters post-warmup, when it is the frozen resul
 sampling `step` reads.
 """
 function DEM.fix_sampler(sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState)
-    # `astate.chain_metrics` is carried by reference (the same pre-allocated vector), so the
-    # frozen sampler the post-warmup `step` reads reuses it with no per-step allocation.
     return DifferentialEvolutionHMCSampler(
         sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor,
-        astate.chain_metrics
+        astate.chain_metrics, astate.cold, astate.hot
     )
 end
 
 # -----------------------------------------------------------------------------
-# Step-size refinement and metric refresh (operate on the pieces, never the wrapper)
+# Step-size refinement and metric refresh
 # -----------------------------------------------------------------------------
 
-# Representative point for `find_good_stepsize`. The mean is adequate for a unimodal
-# ensemble; a multimodal ensemble would want a more robust choice (e.g. a per-coordinate
-# median), as the mean can fall in a low-density valley between modes.
+# Representative point for `find_good_stepsize` (the ensemble mean; weak for a multimodal ensemble).
 ensemble_mean(x) = sum(x) ./ length(x)
 
-# Refresh the metric (M⁻¹) and the kernel's step size from the current adaptor state,
-# after each warmup adaptation.
+# Refresh the metric (M⁻¹) and step size from the current adaptor state.
 function refresh_pieces_from_adaptor!(astate::HMCAdaptiveState, ℓ)
     astate.metric = AdvancedHMC.update(Hamiltonian(astate.metric, ℓ), astate.adaptor).metric
     astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
@@ -194,9 +194,7 @@ function refresh_pieces_from_adaptor!(astate::HMCAdaptiveState, ℓ)
     return nothing
 end
 
-# First-step lazy work: replace the placeholder step size with `find_good_stepsize`
-# evaluated at the ensemble, re-anchor the configured step-size adaptor on it, push it into
-# the integrator/κ, and lay out the adaptor's windowed schedule.
+# First-step lazy work: find a good step size at the ensemble and lay out the windowed schedule.
 function refine_step_size!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, astate::HMCAdaptiveState, state;
         n_adapts::Int
@@ -204,17 +202,13 @@ function refine_step_size!(
     ℓ = model_wrapper.logdensity
     h = Hamiltonian(astate.metric, ℓ)
     ϵ = find_good_stepsize(rng, h, ensemble_mean(state.x))
-    # Re-anchor the user's step-size adaptor in place rather than rebuilding it, so its type
-    # and dual-averaging settings are preserved: set its step size and `reset!`, which
-    # recomputes the dual-averaging target μ from the new ϵ.
+    # Re-anchor the configured step-size adaptor in place, preserving its type/settings.
     ssa = astate.adaptor.ssa
     ssa.state.ϵ = ϵ
     AHMCAdapt.reset!(ssa)
     astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
     astate.integrator = astate.κ.τ.integrator
-    # `n_adapts` only lays out the windowed mass-matrix schedule; the cursor advances per
-    # `pooled_adapt!` call (once per HMC step), so it is in HMC-step units. The total warmup
-    # length is a safe upper bound — we may walk only a prefix of it.
+    # The cursor advances per HMC step, so `n_adapts` is an upper bound in HMC-step units.
     AHMCAdapt.initialize!(astate.adaptor, n_adapts)
     astate.initialized = true
     return nothing
@@ -222,40 +216,27 @@ end
 
 # -----------------------------------------------------------------------------
 # The trajectory loop (shared by warmup and sampling)
-#
-# For each chain: build a Hamiltonian from the shared metric, draw a fresh phase point at
-# the chain's current position (full momentum refresh), take one HMC transition, and read
-# the accepted position / log-density / acceptance-rate back. HMC does its own Metropolis
-# accept/reject inside `transition`, so we write the accepted result straight into
-# `xₚ`/`ldₚ` (proposal-and-accept in one) — NO outer DEM MH correction, which would
-# double-count.
 # -----------------------------------------------------------------------------
 
-# Most metrics are safe to share read-only across the threaded loop: their `M⁻¹`/`sqrtM⁻¹`/
-# `cholM⁻¹` are only read. `DenseEuclideanMetric` is the exception — `neg_energy` writes its
-# `_temp` scratch buffer on every leapfrog step (AdvancedHMC `hamiltonian.jl`), so one dense
-# metric shared across threads races on `_temp`. `needs_private_scratch` flags that case; such
-# metrics get one pre-allocated copy per chain (`HMCAdaptiveState.chain_metrics`).
+# Only `DenseEuclideanMetric` writes scratch (`_temp`) per leapfrog step, so a shared dense metric
+# races across threads and gets per-chain copies; diagonal/unit metrics only read and are shared.
 needs_private_scratch(::AbstractMetric) = false
 needs_private_scratch(::AdvancedHMC.DenseEuclideanMetric) = true
 
-# Refresh the pre-allocated per-chain scratch metrics from the current shared metric, in place
-# (no allocation). Only the read-only `M⁻¹`/`cholM⁻¹` are copied — identical across chains and
-# fixed for the duration of a step; each scratch keeps its own `_temp`, which is the only field
-# written (and hence raced on) during a trajectory.
-function sync_scratch_metrics!(scratch, metric::AdvancedHMC.DenseEuclideanMetric)
-    for m in scratch
+# Point each chain's slot at the metric for this step: the shared object (read-only) or, for a dense
+# metric, a per-chain copy refreshed in place (its own `_temp` left alone).
+prepare_chain_metrics!(chain_metrics, metric::AbstractMetric) = (fill!(chain_metrics, metric); nothing)
+function prepare_chain_metrics!(chain_metrics, metric::AdvancedHMC.DenseEuclideanMetric)
+    for m in chain_metrics
         m.M⁻¹ .= metric.M⁻¹
         m.cholM⁻¹.data .= metric.cholM⁻¹.data
     end
     return nothing
 end
 
+# One HMC transition: full momentum refresh, then write the accepted state straight into `xₚ`/`ldₚ`
+# (HMC does its own accept/reject, so there is no outer DEM MH correction).
 function run_trajectory!(state, metric, κ, i::Int, model)
-    # `metric` is this chain's metric: the one metric shared read-only across chains (safe for
-    # the diagonal/unit metrics, whose fields are only read), or — for a dense metric, whose
-    # `_temp` scratch would otherwise race — a per-chain copy with private scratch prepared by
-    # `run_trajectories!`. Either way `M⁻¹` is only read here.
     h = Hamiltonian(metric, model)
     z = phasepoint(state.rngs[i], state.x[i], h)
     t = transition(state.rngs[i], h, κ, z)
@@ -264,39 +245,41 @@ function run_trajectory!(state, metric, κ, i::Int, model)
     return Float64(t.stat.acceptance_rate)
 end
 
+# Chains HMC advances (cold) vs carries over (hot). Running the untempered kernel on hot chains would
+# move them by the cold posterior; they mix through the tempered DE updates instead. Resolved once,
+# as concrete `Vector{Int}`s for type stability; `hot` is empty without tempering.
+cold_chain_indices(state) = cold_chain_indices(state.temperature_ladder, state)
+cold_chain_indices(::DEM.DifferentialEvolutionNullTemperatureLadder, state) = collect(eachindex(state.x))
+cold_chain_indices(ladder::DEM.AbstractDifferentialEvolutionTemperatureLadder, state) = copy(ladder.cold_chains)
+hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
+
 function run_trajectories!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, state,
         metric::AbstractMetric, κ::AbstractMCMCKernel,
-        chain_metrics::Vector{AbstractMetric}, parallel::Bool
+        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, parallel::Bool
     )
-    # Derive per-chain RNGs from the master rng so `step` depends only on `rng` and `state`,
-    # mirroring the DE updates and keeping each thread on its own RNG.
-    for i in eachindex(state.rngs)
+    # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
+    for i in cold
         Random.seed!(state.rngs[i], rand(rng, UInt))
     end
-    n = length(state.x)
-    α = Vector{Float64}(undef, n)
+    # Carry hot chains over unchanged so the `xₚ ↔ x` swap preserves them (empty without tempering).
+    for i in hot
+        state.xₚ[i] .= state.x[i]
+        state.ldₚ[i] = state.ld[i]
+    end
+    prepare_chain_metrics!(chain_metrics, metric)
+    ncold = length(cold)
+    α = Vector{Float64}(undef, ncold)
     if parallel
-        # Per-worker model copies (`state.chain_models[i]`) make concurrent gradient evaluation
-        # safe, and κ is read-only inside the region. The metric is shared read-only when that
-        # is safe; a dense metric instead uses the pre-allocated per-chain copies, whose
-        # read-only data is refreshed in place here (no allocation in the loop).
-        if isempty(chain_metrics)
-            Threads.@threads for i in 1:n
-                α[i] = run_trajectory!(state, metric, κ, i, state.chain_models[i])
-            end
-        else
-            sync_scratch_metrics!(chain_metrics, metric)
-            Threads.@threads for i in 1:n
-                α[i] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
-            end
+        Threads.@threads for k in 1:ncold
+            i = cold[k]
+            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
         end
     else
-        # Serial path intentionally shares one `ℓ` across chains (no thread hazard),
-        # mirroring the base DE samplers' serial branch.
         ℓ = model_wrapper.logdensity
-        for i in 1:n
-            α[i] = run_trajectory!(state, metric, κ, i, ℓ)
+        for k in 1:ncold
+            i = cold[k]
+            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, ℓ)
         end
     end
     return α
@@ -318,16 +301,12 @@ update from the mean acceptance rate, and `N` position pushes into the mass-matr
 estimator (which stays `D`-dimensional). The window cursor ticks once per HMC step, so
 `n_adapts` counts HMC steps.
 """
-# Mean acceptance rate across the chain population — the single statistic both step-size
-# adaptation paths (stock `pooled_adapt!` and Stage 2's `step_size_only_adapt!`) drive ϵ from.
 pooled_acceptance(α) = sum(α) / length(α)
 
 function pooled_adapt!(adaptor::StanHMCAdaptor, Xₚ, α)
     adaptor.state.i += 1
     mα = pooled_acceptance(α)
-    # Step size: a single Nesterov dual-averaging update from the pooled acceptance.
     AHMCAdapt.adapt!(adaptor.ssa, Xₚ[1], mα)
-    # Mass matrix: ingest every chain's position, but only commit M⁻¹ at window end.
     if AHMCAdapt.is_in_window(adaptor)
         is_update = AHMCAdapt.is_window_end(adaptor)
         n = length(Xₚ)
@@ -346,26 +325,21 @@ function adapt_metric!(
         ::DifferentialEvolutionStockAdaptorMetric, model_wrapper::LogDensityModel, state,
         astate::HMCAdaptiveState, α
     )
-    pooled_adapt!(astate.adaptor, state.xₚ, α)
+    pooled_adapt!(astate.adaptor, state.xₚ_smpl_view, α)
     refresh_pieces_from_adaptor!(astate, model_wrapper.logdensity)
     return nothing
 end
 
 # -----------------------------------------------------------------------------
-# Population/memory covariance metric (Stage 2)
-#
-# Estimate the mass matrix directly from the sampler's own population instead of from
-# AdvancedHMC's windowed Welford estimator. With memory enabled the informative set is the
-# memory archive (1000s of within-mode draws → a well-conditioned covariance immediately);
-# otherwise it is the live chain positions. The step size keeps coming from dual averaging.
+# Memory covariance metric (Stage 2)
 # -----------------------------------------------------------------------------
 
 """
-    DifferentialEvolutionPopulationMetric{T}
+    DifferentialEvolutionMemoryMetric{T}
 
-Metric strategy that rebuilds `astate.metric` from the population/memory covariance each
-warmup step (on a schedule). See [`population_metric`](@ref) for the user-facing constructor
-and the documented keyword arguments.
+Metric strategy that rebuilds `astate.metric` from the memory-archive covariance each warmup
+step (on a schedule). See [`memory_metric`](@ref) for the user-facing constructor and the
+documented keyword arguments.
 
 The estimate's *shape* follows the target metric, so the same strategy serves both kinds: a
 `DiagEuclideanMetric` gets per-coordinate variances (`diag Σ`), a `DenseEuclideanMetric` gets
@@ -373,25 +347,22 @@ the full covariance `Σ` (off-diagonals and all). Dense is safe on the threaded 
 because `run_trajectories!` hands each chain a private-scratch copy of the metric (a shared
 `DenseEuclideanMetric` would race on its `_temp` buffer); see `needs_private_scratch`.
 """
-struct DifferentialEvolutionPopulationMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
+struct DifferentialEvolutionMemoryMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
     shrinkage::T
     every::Int
 end
 
-function DEM.population_metric(; shrinkage::Real = 0.0, every::Integer = 100)
+function DEM.memory_metric(; shrinkage::Real = 0.0, every::Integer = 100)
     0 ≤ shrinkage ≤ 1 ||
-        error("population_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
-    every ≥ 1 || error("population_metric: `every` must be ≥ 1, got $every.")
-    return DifferentialEvolutionPopulationMetric(float(shrinkage), Int(every))
+        error("memory_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
+    every ≥ 1 || error("memory_metric: `every` must be ≥ 1, got $every.")
+    return DifferentialEvolutionMemoryMetric(float(shrinkage), Int(every))
 end
 
-# Accept the two Euclidean metrics this strategy can populate (diagonal variances or a full
-# covariance) and reject anything else at setup time — e.g. a `UnitEuclideanMetric`, which has
-# no estimable mass matrix. Dense is allowed because the threaded loop gives each chain private
-# scratch (`needs_private_scratch`), so the shared-`_temp` race is already handled.
-function validate_metric_strategy(::DifferentialEvolutionPopulationMetric, metric::AbstractMetric)
+# Accept the metrics with an estimable covariance (diagonal/dense), reject anything else (e.g. unit).
+function validate_metric_strategy(::DifferentialEvolutionMemoryMetric, metric::AbstractMetric)
     (metric isa AdvancedHMC.DiagEuclideanMetric || metric isa AdvancedHMC.DenseEuclideanMetric) || error(
-        "population_metric estimates a diagonal or dense covariance, so it requires a " *
+        "memory_metric estimates a diagonal or dense covariance, so it requires a " *
             "`DiagEuclideanMetric` or `DenseEuclideanMetric`, but the HMC update was set up with a " *
             "`$(nameof(typeof(metric)))`. Use a diagonal (the `NUTS`/`HMC`/`HMCDA` default) or " *
             "dense metric (`NUTS(0.8; metric = :dense)`)."
@@ -399,31 +370,39 @@ function validate_metric_strategy(::DifferentialEvolutionPopulationMetric, metri
     return nothing
 end
 
-# The informative set of positions for the covariance estimate. This is the single place
-# that prefers the memory archive when memory is enabled and falls back to the live positions
-# otherwise, mirroring the source/count that `pick_chains` reads. The archive is one step
-# stale here (the current step's positions are written into memory later, in `update_state`),
-# which is immaterial against 1000s of stored draws.
-informative_positions(state) = informative_positions(state.memory, state)
-# Without memory, `state.xₚ` holds the freshly accepted positions at adapt time (one set per
-# chain, typically only a handful — the estimate is correspondingly noisy, so shrink hard).
-informative_positions(::DEM.DifferentialEvolutionMemoryless, state) = state.xₚ
-informative_positions(mem::DEM.DifferentialEvolutionMemoryRefill, state) = mem.mem_x
-function informative_positions(mem::DEM.DifferentialEvolutionMemoryFill, state)
-    # Only the filled prefix is meaningful; the tail is preallocated, uninitialised storage.
-    return view(mem.mem_x, 1:mem.fill.position)
+# Reject configs only knowable from the state; called once on the first warmup step.
+validate_metric_state(::AbstractDifferentialEvolutionMetricStrategy, state) = nothing
+function validate_metric_state(::DifferentialEvolutionMemoryMetric, state)
+    state.memory isa DEM.DifferentialEvolutionMemoryless && error(
+        "memory_metric estimates the HMC mass matrix from the memory archive, but this scheme " *
+            "runs memoryless. Enable memory, or use the default stock-adaptor metric."
+    )
+    has_hot_chains(state.temperature_ladder, state) && error(
+        "memory_metric is incompatible with parallel tempering: the memory archive interleaves " *
+            "hot-chain positions, so the estimated covariance would mix temperatures. Use the " *
+            "default stock-adaptor metric with parallel tempering. (Pure annealing — every chain " *
+            "cooling to the cold target — is supported; annealing alongside persistent hot chains " *
+            "is still parallel tempering and is not.)"
+    )
+    return nothing
 end
 
-# Floor each variance at this fraction of the mean variance. This bounds the metric's
-# condition number (and so guards the integrator) without distorting already well-scaled
-# coordinates, for which the floor never binds. Distinct from the configurable `shrinkage`,
-# which is an optional extra pull toward the mean variance.
+# Any chain that does not finish cold ⇒ parallel tempering (including annealing into hot chains).
+has_hot_chains(::DEM.DifferentialEvolutionNullTemperatureLadder, state) = false
+has_hot_chains(ladder::DEM.AbstractDifferentialEvolutionTemperatureLadder, state) =
+    length(ladder.cold_chains) < length(state.x)
+
+# Positions for the covariance estimate: the memory archive (validated present and untempered).
+informative_positions(state) = informative_positions(state.memory, state)
+informative_positions(mem::DEM.DifferentialEvolutionMemoryRefill, state) = mem.mem_x
+function informative_positions(mem::DEM.DifferentialEvolutionMemoryFill, state)
+    return view(mem.mem_x, 1:mem.fill.position)   # only the filled prefix is initialised
+end
+
+# Floor each variance at this fraction of the mean variance, bounding the condition number.
 const VARIANCE_FLOOR_FRACTION = 1.0e-6
 
-# Per-coordinate variances of a set of position vectors, returned as the diagonal inverse
-# metric M⁻¹ = diag(Σ). Two passes (mean, then squared deviations) over the vector-of-vectors
-# representation; no `D×n` matrix is materialised. Shrinkage blends toward the mean variance
-# and a floor keeps every entry strictly positive so the metric stays positive-definite.
+# Per-coordinate variances diag(Σ), with shrinkage toward the mean variance and a positivity floor.
 function diagonal_inverse_metric(positions, shrinkage::Real)
     T = eltype(first(positions))
     D = length(first(positions))
@@ -450,12 +429,7 @@ function diagonal_inverse_metric(positions, shrinkage::Real)
     return v
 end
 
-# Full covariance of a set of position vectors, returned as the dense inverse metric M⁻¹ = Σ
-# (off-diagonals carry the correlations a diagonal metric throws away). The sample covariance
-# is positive-semidefinite but can be singular (e.g. fewer samples than dimensions); shrinkage
-# pulls it toward the isotropic target `v̄·I` and a small ridge is always added, so the result
-# is strictly positive-definite (and well-conditioned) — `renew` can take its Cholesky factor.
-# Runs once per recompute (between trajectory loops), never inside the threaded hot loop.
+# Full covariance Σ, with shrinkage toward isotropy and a ridge that keeps it positive-definite.
 function dense_inverse_metric(positions, shrinkage::Real)
     T = eltype(first(positions))
     D = length(first(positions))
@@ -483,34 +457,25 @@ function dense_inverse_metric(positions, shrinkage::Real)
     v̄ /= D
     λ = T(shrinkage)
     if λ > 0
-        # Shrink toward the isotropic target v̄·I: scale the whole matrix and lift the diagonal.
         @. Σ *= (1 - λ)
         @inbounds for i in 1:D
             Σ[i, i] += λ * v̄
         end
     end
-    # Ridge guarantees positive-definiteness even at λ = 0 (raw Σ may be singular); negligible
-    # against well-scaled directions, mirroring the diagonal metric's variance floor.
-    ridge = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)
+    ridge = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)   # keeps Σ PD even at λ = 0
     @inbounds for i in 1:D
         Σ[i, i] += ridge
     end
     return Σ
 end
 
-# The population covariance, shaped to match the target metric: a diagonal metric wants the
-# per-coordinate variances, a dense metric the full covariance. Dispatching on the metric type
-# means the strategy needs no separate "dense" flag — the metric the update was built with
-# (`:diagonal` vs `:dense`) already says which to produce.
-population_inverse_metric(::AdvancedHMC.DiagEuclideanMetric, positions, shrinkage::Real) =
+# Shape the estimate to the metric: diagonal variances or full covariance.
+memory_inverse_metric(::AdvancedHMC.DiagEuclideanMetric, positions, shrinkage::Real) =
     diagonal_inverse_metric(positions, shrinkage)
-population_inverse_metric(::AdvancedHMC.DenseEuclideanMetric, positions, shrinkage::Real) =
+memory_inverse_metric(::AdvancedHMC.DenseEuclideanMetric, positions, shrinkage::Real) =
     dense_inverse_metric(positions, shrinkage)
 
-# Advance only the dual-averaging step size from the pooled acceptance rate. This reproduces
-# the ε half of `pooled_adapt!` (window cursor + per-window dual-averaging reset) but skips the
-# mass-matrix pushes into `adaptor.pc`, because Stage 2 estimates Σ from the population. The
-# step size still flows out through `update(κ, adaptor)`, which reads only `getϵ(ssa)`.
+# Advance only the dual-averaging step size (the strategy sets the mass matrix itself).
 function step_size_only_adapt!(adaptor::StanHMCAdaptor, α)
     adaptor.state.i += 1
     AHMCAdapt.adapt_stepsize!(adaptor.ssa, pooled_acceptance(α))
@@ -520,26 +485,19 @@ function step_size_only_adapt!(adaptor::StanHMCAdaptor, α)
     return nothing
 end
 
-# Recompute the covariance on the first warmup step (`i == 1`, where the archive already holds
-# the initial positions) and every `ms.every` steps thereafter. Computing on the first step
-# guarantees the population metric is installed at least once even when `every` exceeds the
-# warmup budget — otherwise the run would silently keep the placeholder identity metric.
+# Recompute on the first warmup step (archive already seeded) and every `every` steps thereafter.
 metric_due(astate::HMCAdaptiveState, every::Int) =
     (astate.adaptor.state.i == 1) || (mod(astate.adaptor.state.i, every) == 0)
 
 function adapt_metric!(
-        ms::DifferentialEvolutionPopulationMetric, model_wrapper::LogDensityModel, state,
+        ms::DifferentialEvolutionMemoryMetric, model_wrapper::LogDensityModel, state,
         astate::HMCAdaptiveState, α
     )
-    # Step size: dual averaging from the pooled acceptance, no mass-matrix pushes. (The metric
-    # type was already validated against this strategy in `setup_hmc_update`.)
     step_size_only_adapt!(astate.adaptor, α)
     astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
     astate.integrator = astate.κ.τ.integrator
-    # Metric: rebuilt from the population/memory covariance on schedule, shaped (diagonal or
-    # dense) to match the metric the update was built with.
     if metric_due(astate, ms.every)
-        M⁻¹ = population_inverse_metric(astate.metric, informative_positions(state), ms.shrinkage)
+        M⁻¹ = memory_inverse_metric(astate.metric, informative_positions(state), ms.shrinkage)
         astate.metric = AdvancedHMC.renew(astate.metric, M⁻¹)
     end
     return nothing
@@ -549,9 +507,6 @@ end
 # Dispatch into the DEM stepping interface
 # -----------------------------------------------------------------------------
 
-# Warmup: threaded trajectory loop off the live `HMCAdaptiveState`, then adapt it. Reached
-# both for direct use and for the composite warmup path (where the sampler is a frozen
-# snapshot but the live pieces still come from the state).
 function step_warmup(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
@@ -560,36 +515,34 @@ function step_warmup(
     ) where {T <: Real}
     astate = state.adaptive_state
     if !astate.initialized
+        validate_metric_state(sampler.metric_strategy, state)
+        astate.cold = cold_chain_indices(state)
+        astate.hot = hot_chain_indices(state, astate.cold)
         refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
     end
     α = run_trajectories!(
-        rng, model_wrapper, state, astate.metric, astate.κ, astate.chain_metrics, parallel
+        rng, model_wrapper, state, astate.metric, astate.κ, astate.chain_metrics,
+        astate.cold, astate.hot, parallel
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
     return DEM.create_sample(state),
         DEM.update_state(
-            state; x = state.xₚ, ld = state.ldₚ, xₚ = state.x, ldₚ = state.ld,
+            state; swap_positions = Val(true),
             adaptive_state = astate, update_memory = update_memory
         )
 end
 
-# Post-warmup (frozen): threaded trajectory loop, no adaptation, reading the frozen
-# metric/κ off the sampler. The state's adaptive field is the static one here, because the
-# generic `fix_sampler_state`/composite machinery has already fixed the sampler and
-# collapsed the state — mirroring how the DE subspace sampler reaches this same point.
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
     run_trajectories!(
-        rng, model_wrapper, state, sampler.metric, sampler.κ, sampler.chain_metrics, parallel
+        rng, model_wrapper, state, sampler.metric, sampler.κ, sampler.chain_metrics,
+        sampler.cold, sampler.hot, parallel
     )
     return DEM.create_sample(state),
-        DEM.update_state(
-            state; x = state.xₚ, ld = state.ldₚ, xₚ = state.x, ldₚ = state.ld,
-            update_memory = update_memory
-        )
+        DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end
 
 end

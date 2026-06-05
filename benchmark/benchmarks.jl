@@ -56,7 +56,6 @@ __,
     n_chains = n_chains, n_hot_chains = 10, annealing_steps = 5
 )
 
-#HMC update: needs a gradient, so wrap the same density with ForwardDiff
 hmc_model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, IsotropicNormalModel(zeros(5))))
 hmc_update = setup_hmc_update(NUTS(0.8); n_dims = 5)
 __,
@@ -69,31 +68,19 @@ __,
     rng, hmc_model, hmc_update; memory = true,
     initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
 )
-
-#HMC with the population/memory covariance metric: same kernel, but the mass matrix is
-#estimated from the sampler's own population instead of AdvancedHMC's windowed adaptor.
-#The metric is frozen after warm-up, so the post-warmup `step` cost matches `hmc_update`;
-#the extra work (a covariance pass over the population) lives in `step_warmup` below.
-hmc_population_update = setup_hmc_update(NUTS(0.8); n_dims = 5, metric_strategy = population_metric())
+hmc_memory_update = setup_hmc_update(NUTS(0.8); n_dims = 5, metric_strategy = memory_metric())
 __,
-    hmc_population_initial_state = AbstractMCMC.step(
-    rng, hmc_model, hmc_population_update; memory = false,
-    initial_position = initial_position, n_chains = n_chains
-)
-__,
-    hmc_population_initial_state_memory = AbstractMCMC.step(
-    rng, hmc_model, hmc_population_update; memory = true,
+    hmc_memory_initial_state_memory = AbstractMCMC.step(
+    rng, hmc_model, hmc_memory_update; memory = true,
     initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
 )
 
-#Dense population metric: estimates the full D×D covariance (correlations) from the archive,
-#the costliest warm-up path (the covariance pass is O(n·D²)).
-hmc_dense_population_update = setup_hmc_update(
-    NUTS(0.8; metric = :dense); n_dims = 5, metric_strategy = population_metric()
+hmc_dense_memory_update = setup_hmc_update(
+    NUTS(0.8; metric = :dense); n_dims = 5, metric_strategy = memory_metric()
 )
 __,
-    hmc_dense_population_initial_state_memory = AbstractMCMC.step(
-    rng, hmc_model, hmc_dense_population_update; memory = true,
+    hmc_dense_memory_initial_state_memory = AbstractMCMC.step(
+    rng, hmc_model, hmc_dense_memory_update; memory = true,
     initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
 )
 
@@ -108,10 +95,6 @@ SUITE["MemoryLess"]["hmc_update"] = @benchmarkable(
     AbstractMCMC.step(rng, $hmc_model, $hmc_update, state),
     setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
 )
-SUITE["MemoryLess"]["hmc_population_update"] = @benchmarkable(
-    AbstractMCMC.step(rng, $hmc_model, $hmc_population_update, state),
-    setup = (rng = copy($rng); state = deepcopy($hmc_population_initial_state))
-)
 
 SUITE["Memory"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
@@ -124,9 +107,9 @@ SUITE["Memory"]["hmc_update"] = @benchmarkable(
     AbstractMCMC.step(rng, $hmc_model, $hmc_update, state),
     setup = (rng = copy($rng); state = deepcopy($hmc_initial_state_memory))
 )
-SUITE["Memory"]["hmc_population_update"] = @benchmarkable(
-    AbstractMCMC.step(rng, $hmc_model, $hmc_population_update, state),
-    setup = (rng = copy($rng); state = deepcopy($hmc_population_initial_state_memory))
+SUITE["Memory"]["hmc_memory_update"] = @benchmarkable(
+    AbstractMCMC.step(rng, $hmc_model, $hmc_memory_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_memory_initial_state_memory))
 )
 
 SUITE["Adaptive"] = BenchmarkGroup(["string"])
@@ -140,15 +123,15 @@ SUITE["Adaptive"]["hmc_update"] = @benchmarkable(
     AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_update, state),
     setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
 )
-# The population strategy's extra warm-up cost is the covariance pass over the memory archive,
+# The memory strategy's extra warm-up cost is the covariance pass over the memory archive,
 # so benchmark its adaptive step against the memory-backed state — diagonal and dense variants.
-SUITE["Adaptive"]["hmc_population_update"] = @benchmarkable(
-    AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_population_update, state),
-    setup = (rng = copy($rng); state = deepcopy($hmc_population_initial_state_memory))
+SUITE["Adaptive"]["hmc_memory_update"] = @benchmarkable(
+    AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_memory_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_memory_initial_state_memory))
 )
-SUITE["Adaptive"]["hmc_dense_population_update"] = @benchmarkable(
-    AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_dense_population_update, state),
-    setup = (rng = copy($rng); state = deepcopy($hmc_dense_population_initial_state_memory))
+SUITE["Adaptive"]["hmc_dense_memory_update"] = @benchmarkable(
+    AbstractMCMC.step_warmup(rng, $hmc_model, $hmc_dense_memory_update, state),
+    setup = (rng = copy($rng); state = deepcopy($hmc_dense_memory_initial_state_memory))
 )
 
 SUITE["pt"] = BenchmarkGroup(["string"])
