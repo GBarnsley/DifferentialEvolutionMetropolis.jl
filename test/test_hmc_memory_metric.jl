@@ -63,6 +63,32 @@ using LinearAlgebra: diag, Diagonal
         @test 0 < a.integrator.ϵ < 10
     end
 
+    @testset "the metric keeps tracking the archive during sampling" begin
+        # The metric is NOT frozen at the warmup→sampling boundary: it keeps recomputing from the
+        # growing memory archive during sampling, on the same `every` cadence.
+        rng = backwards_compat_rng(77)
+        scheme = setup_sampler_scheme(mem_update(; every = 1))
+        _, state = AbstractMCMC.step(
+            rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true, silent = true
+        )
+        for _ in 1:50
+            _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50)
+        end
+        a = hmc_adaptive_state(state)
+        steps_after_warmup = a.metric_steps
+        metric_after_warmup = copy(a.metric.M⁻¹)
+
+        for _ in 1:60
+            _, state = AbstractMCMC.step(rng, model, scheme, state)
+        end
+        a = hmc_adaptive_state(state)
+        # The cadence counter advanced through the sampling steps (a frozen metric would not move)
+        @test a.metric_steps == steps_after_warmup + 60
+        # and the live metric was recomputed, still tracking the marginal variances.
+        @test a.metric.M⁻¹ != metric_after_warmup
+        @test isapprox(a.metric.M⁻¹, diag(Σ); atol = 0.3)
+    end
+
     @testset "running memoryless is rejected on the first warmup step" begin
         # memory_metric reads the memory archive, so a memoryless scheme has nothing to estimate
         # from. The check fires once, on the first warmup step, after a clean init.
