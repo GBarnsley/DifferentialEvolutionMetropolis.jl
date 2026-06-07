@@ -15,6 +15,11 @@ end
 """
     memory_metric(; shrinkage = 0.0, every = 100)
 
+!!! warning "Experimental"
+    Archive-based metric strategies ([`memory_metric`](@ref), [`cluster_pooled_metric`](@ref),
+    [`per_cluster_metric`](@ref)) are experimental; their behaviour and interface may change in
+    future releases.
+
 Metric strategy for [`setup_hmc_update`](@ref) that estimates the HMC mass matrix from the
 sampler's memory archive rather than from AdvancedHMC's windowed adaptor. The estimate is a
 batch covariance over the history of sample positions, recomputed wholesale every `every`
@@ -54,6 +59,11 @@ end
 """
     cluster_pooled_metric(; shrinkage = 0.0, every = 100, kmax = 10)
 
+!!! warning "Experimental"
+    Archive-based metric strategies ([`memory_metric`](@ref), [`cluster_pooled_metric`](@ref),
+    [`per_cluster_metric`](@ref)) are experimental; their behaviour and interface may change in
+    future releases.
+
 Metric strategy for [`setup_hmc_update`](@ref) that estimates the HMC mass matrix from the
 *within-cluster-pooled* covariance of the memory archive. It is a multimodal-robust
 refinement of [`memory_metric`](@ref): the archive is clustered, each point is centred on
@@ -91,4 +101,49 @@ The estimate matches the metric the update was built with (diagonal or dense), a
 """
 function cluster_pooled_metric(args...; kwargs...)
     return error("`cluster_pooled_metric` requires AdvancedHMC.jl; run `using AdvancedHMC`.")
+end
+
+"""
+    per_cluster_metric(; shrinkage = 0.0, every = 100, kmax = 10)
+
+!!! warning "Experimental"
+    Archive-based metric strategies ([`memory_metric`](@ref), [`cluster_pooled_metric`](@ref),
+    [`per_cluster_metric`](@ref)) are experimental; their behaviour and interface may change in
+    future releases.
+
+Metric strategy for [`setup_hmc_update`](@ref) that gives each posterior **mode its own** HMC
+mass matrix. It is the heteroscedastic refinement of [`cluster_pooled_metric`](@ref): where the
+pooled strategy clusters the memory archive and collapses the per-cluster covariances into one
+shared metric (correct only when the modes share a shape), this one keeps the cluster covariances
+**separate** — one metric per cluster — and routes each chain to its current mode's metric. It is
+the right choice for **separated** modes of genuinely different shape, which a single pooled metric
+cannot fit at once.
+
+Pass it through `setup_hmc_update`:
+
+```julia
+setup_hmc_update(NUTS(0.8); n_dims = d, metric_strategy = per_cluster_metric())
+```
+
+The K cluster metrics (and their centres) are recomputed only on the recompute cadence (every
+`every` steps), but each chain is **relabelled to its nearest mode's metric before every HMC
+step**, off its current position — so a chain that crosses into another mode immediately runs under
+that mode's shape. For **separated** modes the nearest centre is constant throughout each basin, so
+the per-mode metric is the optimal preconditioner and the choice does not depend on the step's own
+trajectory; for **close** modes whose trajectories can bridge clusters, choosing the metric from
+the step's own starting position introduces a small boundary bias in exchange for always matching
+the chain's current mode. Reparameterising the modes to a common shape (so
+[`cluster_pooled_metric`](@ref) suffices) is preferable when it is available.
+
+It carries the same requirements as [`memory_metric`](@ref) (`memory = true`, no parallel
+tempering; pure annealing is fine), checked on the first warmup step. The adjustment is gated like
+[`cluster_pooled_metric`](@ref): when the archive looks unimodal it reduces to one cluster and the
+metric is exactly [`memory_metric`](@ref)'s.
+
+Keyword arguments `shrinkage`, `every`, and `kmax` behave exactly as in
+[`cluster_pooled_metric`](@ref). The estimate matches the metric the update was built with
+(diagonal or dense). Requires `AdvancedHMC.jl` to be loaded.
+"""
+function per_cluster_metric(args...; kwargs...)
+    return error("`per_cluster_metric` requires AdvancedHMC.jl; run `using AdvancedHMC`.")
 end

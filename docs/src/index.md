@@ -57,6 +57,7 @@ setup_subspace_sampling
 setup_hmc_update
 memory_metric
 cluster_pooled_metric
+per_cluster_metric
 ```
 
 ### Core Sampling Functions

@@ -55,13 +55,13 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         )
     end
 
-    @testset "sampling_pieces resolves on an unwarmed (astate === nothing) sampler" begin
-        # The fixed sampler carries the live adaptive state; before warmup it is `nothing`, and
-        # the `Nothing` method must out-specialise the general one (it reads `astate.metric`).
+    @testset "prepare_sampling_metrics! resolves on an unwarmed (astate === nothing) sampler" begin
+        # The fixed sampler carries the live adaptive state; before warmup it is `nothing`, and the
+        # `Nothing` method must out-specialise the general one (it would read `astate.chain_metrics`).
         s = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
         @test s.astate === nothing
-        m, cm = HMCExt.sampling_pieces(s)
-        @test m === s.metric
+        κ, cm = HMCExt.prepare_sampling_metrics!(s, s.astate, nothing)
+        @test κ === s.κ
         @test cm === s.chain_metrics
     end
 

@@ -85,21 +85,26 @@ mutable struct HMCAdaptiveState{
     chain_metrics::Vector{M}
     cold::Vector{Int}
     hot::Vector{Int}
-    # Previous cluster centres (D×K), warm-starting the cluster-pooled strategy; D×0 otherwise.
+    # Previous cluster centres (D×K), warm-starting the clustering strategies; D×0 otherwise.
     prev_centers::Matrix{T}
     # HMC steps taken (warmup and sampling), driving the metric-recompute cadence.
     metric_steps::Int
+    # Per-cluster metrics (length K ≥ 1) for the per-cluster strategy; empty until first recompute.
+    cluster_metrics::Vector{M}
+    # Centres (D×K) aligned with `cluster_metrics`, for relabelling chains to their nearest mode
+    # before every HMC step; D×0 until the first recompute.
+    cluster_centers::Matrix{T}
 end
 
 # `T` has no field, so it cannot be inferred; take it explicitly and infer the piece types.
 function HMCAdaptiveState{T}(
         metric::M, integrator::I, κ::K, adaptor::A, initialized::Bool,
         chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Matrix{T},
-        metric_steps::Int
+        metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Matrix{T}
     ) where {T <: Real, M <: AbstractMetric, I <: AbstractIntegrator, K <: AbstractMCMCKernel, A <: AbstractAdaptor}
     return HMCAdaptiveState{T, M, I, K, A}(
         metric, integrator, κ, adaptor, initialized, chain_metrics, cold, hot, prev_centers,
-        metric_steps
+        metric_steps, cluster_metrics, cluster_centers
     )
 end
 
@@ -170,7 +175,8 @@ function DEM.initialize_adaptive_state(
         Vector{typeof(metric)}(undef, n_chains)
     return HMCAdaptiveState{Float64}(
         metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics, Int[], Int[], Matrix{Float64}(undef, d, 0), 0
+        false, chain_metrics, Int[], Int[], Matrix{Float64}(undef, d, 0), 0, typeof(metric)[],
+        Matrix{Float64}(undef, d, 0)
     )
 end
 
@@ -264,8 +270,7 @@ cold_chain_indices(ladder::DEM.AbstractDifferentialEvolutionTemperatureLadder, s
 hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, state,
-        metric::AbstractMetric, κ::AbstractMCMCKernel,
+        rng::AbstractRNG, model_wrapper::LogDensityModel, state, κ::AbstractMCMCKernel,
         chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, parallel::Bool
     )
     # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
@@ -277,7 +282,6 @@ function run_trajectories!(
         state.xₚ[i] .= state.x[i]
         state.ldₚ[i] = state.ld[i]
     end
-    prepare_chain_metrics!(chain_metrics, metric)
     ncold = length(cold)
     α = Vector{Float64}(undef, ncold)
     if parallel
@@ -778,13 +782,21 @@ function within_cluster_inverse_metric(metric, positions, labels, centers, shrin
     return memory_inverse_metric(metric, centered, shrinkage)
 end
 
-function cluster_pooled_inverse_metric(ms::DifferentialEvolutionClusterPooledMetric, astate, positions)
-    multimodal_gate(positions) ||
-        return memory_inverse_metric(astate.metric, positions, ms.shrinkage)
+# Gate and cluster the archive — the scaffold both clustering strategies share. Returns the k-means
+# labels and centres plus whether the archive collapsed to a single cluster (unimodal, or the
+# between-mode variance below threshold). Warm-starts the next k-means from these centres whenever
+# clustering ran, so a transient below-threshold step does not discard the warm start.
+function gated_clustering(ms, astate, positions)
+    multimodal_gate(positions) || return Int[], astate.prev_centers, true
     labels, centers = cluster_archive(positions, ms.kmax, astate.prev_centers)
     astate.prev_centers = centers
-    between_variance_fraction(positions, labels, centers) < BETWEEN_VARIANCE_THRESHOLD &&
-        return memory_inverse_metric(astate.metric, positions, ms.shrinkage)
+    gated = between_variance_fraction(positions, labels, centers) < BETWEEN_VARIANCE_THRESHOLD
+    return labels, centers, gated
+end
+
+function cluster_pooled_inverse_metric(ms::DifferentialEvolutionClusterPooledMetric, astate, positions)
+    labels, centers, gated = gated_clustering(ms, astate, positions)
+    gated && return memory_inverse_metric(astate.metric, positions, ms.shrinkage)
     return within_cluster_inverse_metric(astate.metric, positions, labels, centers, ms.shrinkage)
 end
 
@@ -795,16 +807,141 @@ function refresh_memory_metric!(ms::DifferentialEvolutionClusterPooledMetric, as
 end
 
 # -----------------------------------------------------------------------------
+# Per-cluster metrics (Stage 4)
+# -----------------------------------------------------------------------------
+
+"""
+    DifferentialEvolutionPerClusterMetric{T}
+
+Metric strategy that keeps the cluster covariances **separate** — one metric per mode — and
+routes each chain to its current mode's metric. It is the heteroscedastic refinement of
+[`DifferentialEvolutionClusterPooledMetric`]: where the pooled strategy collapses the K
+within-cluster covariances into one shared metric (correct only when the modes share a shape),
+this one fits each mode its own metric, for separated modes of genuinely different shape. See
+[`per_cluster_metric`](@ref) for the user-facing constructor.
+
+Like the pooled strategy it is gated: when the archive looks unimodal (or the between-mode
+variance is negligible) it reduces to `K = 1`, a single metric identical to
+[`DifferentialEvolutionMemoryMetric`]. The K metrics (and their centres) are recomputed only on
+the recompute cadence, but each chain is **relabelled to its nearest mode's metric before every
+HMC step**, off its current position. For separated modes this label is constant within each
+basin, so the per-mode metric is the optimal preconditioner and the choice is independent of the
+step's own trajectory; for close modes whose trajectories can bridge clusters, picking the metric
+from the step's own starting position introduces a small bias on the boundary in exchange for each
+chain always running under its current mode's shape.
+"""
+struct DifferentialEvolutionPerClusterMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
+    shrinkage::T
+    every::Int
+    kmax::Int
+end
+
+function DEM.per_cluster_metric(; shrinkage::Real = 0.0, every::Integer = 100, kmax::Integer = 10)
+    0 ≤ shrinkage ≤ 1 ||
+        error("per_cluster_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
+    every ≥ 1 || error("per_cluster_metric: `every` must be ≥ 1, got $every.")
+    kmax ≥ 1 || error("per_cluster_metric: `kmax` must be ≥ 1, got $kmax.")
+    return DifferentialEvolutionPerClusterMetric(float(shrinkage), Int(every), Int(kmax))
+end
+
+validate_metric_strategy(::DifferentialEvolutionPerClusterMetric, metric::AbstractMetric) =
+    require_estimable_metric(metric, "per_cluster_metric")
+validate_metric_state(::DifferentialEvolutionPerClusterMetric, state) =
+    require_memory_untempered(state, "per_cluster_metric")
+
+# A cluster with fewer points than this falls back to the whole-archive (pooled) covariance: a
+# diagonal estimate needs a couple of points, a dense one needs more than D so the D×D sample
+# covariance is full-rank rather than ridge-dominated.
+min_cluster_points(::AdvancedHMC.DiagEuclideanMetric) = 2
+min_cluster_points(metric::AdvancedHMC.DenseEuclideanMetric) = size(metric, 1) + 1
+
+# One metric over the whole archive (the K = 1 / gated-off fall-through), with its single centre.
+function pooled_cluster_metric(ms::DifferentialEvolutionPerClusterMetric, astate, positions)
+    M⁻¹ = memory_inverse_metric(astate.metric, positions, ms.shrinkage)
+    centers = reshape(global_mean(positions), length(first(positions)), 1)
+    return [AdvancedHMC.renew(astate.metric, M⁻¹)], centers
+end
+
+# K separate metrics: each cluster's own covariance through Stage 2's shrinkage/floor path, plus the
+# centres to assign chains by. Gated exactly like the pooled strategy (a unimodal archive returns
+# K = 1 = memory_metric). The returned centres match the metrics' K — distinct from the warm-start
+# `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
+function per_cluster_inverse_metrics(ms::DifferentialEvolutionPerClusterMetric, astate, positions)
+    labels, centers, gated = gated_clustering(ms, astate, positions)
+    gated && return pooled_cluster_metric(ms, astate, positions)
+    floor_pts = min_cluster_points(astate.metric)
+    metrics = map(1:size(centers, 2)) do k
+        pts = [positions[i] for i in eachindex(positions) if labels[i] == k]
+        src = length(pts) ≥ floor_pts ? pts : positions
+        AdvancedHMC.renew(astate.metric, memory_inverse_metric(astate.metric, src, ms.shrinkage))
+    end
+    return metrics, centers
+end
+
+nearest_center(θ, centers) = argmin(j -> column_sqdist(θ, centers, j), 1:size(centers, 2))
+
+# Assign each chain its current mode's metric by nearest centre. Diagonal/unit share the cluster
+# metric object (read-only across threads); dense copies into the per-chain scratch (its own `_temp`
+# left alone), mirroring `prepare_chain_metrics!`.
+function assign_chain_metrics!(chain_metrics, cluster_metrics, centers, x)
+    for i in eachindex(chain_metrics)
+        chain_metrics[i] = cluster_metrics[nearest_center(x[i], centers)]
+    end
+    return nothing
+end
+function assign_chain_metrics!(
+        chain_metrics::Vector{<:AdvancedHMC.DenseEuclideanMetric}, cluster_metrics, centers, x
+    )
+    for i in eachindex(chain_metrics)
+        src = cluster_metrics[nearest_center(x[i], centers)]
+        chain_metrics[i].M⁻¹ .= src.M⁻¹
+        chain_metrics[i].cholM⁻¹.data .= src.cholM⁻¹.data
+    end
+    return nothing
+end
+
+# Recompute the K cluster metrics (and their centres) from the archive on the recompute cadence.
+# Chains are *not* reassigned here: relabelling to the nearest centre runs before every HMC step in
+# `fill_chain_metrics!`, so the metric set is held fixed between recomputes while each chain still
+# tracks its current mode. The stored centres match the metrics' K — distinct from the warm-start
+# `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
+function refresh_memory_metric!(ms::DifferentialEvolutionPerClusterMetric, astate::HMCAdaptiveState, state)
+    metrics, centers = per_cluster_inverse_metrics(ms, astate, informative_positions(state))
+    astate.cluster_metrics = metrics
+    astate.cluster_centers = centers
+    return nothing
+end
+
+# -----------------------------------------------------------------------------
 # Dispatch into the DEM stepping interface
 # -----------------------------------------------------------------------------
 
-const ArchiveMetricStrategy = Union{DifferentialEvolutionMemoryMetric, DifferentialEvolutionClusterPooledMetric}
+const ArchiveMetricStrategy = Union{
+    DifferentialEvolutionMemoryMetric, DifferentialEvolutionClusterPooledMetric,
+    DifferentialEvolutionPerClusterMetric,
+}
 
 # Advance the cadence counter and rebuild the metric when due. Shared by warmup and sampling so
 # both phases recompute on exactly the same schedule.
 function advance_memory_metric!(ms::ArchiveMetricStrategy, astate::HMCAdaptiveState, state)
     astate.metric_steps += 1
     metric_due(astate, ms.every) && refresh_memory_metric!(ms, astate, state)
+    return nothing
+end
+
+# Fill the per-chain trajectory slots just before the loop. Single-metric strategies fan the one
+# adapted metric out to every chain each step; the per-cluster strategy instead relabels each chain
+# to its nearest mode's metric here, before every HMC step, off the centres last computed on the
+# recompute cadence. Before the first recompute the K cluster metrics do not exist yet, so it seeds
+# the slots with the lone seed metric.
+fill_chain_metrics!(::AbstractDifferentialEvolutionMetricStrategy, astate::HMCAdaptiveState, state) =
+    prepare_chain_metrics!(astate.chain_metrics, astate.metric)
+function fill_chain_metrics!(::DifferentialEvolutionPerClusterMetric, astate::HMCAdaptiveState, state)
+    if isempty(astate.cluster_metrics)
+        prepare_chain_metrics!(astate.chain_metrics, astate.metric)
+    else
+        assign_chain_metrics!(astate.chain_metrics, astate.cluster_metrics, astate.cluster_centers, state.x)
+    end
     return nothing
 end
 
@@ -832,8 +969,9 @@ function step_warmup(
         astate.hot = hot_chain_indices(state, astate.cold)
         refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
     end
+    fill_chain_metrics!(sampler.metric_strategy, astate, state)
     α = run_trajectories!(
-        rng, model_wrapper, state, astate.metric, astate.κ, astate.chain_metrics,
+        rng, model_wrapper, state, astate.κ, astate.chain_metrics,
         astate.cold, astate.hot, parallel
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
@@ -852,14 +990,20 @@ track_sampling_metric!(::DifferentialEvolutionStockAdaptorMetric, ::HMCAdaptiveS
 track_sampling_metric!(ms::ArchiveMetricStrategy, astate::HMCAdaptiveState, state) =
     advance_memory_metric!(ms, astate, state)
 
-# The metric/slots to run trajectories against: the live ones once warmed (so sampling-phase
-# recomputes are seen), else the sampler's own (no warmup, e.g. a manually fixed sampler).
-# Dispatched on the carried adaptive state, whose concrete type is known, so it stays stable.
-sampling_pieces(sampler::DifferentialEvolutionHMCSampler) = sampling_pieces(sampler, sampler.astate)
-sampling_pieces(sampler::DifferentialEvolutionHMCSampler, ::Nothing) =
-    (sampler.metric, sampler.chain_metrics)
-sampling_pieces(sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState) =
-    (astate.metric, astate.chain_metrics)
+# Fill the trajectory slots and return the kernel + slots for a sampling step. Once warmed these
+# come from the live adaptive state (so sampling-phase recomputes/reassignments are seen); without
+# warmup (e.g. a manually fixed sampler) they come from the sampler's own frozen pieces. Dispatched
+# on the carried adaptive state, whose concrete type is known, so it stays type-stable.
+function prepare_sampling_metrics!(sampler::DifferentialEvolutionHMCSampler, ::Nothing, state)
+    prepare_chain_metrics!(sampler.chain_metrics, sampler.metric)
+    return sampler.κ, sampler.chain_metrics
+end
+function prepare_sampling_metrics!(
+        sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState, state
+    )
+    fill_chain_metrics!(sampler.metric_strategy, astate, state)
+    return astate.κ, astate.chain_metrics
+end
 
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
@@ -867,10 +1011,9 @@ function step(
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
     track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
-    metric, chain_metrics = sampling_pieces(sampler)
+    κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
     run_trajectories!(
-        rng, model_wrapper, state, metric, sampler.κ, chain_metrics,
-        sampler.cold, sampler.hot, parallel
+        rng, model_wrapper, state, κ, chain_metrics, sampler.cold, sampler.hot, parallel
     )
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
