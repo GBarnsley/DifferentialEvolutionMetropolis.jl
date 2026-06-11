@@ -54,6 +54,11 @@ end
     include("test_threadsafe.jl")
     include("test_swapping.jl")
     include("test_temperature.jl")
+    include("test_hmc.jl")
+    include("test_hmc_memory_metric.jl")
+    include("test_hmc_cluster_pooled_metric.jl")
+    include("test_hmc_per_cluster_metric.jl")
+    include("test_memory_accounting.jl")
     include("test_correct.jl")
 
     @testset "lack of Diagnostics Tools" begin

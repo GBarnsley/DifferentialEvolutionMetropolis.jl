@@ -88,6 +88,15 @@ The function should modify `state.xₚ[current_state] = proposed_position` and r
 - `proposed_position`: The proposed new position (vector)
 - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 
+### Chains Required for Memoryless Sampling
+When memoryless sampling is used (`memory = false`), the sampler validates that the number of parallel chains is sufficient for the sampler's proposals (since they cannot be drawn from the memory database).
+By default, any custom sampler subtyping `AbstractDifferentialEvolutionSampler` has a conservative fallback requiring at least 3 chains. If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function. For example:
+
+```julia
+# If your sampler only needs 1 chain (e.g., standard random walk):
+DifferentialEvolutionMetropolis.chains_required(::YourSampler) = 1
+```
+
 Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:
 
 ```@example MHSampler
@@ -113,6 +122,9 @@ function DifferentialEvolutionMetropolis.proposal!(
     # The proposal is symmetric, so no Hastings correction needed
     return (offset = 0.0)
 end
+
+DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
+
 ```
 
 ### Adaptive Proposals with step_warmup
@@ -178,6 +190,9 @@ function DifferentialEvolutionMetropolis.proposal!(
     state.xₚ[current_state] .= rand(state.rngs[current_state], MvNormal(x_current, state.adaptive_state.proposal_cov))
     return (offset = 0.0)
 end
+
+DifferentialEvolutionMetropolis.chains_required(::AdaptiveMetropolisUpdate) = 1
+
 
 # Adaptive step during warm-up
 function step_warmup(

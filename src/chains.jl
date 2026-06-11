@@ -138,7 +138,7 @@ function update_state(
             T, A1, L1, M1, V, VV, R, Model, V1, V2,
         };
         swap_positions = Val(false),
-        memory::M1 = state.memory,
+        memory::AbstractDifferentialEvolutionMemory{T} = state.memory,
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
@@ -175,8 +175,8 @@ function update_chain!(model, state, offset, i)
         return false
     else
         state.ldₚ[i] = logdensity(model, state.xₚ[i])
-        if log(rand(state.rngs[i])) * get_temperature(state.temperature_ladder, i) >
-                (state.ldₚ[i] - state.ld[i] + offset)
+        if log(rand(state.rngs[i])) >
+                (state.ldₚ[i] - state.ld[i]) / get_temperature(state.temperature_ladder, i) + offset
             copyto!(state.xₚ[i], state.x[i])
             state.ldₚ[i] = state.ld[i]
             return false
@@ -326,9 +326,20 @@ function fix_sampler_state(
         state::DifferentialEvolutionState{T}
     ) where {T <: Real}
     return fix_sampler(sampler, state.adaptive_state),
-        update_state(state; update_memory = false, adaptive_state = DifferentialEvolutionAdaptiveStatic{T}())
+        update_state(
+            state; update_memory = false,
+            adaptive_state = DifferentialEvolutionAdaptiveStatic{T}(),
+            temperature_ladder = state.temperature_ladder
+        )
 end
 
+"""
+    step(rng, model_wrapper, sampler, state::DifferentialEvolutionState; update_memory=true, kwargs...)
+
+Evaluate an adaptive step. Delegates to the inner step after fixing the sampler state,
+correctly forwarding the `update_memory` flag, and updating the outer state with the
+resulting memory and temperature ladder without duplicating memory writes or temperature ladder advances.
+"""
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
@@ -338,11 +349,15 @@ function step(
         kwargs...
     )
     fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
-    sample, new_state = step(rng, model_wrapper, fixed_sampler, fixed_state; kwargs...)
+    sample, new_state = step(
+        rng, model_wrapper, fixed_sampler, fixed_state;
+        update_memory = update_memory, kwargs...
+    )
 
     return sample,
         update_state(
-            state; new_state = new_state, update_memory = update_memory,
+            state; new_state = new_state, update_memory = false,
+            memory = new_state.memory,
             temperature_ladder = new_state.temperature_ladder
         )
 end
@@ -412,24 +427,31 @@ function step(
         memory_thin_interval::Int = 0,
         N₀::Int = 2 * (n_chains + n_hot_chains),
         adapt::Bool = true,
-        initial_position::Union{Nothing, AbstractVector{<:AbstractVector{T}}} = nothing,
+        initial_position::Union{Nothing, AbstractVector{<:AbstractVector{<:Real}}} = nothing,
         parallel::Bool = false,
         #parallel tempering and annealing parameters
-        max_temp_pt::T = 2.0 * sqrt(dimension(model_wrapper.logdensity)),
-        max_temp_sa::T = max_temp_pt,
-        α::T = 1.0,
+        max_temp_pt::Real = 2.0 * sqrt(dimension(model_wrapper.logdensity)),
+        max_temp_sa::Real = max_temp_pt,
+        α::Real = 1.0,
         annealing::Bool = false,
         num_warmup::Int = 0,
         memory_size::Int = (num_warmup == 0) ? 1001 : num_warmup * 2,
         annealing_steps::Int = annealing ? num_warmup : 0,
         silent::Bool = false,
-        temperature_ladder::Vector{Vector{T}} = create_temperature_ladder(
-            n_chains, n_hot_chains, α, max_temp_pt, max_temp_sa, annealing_steps
-        ),
+        temperature_ladder = nothing,
         n_preallocated_indices::Int = 3,
         kwargs...
-    ) where {T <: Real}
+    )
     model = model_wrapper.logdensity
+    T = isnothing(initial_position) ? Float64 : eltype(initial_position[1])
+
+    if isnothing(temperature_ladder)
+        temperature_ladder = create_temperature_ladder(
+            n_chains, n_hot_chains, T(α), T(max_temp_pt), T(max_temp_sa), annealing_steps
+        )
+    else
+        temperature_ladder = [T.(ladder_rung) for ladder_rung in temperature_ladder]
+    end
 
     log = Vector{String}()
 
@@ -438,7 +460,7 @@ function step(
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains)
     else
-        adaptive_state = DifferentialEvolutionAdaptiveStatic{Float64}()
+        adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
     end
 
     extra_memory = nothing
@@ -489,6 +511,10 @@ function step(
         end
     end
 
+    if !memory && n_true_chains < chains_required(sampler)
+        error("Memoryless scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler)) chains, but only $n_true_chains were provided (including hot chains).")
+    end
+
     if length(x) < dimension(model) && !memory
         @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
@@ -500,7 +526,7 @@ function step(
             ld[i] = logdensity(chain_models[i], x[i])
         end
     else
-        ld = [logdensity(model, xi) for xi in x]
+        ld = T[logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0
@@ -533,6 +559,9 @@ function step(
         end
 
         total_memory_size = memory_size * n_true_chains
+        if total_memory_size < N₀ + n_true_chains
+            error("memory_size (currently $memory_size) is too small for the initial memory N₀ (currently $N₀) and number of chains (currently $n_true_chains). The total memory size (memory_size * n_chains = $total_memory_size) must be at least N₀ + n_chains = $(N₀ + n_true_chains). Consider specifying a larger memory_size.")
+        end
         if (memory_size == 1001) & memory_refill
             push!(log, "   Using memory refill with default memory size of 1001, storing a maximum of $total_memory_size chains.")
             push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")

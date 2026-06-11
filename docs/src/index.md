@@ -51,6 +51,15 @@ setup_snooker_update
 setup_subspace_sampling
 ```
 
+### HMC Setup Functions
+
+```@docs
+setup_hmc_update
+memory_metric
+cluster_pooled_metric
+per_cluster_metric
+```
+
 ### Core Sampling Functions
 
 ```@docs

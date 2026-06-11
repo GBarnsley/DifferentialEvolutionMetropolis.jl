@@ -10,6 +10,7 @@ makedocs(
     pages = [
         "index.md",
         "tutorial.md",
+        "hmc.md",
         "custom.md",
     ],
     modules = [DifferentialEvolutionMetropolis]

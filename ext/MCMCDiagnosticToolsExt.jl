@@ -74,11 +74,11 @@ function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         M <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionMemory{T},
         L <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionTemperatureLadder{T},
     }
-    if iteration % check_every != 0 || iteration < minimum_iterations
-        return false
-    elseif iteration >= maximum_iterations
+    if iteration >= maximum_iterations
         println("Maximum iterations reached: ", maximum_iterations)
         return true
+    elseif iteration % check_every != 0 || iteration < minimum_iterations
+        return false
     else
         #check the last half of the sampling iterations
         rhat_ = rhat(DifferentialEvolutionMetropolis.samples_to_array(samples[(iteration ÷ 2 + 1):end]))

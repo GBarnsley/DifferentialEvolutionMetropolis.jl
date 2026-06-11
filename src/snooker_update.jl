@@ -85,3 +85,5 @@ function proposal!(
         )
     end
 end
+
+chains_required(::DifferentialEvolutionSnookerSampler) = 4

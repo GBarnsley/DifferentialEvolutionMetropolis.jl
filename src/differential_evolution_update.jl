@@ -96,3 +96,5 @@ function proposal!(
         return (offset = zero(eltype(x₁)))
     end
 end
+
+chains_required(::DifferentialEvolutionSampler) = 3
