@@ -982,9 +982,6 @@ function step_warmup(
         )
 end
 
-# During sampling the memory keeps growing, so memory-based strategies keep recomputing the
-# metric on the same cadence; the stock strategy and the pre-warmup sampler (`astate === nothing`)
-# stay frozen.
 track_sampling_metric!(::AbstractDifferentialEvolutionMetricStrategy, ::Nothing, state) = nothing
 track_sampling_metric!(::DifferentialEvolutionStockAdaptorMetric, ::HMCAdaptiveState, state) = nothing
 track_sampling_metric!(ms::ArchiveMetricStrategy, astate::HMCAdaptiveState, state) =
@@ -1010,6 +1007,9 @@ function step(
         state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
+    if sampler.astate === nothing
+        error("setup_hmc_update: this HMC update has not been warmed up. HMC updates resolve their chain assignments and step size during warmup; run with `adapt = true` (the default) and `num_warmup ≥ 1` / `n_burnin ≥ 1`.")
+    end
     track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
     κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
     run_trajectories!(
@@ -1018,5 +1018,7 @@ function step(
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end
+
+DEM.chains_required(::DifferentialEvolutionHMCSampler) = 1
 
 end

@@ -185,3 +185,5 @@ function get_γ(
     ) where {T <: Real}
     return sampler.γ
 end
+
+chains_required(::AbstractDifferentialEvolutionSubspaceSampler) = 3

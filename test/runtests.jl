@@ -58,6 +58,7 @@ end
     include("test_hmc_memory_metric.jl")
     include("test_hmc_cluster_pooled_metric.jl")
     include("test_hmc_per_cluster_metric.jl")
+    include("test_memory_accounting.jl")
     include("test_correct.jl")
 
     @testset "lack of Diagnostics Tools" begin

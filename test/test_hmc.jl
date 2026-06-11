@@ -182,4 +182,15 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
         )
         @test threaded == serial
     end
+
+    @testset "HMC update errors when never warmed up" begin
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        _, state = AbstractMCMC.step(
+            backwards_compat_rng(1234), model, scheme;
+            n_chains = 6, num_warmup = 0, memory = false, adapt = false, silent = true
+        )
+        @test_throws ErrorException AbstractMCMC.step(
+            backwards_compat_rng(1234), model, scheme, state
+        )
+    end
 end

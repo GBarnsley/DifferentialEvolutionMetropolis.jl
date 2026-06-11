@@ -254,4 +254,73 @@
         @test isa(result, DifferentialEvolutionOutput)
         @test size(result.samples, 2) == 2
     end
+
+    @testset "Hastings offset is correctly tempered" begin
+        rng = backwards_compat_rng(1234)
+        model = IsotropicNormalModel([-5.0, 5.0])
+        wrapped_model = AbstractMCMC.LogDensityModel(model)
+
+        spl = setup_sampler_scheme(setup_de_update())
+
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = 2,
+            n_hot_chains = 2,
+            max_temp_pt = 4.0,
+            memory = false,
+            adapt = false,
+            silent = true
+        )
+
+        # Set temperature of chain 4 to exactly 2.0
+        state.temperature_ladder.temperature[4] = 2.0
+
+        # Test values:
+        # ld = -10.0, ldₚ = -8.0 -> Δld = 2.0
+        # offset = -1.5
+        # Correct threshold: Δld/T + offset = 2.0/2.0 - 1.5 = -0.5
+        # Incorrect threshold (tempered offset): (Δld + offset)/T = (2.0 - 1.5)/2.0 = 0.25
+        state.ld[4] = -10.0
+        state.ldₚ[4] = -8.0
+        offset = -1.5
+
+        # Find a seed for backwards_compat_rng such that the next rand() value u is > 0.6065.
+        # u = 0.8 is great because log(0.8) ≈ -0.223 > -0.5.
+        # We find a seed that gives u ∈ (0.65, 0.9).
+        seed = 1
+        while true
+            u = rand(backwards_compat_rng(seed))
+            if 0.65 < u < 0.9
+                break
+            end
+            seed += 1
+        end
+        state.rngs[4] = backwards_compat_rng(seed)
+
+        # Call update_chain! and assert rejection
+        accepted = DifferentialEvolutionMetropolis.update_chain!(wrapped_model.logdensity, state, offset, 4)
+        @test accepted == false
+    end
+
+    @testset "NaN comparison fall through to acceptance" begin
+        rng = backwards_compat_rng(1234)
+        model = IsotropicNormalModel([-5.0, 5.0])
+        wrapped_model = AbstractMCMC.LogDensityModel(model)
+
+        spl = setup_sampler_scheme(setup_de_update())
+
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = 4,
+            memory = false,
+            adapt = false,
+            silent = true
+        )
+
+        state.ld[4] = -Inf
+        state.ldₚ[4] = -Inf
+
+        accepted = DifferentialEvolutionMetropolis.update_chain!(wrapped_model.logdensity, state, 0.0, 4)
+        @test accepted == true
+    end
 end

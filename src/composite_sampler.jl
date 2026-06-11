@@ -119,8 +119,8 @@ adaptive state while preserving other component states.
 - `state`: Current state with composite adaptive parameters
 
 # Keyword Arguments
-- `update_memory`: Whether to update the memory with new positions (for memory-based samplers).
-  Defaults to `true`. Useful if memory has grown too large.
+- `update_memory`: Whether to update the memory with new positions. Defaults to `true`.
+  This is forwarded to the inner step, and the outer state's memory is updated without duplicating writes.
 - `kwargs...`: Additional keyword arguments passed to component update functions
 
 # Returns
@@ -149,12 +149,17 @@ function step_warmup(
     )
 
     sample,
-        substate = step_warmup(rng, model_wrapper, fixed_sampler, fixed_state; kwargs...)
+        substate = step_warmup(
+        rng, model_wrapper, fixed_sampler, fixed_state;
+        update_memory = update_memory, kwargs...
+    )
 
     return sample,
         update_state(
             state; new_state = substate,
-            update_memory = update_memory, temperature_ladder = substate.temperature_ladder
+            update_memory = false,
+            memory = substate.memory,
+            temperature_ladder = substate.temperature_ladder
         )
 end
 
@@ -175,3 +180,5 @@ function initialize_adaptive_state(
         return DifferentialEvolutionAdaptiveComposite{T, typeof(tuple_states)}(Tuple(adaptive_states))
     end
 end
+
+chains_required(s::DifferentialEvolutionCompositeSampler) = maximum(chains_required, s.updates)

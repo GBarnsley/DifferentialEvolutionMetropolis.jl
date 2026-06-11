@@ -22,6 +22,8 @@ import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
 
+chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback
+
 abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
 
 abstract type AbstractDifferentialEvolutionMemory{T} end
