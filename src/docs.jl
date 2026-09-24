@@ -6,6 +6,11 @@ _generic_de_kwargs_1 = """
 - `initial_position`: Starting positions for chains. Can be `nothing` (random initialization),
   or a vector of parameter vectors. If the provided vector is smaller than `n_chains + n_hot_chains`,
   it will be expanded; if larger and `memory=true`, excess positions become initial memory. Defaults to `nothing`.
+  With Pathfinder.jl loaded, it can also be a `PathfinderResult`, a `MultiPathfinderResult`, or a tuple/vector of
+  `PathfinderResult`s, which are used to draw the chain starting positions and the `N₀` initial memory positions.
+- `stratify_initial_position`: If `true`, chain starting positions drawn from a mixture of Pathfinder results cycle
+  through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
+  mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
   Defaults to `false`.
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.

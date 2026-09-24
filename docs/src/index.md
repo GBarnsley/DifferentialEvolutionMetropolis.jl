@@ -18,7 +18,8 @@ I opted to implement my own version as I wanted a more flexible API and the subs
 - Optional parallel tempering (no swaps yet, information is shared by the DE updates!) and annealing
 - Composite samplers, can combine any of the implemented updates (in future I'll wrap other abstractMCMC based samplers)
 - Easy to implement your own updates!
-- Can output in `MCMCChains` format, though you use multiple sampling chains (i.e. chains of the DE-chains) these will all be appended together
+- Can output in `MCMCChains` or `FlexiChains` format, though you use multiple sampling chains (i.e. chains of the DE-chains) these will all be appended together
+- Accepts `Pathfinder.jl` results to determine initial positions, and, if passing a `mulitpathfinder` result, the package will ensure that each mode is represented in the initial chain positions or memory (given sufficient chains or initial memory positions)
 
 ## Next Steps
 
@@ -67,6 +68,7 @@ DifferentialEvolutionMetropolis.step
 DifferentialEvolutionMetropolis.step_warmup
 DifferentialEvolutionMetropolis.fix_sampler
 DifferentialEvolutionMetropolis.fix_sampler_state
+DifferentialEvolutionMetropolis.resolve_initial_position
 ```
 
 ### Convergence and Stopping Criteria

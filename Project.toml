@@ -19,12 +19,14 @@ AdvancedHMC = "0bf59076-c3b1-5ca4-86bd-e02cd72cde3d"
 FlexiChains = "4a37a8b9-6e57-4b92-8664-298d46e639f7"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 MCMCDiagnosticTools = "be115224-59cd-429b-ad48-344e309966f0"
+Pathfinder = "b1d3bc72-d0e7-4279-b92f-7fa5d6d2d454"
 
 [extensions]
 AdvancedHMCExt = "AdvancedHMC"
 FlexiChainsExt = "FlexiChains"
 MCMCChainsExt = "MCMCChains"
 MCMCDiagnosticToolsExt = "MCMCDiagnosticTools"
+PathfinderExt = "Pathfinder"
 
 [compat]
 AbstractMCMC = "5.8"
@@ -35,6 +37,7 @@ LinearAlgebra = "1.6"
 LogDensityProblems = "2.1"
 MCMCChains = "7.5"
 MCMCDiagnosticTools = "0.1, 0.2, 0.3"
+Pathfinder = "0.10"
 Random = "1.6"
 StatsBase = "0.34"
 julia = "1.10"

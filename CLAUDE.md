@@ -13,7 +13,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 **Formatting:** Runic (`pre-commit` hook and CI check). Run `runic --inplace src ext test` before committing.
 
-**Docs:** `julia --project=docs docs/make.jl` (Documenter; pages: index, tutorial, hmc, custom).
+**Docs:** `julia --project=docs docs/make.jl` (Documenter; pages: index, tutorial, hmc, custom, pathfinder).
 
 **Benchmarks:** `benchmark/benchmarks.jl` (AirspeedVelocity runs on PRs).
 
