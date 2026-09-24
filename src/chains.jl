@@ -425,7 +425,7 @@ function step(
         memory::Bool = true,
         memory_refill::Bool = false,
         memory_thin_interval::Int = 0,
-        N₀::Int = 2 * (n_chains + n_hot_chains),
+        N₀::Union{Nothing, Int} = nothing,
         adapt::Bool = true,
         initial_position::Union{Nothing, AbstractVector{<:AbstractVector{<:Real}}} = nothing,
         parallel::Bool = false,
@@ -539,6 +539,9 @@ function step(
         if !isnothing(extra_memory)
             push!(log, "   Appending initial extra memory")
             append!(mem_x, extra_memory)
+        end
+        if isnothing(N₀)
+            N₀ = max(2 * n_true_chains, length(mem_x))
         end
         if rem(N₀, n_true_chains) != 0
             push!(
