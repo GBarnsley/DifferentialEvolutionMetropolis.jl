@@ -370,6 +370,26 @@ function initialize_adaptive_state(
 end
 
 """
+    resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
+
+Convert a user-supplied `initial_position` into `nothing` or a vector of parameter vectors.
+
+Extensions add methods for other input types (e.g. Pathfinder results). These should return
+`n_chains` chain starting positions followed by `n_memory` initial memory positions.
+The default methods return the input unchanged and ignore `stratify`.
+"""
+resolve_initial_position(initial_position::Nothing, rng, n_chains, n_memory; stratify = true) = initial_position
+resolve_initial_position(initial_position::AbstractVector{<:AbstractVector{<:Real}}, rng, n_chains, n_memory; stratify = true) = initial_position
+function resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
+    throw(
+        ArgumentError(
+            "Unsupported `initial_position` of type $(nameof(typeof(initial_position))). " *
+                "Expected `nothing` or a vector of parameter vectors. Pathfinder results require `using Pathfinder`."
+        )
+    )
+end
+
+"""
     step(rng, model_wrapper, sampler; n_chains, memory=true, N₀, adapt=true, initial_position=nothing, parallel=false, kwargs...)
 
 Initialize differential evolution sampling by setting up chains and computing initial state.
@@ -427,7 +447,8 @@ function step(
         memory_thin_interval::Int = 0,
         N₀::Union{Nothing, Int} = nothing,
         adapt::Bool = true,
-        initial_position::Union{Nothing, AbstractVector{<:AbstractVector{<:Real}}} = nothing,
+        initial_position = nothing,
+        stratify_initial_position::Bool = true,
         parallel::Bool = false,
         #parallel tempering and annealing parameters
         max_temp_pt::Real = 2.0 * sqrt(dimension(model_wrapper.logdensity)),
@@ -443,6 +464,11 @@ function step(
         kwargs...
     )
     model = model_wrapper.logdensity
+    initial_position = resolve_initial_position(
+        initial_position, rng, n_chains + n_hot_chains,
+        memory ? something(N₀, n_chains + n_hot_chains) : 0;
+        stratify = stratify_initial_position
+    )
     T = isnothing(initial_position) ? Float64 : eltype(initial_position[1])
 
     if isnothing(temperature_ladder)

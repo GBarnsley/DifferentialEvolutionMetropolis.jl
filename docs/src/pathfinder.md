@@ -1,9 +1,5 @@
 # Initialising from Pathfinder
 
-!!! warning "Proposed interface"
-    This page describes the planned `PathfinderExt` extension (issue #102). It is not yet
-    implemented and is not included in the built documentation.
-
 [Pathfinder.jl](https://github.com/mlcolab/Pathfinder.jl) fits a multivariate normal
 approximation to a target by following an L-BFGS optimisation path. It is cheap relative
 to MCMC, and its draws make good starting points: they sit in regions of high posterior
@@ -16,8 +12,8 @@ and, for memory-based samplers, the `N₀` positions of the initial memory.
 
 ## Single-path Pathfinder
 
-```julia
-using DifferentialEvolutionMetropolis, Pathfinder, AbstractMCMC
+```@example pathfinder
+using DifferentialEvolutionMetropolis, Pathfinder, AbstractMCMC, ForwardDiff
 using LogDensityProblems, Distributions, LinearAlgebra, Random
 
 struct FarGaussian end
@@ -28,7 +24,11 @@ LogDensityProblems.logdensity(::FarGaussian, x) = logpdf(MvNormal(fill(50.0, 10)
 ld = FarGaussian()
 pf = pathfinder(ld; rng = Xoshiro(1))
 
-result = deMCzs(AbstractMCMC.LogDensityModel(ld), 1000; initial_position = pf, N₀ = 60)
+result = deMCzs(
+    AbstractMCMC.LogDensityModel(ld), 1000;
+    initial_position = pf, N₀ = 60, silent = true, progress = false
+)
+extrema(result.samples)
 ```
 
 Pathfinder differentiates order-0 `LogDensityProblems` targets itself (ForwardDiff by
@@ -36,7 +36,9 @@ default, or pass `adtype`), so no `LogDensityProblemsAD` wrapper is needed.
 
 `n_chains + n_hot_chains + N₀` positions are drawn from `pf.fit_distribution`, so the
 number of draws stored in `pf` does not need to match. The first `n_chains + n_hot_chains`
-become the chain starting positions and the remaining `N₀` fill the initial memory.
+become the chain starting positions and the remaining `N₀` fill the initial memory. If `N₀`
+is not given, the memory holds the chain starting positions plus `n_chains + n_hot_chains`
+further draws, matching the default `N₀ = 2 * (n_chains + n_hot_chains)`.
 
 ## Multimodal targets
 
@@ -44,9 +46,19 @@ A single Pathfinder run converges to one mode. For multimodal targets use
 `multipathfinder`, whose runs start from different points and can land in different
 modes:
 
-```julia
-mpf = multipathfinder(ld, 1000; nruns = 8, rng = Xoshiro(1))
-result = DREAMz(AbstractMCMC.LogDensityModel(ld), 5000; initial_position = mpf, N₀ = 100)
+```@example pathfinder
+struct Bimodal end
+LogDensityProblems.dimension(::Bimodal) = 2
+LogDensityProblems.capabilities(::Type{Bimodal}) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(::Bimodal, x) = logpdf(MixtureModel([MvNormal([-6.0, 0.0], I), MvNormal([6.0, 0.0], I)]), x)
+
+bimodal = Bimodal()
+mpf = multipathfinder(bimodal, 1000; nruns = 8, rng = Xoshiro(1))
+result = DREAMz(
+    AbstractMCMC.LogDensityModel(bimodal), 5000;
+    initial_position = mpf, N₀ = 100, silent = true, progress = false
+)
+mean(result.samples[:, :, 1] .> 0)
 ```
 
 By default, chain starting positions are stratified across the mixture components: chain
@@ -59,11 +71,13 @@ taken from `mpf.draws` (importance-resampled when `importance = true`) and toppe
 Stratification ignores the mixture weights. Pass `stratify_initial_position = false` to draw
 the chain starting positions from the mixture as well:
 
-```julia
+```@example pathfinder
 result = DREAMz(
-    AbstractMCMC.LogDensityModel(ld), 5000;
-    initial_position = mpf, N₀ = 100, stratify_initial_position = false
+    AbstractMCMC.LogDensityModel(bimodal), 5000;
+    initial_position = mpf, N₀ = 100, stratify_initial_position = false,
+    silent = true, progress = false
 )
+mean(result.samples[:, :, 1] .> 0)
 ```
 
 The share of draws in each mode reflects how many runs landed in that mode, not the mode's
@@ -75,10 +89,14 @@ Separately obtained results can also be combined. A tuple or vector of `Pathfind
 is treated as a uniform mixture of their fitted normals, with one component per result, and
 chain starting positions are stratified in the same way:
 
-```julia
-pf_left = pathfinder(ld; init = fill(-5.0, 10))
-pf_right = pathfinder(ld; init = fill(5.0, 10))
-result = deMCzs(AbstractMCMC.LogDensityModel(ld), 1000; initial_position = (pf_left, pf_right))
+```@example pathfinder
+pf_left = pathfinder(bimodal; init = [-5.0, 0.0], rng = Xoshiro(2))
+pf_right = pathfinder(bimodal; init = [5.0, 0.0], rng = Xoshiro(3))
+result = deMCzs(
+    AbstractMCMC.LogDensityModel(bimodal), 1000;
+    initial_position = (pf_left, pf_right), silent = true, progress = false
+)
+mean(result.samples[:, :, 1] .> 0)
 ```
 
 ## Keyword arguments
