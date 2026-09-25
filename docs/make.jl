@@ -12,6 +12,7 @@ makedocs(
         "tutorial.md",
         "hmc.md",
         "custom.md",
+        "pathfinder.md",
     ],
     modules = [DifferentialEvolutionMetropolis]
 )

@@ -6,6 +6,11 @@ _generic_de_kwargs_1 = """
 - `initial_position`: Starting positions for chains. Can be `nothing` (random initialization),
   or a vector of parameter vectors. If the provided vector is smaller than `n_chains + n_hot_chains`,
   it will be expanded; if larger and `memory=true`, excess positions become initial memory. Defaults to `nothing`.
+  With Pathfinder.jl loaded, it can also be a `PathfinderResult`, a `MultiPathfinderResult`, or a tuple/vector of
+  `PathfinderResult`s, which are used to draw the chain starting positions and the `N₀` initial memory positions.
+- `stratify_initial_position`: If `true`, chain starting positions drawn from a mixture of Pathfinder results cycle
+  through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
+  mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
   Defaults to `false`.
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
@@ -15,7 +20,7 @@ _generic_de_kwargs_1 = """
 """
 _generic_de_kwargs_2 = """
 - `N₀`: Initial memory size for memory-based samplers. Should be ≥ `n_chains + n_hot_chains`.
-  Defaults to `2 * (n_chains + n_hot_chains)`.
+  Defaults to `2 * (n_chains + n_hot_chains)`, or to the number of supplied `initial_position` entries if that is larger.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Overwrites memory options given at initialization, generally should only be of use if calling `step` directly.
 - `memory_refill`: Whether to refill memory when full instead of extending the memory, will replace from the start. Defaults to `false`.
 - `memory_size`: Maximum number of positions preallocated per chain in memory. The effective number stored positions is `memory_size * (n_chains + n_hot_chains)`. Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. If `memory_refill = true` this is the maximum number stored before refilling, if  `memory_refill = false` once the memory is full, the array is extended by another `memory_size` worth of positions. Set with consideration of available RAM and expected run length.

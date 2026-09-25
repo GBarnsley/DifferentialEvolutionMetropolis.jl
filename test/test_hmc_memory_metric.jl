@@ -195,7 +195,7 @@ using LinearAlgebra: diag, Diagonal
         scheme = setup_sampler_scheme(mem_update(; every = 10_000))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true,
-            initial_position = init, silent = true
+            initial_position = init, N₀ = 16, silent = true
         )
         for _ in 1:50
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50)
