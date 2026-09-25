@@ -49,8 +49,22 @@ mpf = multipathfinder(ld, 1000; nruns = 8, rng = Xoshiro(1))
 result = DREAMz(AbstractMCMC.LogDensityModel(ld), 5000; initial_position = mpf, N₀ = 100)
 ```
 
-Starting positions are drawn from `mpf.draws` (importance-resampled when `importance = true`)
-and topped up from `mpf.fit_distribution` if more positions are needed.
+By default, chain starting positions are stratified across the mixture components: chain
+`i` starts from a draw of component `((i - 1) mod K) + 1`, where `K` is the number of
+components. Every component gets at least one chain whenever
+`n_chains + n_hot_chains ≥ K`. The `N₀` memory positions are plain draws from the mixture:
+taken from `mpf.draws` (importance-resampled when `importance = true`) and topped up from
+`mpf.fit_distribution` if more positions are needed.
+
+Stratification ignores the mixture weights. Pass `stratify_initial_position = false` to draw
+the chain starting positions from the mixture as well:
+
+```julia
+result = DREAMz(
+    AbstractMCMC.LogDensityModel(ld), 5000;
+    initial_position = mpf, N₀ = 100, stratify_initial_position = false
+)
+```
 
 The share of draws in each mode reflects how many runs landed in that mode, not the mode's
 posterior mass. This does not bias the sampler, which corrects the weights, but a mode that
@@ -58,7 +72,8 @@ no run found will not be represented. Increase `nruns` or supply your own starti
 through `init` when modes are hard to find.
 
 Separately obtained results can also be combined. A tuple or vector of `PathfinderResult`s
-is treated as a uniform mixture of their fitted normals:
+is treated as a uniform mixture of their fitted normals, with one component per result, and
+chain starting positions are stratified in the same way:
 
 ```julia
 pf_left = pathfinder(ld; init = fill(-5.0, 10))
@@ -71,3 +86,6 @@ result = deMCzs(AbstractMCMC.LogDensityModel(ld), 1000; initial_position = (pf_l
 - `initial_position`: a `PathfinderResult`, a `MultiPathfinderResult`, or a tuple/vector of
   `PathfinderResult`s.
 - `N₀`: number of Pathfinder draws placed in the initial memory. Ignored for memoryless samplers.
+- `stratify_initial_position`: if `true` (default), chain starting positions cycle through the
+  mixture components. If `false`, they are plain draws from the mixture. Only affects
+  `MultiPathfinderResult` and tuple/vector inputs.
