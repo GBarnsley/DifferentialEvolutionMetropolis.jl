@@ -1,12 +1,16 @@
 # Customizing your sampler
 
-This document describes how to extend `DifferentialEvolutionMetropolis.jl` with your own custom components. You can define custom stopping criteria, diagnostic checks, and proposal distributions (updates).
+This document describes how to extend `DifferentialEvolutionMetropolis.jl` with your own custom components.
+You can define custom stopping criteria, diagnostic checks, and proposal distributions (updates).
 
 ## Custom Stopping Criteria
 
-To create a custom stopping criterion, you need to define a function that follows the AbstractMCMC interface, similar to [`r̂_stopping_criteria`](@ref) which is available if `MCMCDiagnosticTools.jl` is loaded. The function will be called during sampling to determine when to stop. See the [AbstractMCMC documentation](https://turinglang.org/AbstractMCMC.jl/dev/api/#Sampling-a-single-chain) for details.
+To create a custom stopping criterion, you need to define a function that follows the AbstractMCMC interface, similar to [`r̂_stopping_criteria`](@ref) which is available if `MCMCDiagnosticTools.jl` is loaded.
+The function will be called during sampling to determine when to stop.
+See the [AbstractMCMC documentation](https://turinglang.org/AbstractMCMC.jl/dev/api/#Sampling-a-single-chain) for details.
 
 The stopping criterion function has the following signature:
+
 ```julia
 function your_stopping_criteria(
     rng::AbstractRNG,
@@ -20,7 +24,7 @@ function your_stopping_criteria(
 ```
 
 - `rng`: Random number generator (required by AbstractMCMC interface, usually unused)
-- `model`: The model being sampled (required by interface, usually unused)  
+- `model`: The model being sampled (required by interface, usually unused)
 - `sampler`: The differential evolution sampler (required by interface, usually unused)
 - `samples`: Vector of all collected samples from all chains
 - `state`: Current sampler state (required by interface, usually unused)
@@ -68,9 +72,11 @@ result = sample(
 ```
 
 ## Custom Proposal Distributions
+
 You can create your own proposal distributions by defining a new sampler type that subtypes `AbstractDifferentialEvolutionSampler` and implementing the `proposal` method.
 
 The method signature for the proposal is:
+
 ```julia
 function proposal!(
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, 
@@ -83,14 +89,14 @@ function proposal!(
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
-
-The function should modify `state.xₚ[current_state] = proposed_position` and return a named tuple with at least `(offset = hastings_correction)` where:
-- `proposed_position`: The proposed new position (vector)
-- `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
+The function should modify `state.xₚ[current_state] = proposed_position` and return a named tuple with at least `(offset = hastings_correction)` where: - `proposed_position`: The proposed new position (vector) - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 
 ### Chains Required for Memoryless Sampling
+
 When memoryless sampling is used (`memory = false`), the sampler validates that the number of parallel chains is sufficient for the sampler's proposals (since they cannot be drawn from the memory database).
-By default, any custom sampler subtyping `AbstractDifferentialEvolutionSampler` has a conservative fallback requiring at least 3 chains. If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function. For example:
+By default, any custom sampler subtyping `AbstractDifferentialEvolutionSampler` has a conservative fallback requiring at least 3 chains.
+If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function.
+For example:
 
 ```julia
 # If your sampler only needs 1 chain (e.g., standard random walk):
@@ -99,33 +105,28 @@ DifferentialEvolutionMetropolis.chains_required(::YourSampler) = 1
 
 Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:
 
-```@example MHSampler
-using DifferentialEvolutionMetropolis, Distributions, Random
+\`\`\`@example MHSampler using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
-struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
-    proposal_distribution::MvNormal
-end
+
+struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler proposal_distribution::MvNormal end
 
 # Implement the proposal function
-function DifferentialEvolutionMetropolis.proposal!(
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
-    sampler::MetropolisHastingsUpdate,
-    current_state::Int
-)
-    # Get the current position of this chain
-    x_current = state.x[current_state]
-    
-    # Propose a new point (stored in state) using a random walk
-    state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
-    
-    # The proposal is symmetric, so no Hastings correction needed
-    return (offset = 0.0)
+
+function DifferentialEvolutionMetropolis.proposal!( state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, sampler::MetropolisHastingsUpdate, current_state::Int ) # Get the current position of this chain x_current = state.x[current_state]
+
+```
+# Propose a new point (stored in state) using a random walk
+state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
+
+# The proposal is symmetric, so no Hastings correction needed
+return (offset = 0.0)
+```
 end
 
 DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
 
-```
+````
 
 ### Adaptive Proposals with step_warmup
 
@@ -224,45 +225,28 @@ function step_warmup(
     
     return sample, new_state
 end
-```
+````
 
 ## Example: Using Custom Components
 
 Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:
 
-```@example MHSampler
-using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
+\`\`\`@example MHSampler using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
 
 # Set up a simple log-density to sample from (a 2D standard normal distribution)
 
-ld = TransformedLogDensity(as(Array, 2), x -> -sum(x.^2) / 2)
-dimension(ld) = 2
-model = AbstractMCMC.LogDensityModel(ld)
+ld = TransformedLogDensity(as(Array, 2), x -> -sum(x.^2) / 2) dimension(ld) = 2 model = AbstractMCMC.LogDensityModel(ld)
 
 # Create custom samplers
-simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 * I))
-adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
+
+simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 \* I)) adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
 
 # Create a composite sampler scheme
-my_sampler_scheme = setup_sampler_scheme(
-    simple_mh, 
-    adaptive_mh;
-    w = [0.3, 0.7]  # Use adaptive sampler 70% of the time
-)
 
-# Sample using AbstractMCMC.sample 
-result = sample(
-    Random.default_rng(),
-    model,
-    my_sampler_scheme,
-    5000;
-    n_chains = 6,
-    num_warmup = 10000, #adaptive steps
-    memory = true,
-    parallel = false,
-    chain_type = DifferentialEvolutionOutput
-)
+my_sampler_scheme = setup_sampler_scheme( simple_mh, adaptive_mh; w = [0.3, 0.7] # Use adaptive sampler 70% of the time )
 
-plot(result.samples[:, :, 1])
-plot(result.samples[:, :, 2])
-```
+# Sample using AbstractMCMC.sample
+
+result = sample( Random.default_rng(), model, my_sampler_scheme, 5000; n_chains = 6, num_warmup = 10000, #adaptive steps memory = true, parallel = false, chain_type = DifferentialEvolutionOutput )
+
+plot(result.samples[:, :, 1]) plot(result.samples[:, :, 2]) \`\`\`
