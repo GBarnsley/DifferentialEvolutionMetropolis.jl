@@ -191,4 +191,29 @@ using Random, AbstractMCMC, LogDensityProblems
         )
         @test eltype(state.x[1]) == Float32
     end
+
+    @testset "Default N₀ keeps all supplied initial positions" begin
+        spl = setup_sampler_scheme(setup_subspace_sampling())
+        init = [randn(rng, 2) for _ in 1:20]
+
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains, initial_position = init, silent = true
+        )
+        @test state.memory.fill.position == 20
+        @test state.memory.mem_x[1:20] == init
+
+        _, state_small = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains, initial_position = init[1:5], silent = true
+        )
+        @test state_small.memory.fill.position == 2 * n_chains
+
+        _, state_set = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains, initial_position = init, N₀ = 8, silent = true
+        )
+        @test state_set.memory.fill.position == 8
+        @test state_set.memory.mem_x[1:8] == init[13:20]
+    end
 end
