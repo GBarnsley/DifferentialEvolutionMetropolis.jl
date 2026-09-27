@@ -83,6 +83,9 @@ function setup_subspace_sampling(;
     end
 
     if isa(cr, Real)
+        if check_args && cr ≤ 0
+            error("Crossover probability (cr) should be > 0")
+        end
         cr = Dirac(cr)
         n_cr = 0
     elseif isnothing(cr)
@@ -94,8 +97,8 @@ function setup_subspace_sampling(;
     end
 
     if check_args
-        if Distributions.minimum(cr) ≤ 0
-            error("Distribution of crossover probabilities (cr) should be bounded above 0")
+        if Distributions.minimum(cr) < 0
+            error("Distribution of crossover probabilities (cr) should be ≥ 0")
         elseif Distributions.maximum(cr) > 1
             error("Distribution of crossover probabilities (cr) should be ≤ 1")
         elseif Distributions.minimum(δ) ≤ 0
