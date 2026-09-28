@@ -21,7 +21,8 @@
         @test_throws ErrorException setup_subspace_sampling(cr = 0.0)  # should be > 0
         @test_throws ErrorException setup_subspace_sampling(cr = -0.1)  # negative
         @test_throws ErrorException setup_subspace_sampling(cr = 1.1)  # > 1
-        @test_throws ErrorException setup_subspace_sampling(cr = Uniform(-0.1, 0.5))  # minimum ≤ 0
+        @test_throws ErrorException setup_subspace_sampling(cr = Uniform(-0.1, 0.5))  # minimum < 0
+        @test setup_subspace_sampling(cr = Beta(1, 2)) isa DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler  # minimum = 0
         @test_throws ErrorException setup_subspace_sampling(cr = Uniform(0.5, 1.1))  # maximum > 1
 
         # Test δ validation

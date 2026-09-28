@@ -1021,4 +1021,40 @@ end
 
 DEM.chains_required(::DifferentialEvolutionHMCSampler) = 1
 
+# -----------------------------------------------------------------------------
+# Display
+# -----------------------------------------------------------------------------
+
+Base.show(io::IO, ::DifferentialEvolutionStockAdaptorMetric) = print(io, "stock adaptor")
+Base.show(io::IO, m::DifferentialEvolutionMemoryMetric) =
+    print(io, "memory_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ")")
+Base.show(io::IO, m::DifferentialEvolutionClusterPooledMetric) = print(
+    io, "cluster_pooled_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ", kmax = ", m.kmax, ")"
+)
+Base.show(io::IO, m::DifferentialEvolutionPerClusterMetric) = print(
+    io, "per_cluster_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ", kmax = ", m.kmax, ")"
+)
+
+hmc_trajectory(κ::AbstractMCMCKernel) = hasproperty(κ, :τ) ? κ.τ : κ
+
+function Base.show(io::IO, s::DifferentialEvolutionHMCSampler)
+    return print(io, "HMC update(", nameof(typeof(s.metric)), ", ", s.metric_strategy, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionHMCSampler)
+    fields = [
+        "trajectory" => sprint(show, hmc_trajectory(s.κ); context = io),
+        "metric" => sprint(show, s.metric; context = io),
+        "metric strategy" => sprint(show, s.metric_strategy; context = io),
+        "adaptor" => sprint(show, s.adaptor; context = io),
+    ]
+    return DEM.show_multiline(io, "HMC update", fields)
+end
+
+function Base.show(io::IO, a::HMCAdaptiveState)
+    return print(
+        io, "HMC (", a.initialized ? "" : "not ", "initialised, ", a.metric_steps, " HMC steps)"
+    )
+end
+
 end

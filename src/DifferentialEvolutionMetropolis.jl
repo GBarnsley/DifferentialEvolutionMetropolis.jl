@@ -146,6 +146,7 @@ include("composite_sampler.jl")
 include("utilities.jl")
 include("convergence.jl")
 include("templates.jl")
+include("show.jl")
 
 
 if !isdefined(Base, :get_extension)
