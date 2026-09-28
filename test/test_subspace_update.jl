@@ -14,6 +14,9 @@
         @test isa(dist.γ, Real)
         @test isa(dist.cr_spl, Dirac)
         @test isa(dist.δ_spl, Truncated{Poisson{Float64}})
+        default = setup_subspace_sampling()
+        @test default.ϵ_spl == Normal(0.0, 1.0e-12)
+        @test default.e_spl == Uniform(-0.1, 0.1)
     end
 
     @testset "Subspace validation errors" begin

@@ -98,7 +98,7 @@ deMCzs_kwargs = """
 - `γ`: Scaling factor for DE updates. Defaults to `2.38 / sqrt(2 * dim)`.
 - `γₛ`: Scaling factor for snooker updates. Defaults to `2.38 / sqrt(2)`.
 - `p_snooker`: Probability of snooker moves. Defaults to 0.1.
-- `β`: Noise distribution for DE updates. Defaults to `Uniform(-1e-4, 1e-4)`.
+- `β`: Noise distribution for DE updates. Defaults to `Normal(0.0, 1e-12)`.
 """
 
 DREAMz_description = """
@@ -115,8 +115,12 @@ DREAMz_kwargs = """
 - `γ₂`: Secondary scaling factor. Defaults to 1.0.
 - `p_γ₂`: Probability of using `γ₂`. Defaults to 0.2.
 - `n_cr`: Number of crossover probabilities for adaptation. Defaults to 3.
-- `cr₁`: Crossover probability for `γ₁`. Defaults to adaptive.
-- `cr₂`: Crossover probability for `γ₂`. Defaults to adaptive.
-- `ϵ`: Additive noise distribution. Defaults to `Uniform(-1e-4, 1e-4)`.
-- `e`: Multiplicative noise distribution. Defaults to `Normal(0.0, 1e-2)`.
+- `cr₁`: Crossover probability for `γ₁`, a fixed value or a distribution to draw it from. Defaults to adaptive.
+- `cr₂`: Crossover probability for `γ₂`, a fixed value or a distribution to draw it from. Defaults to adaptive.
+- `ϵ`: Additive noise distribution. Defaults to `Normal(0.0, 1e-12)`.
+- `e`: Multiplicative noise distribution. Defaults to `Uniform(-0.1, 0.1)`.
+- `cr_uniform_weight`: Weight of the uniform distribution mixed into the adapted crossover
+  probabilities, see [`setup_subspace_sampling`](@ref). Defaults to 0.05.
+- `min_variance_count`: Number of cold-chain positions before jumps are recorded for
+  crossover adaptation, see [`setup_subspace_sampling`](@ref). Defaults to 10.
 """

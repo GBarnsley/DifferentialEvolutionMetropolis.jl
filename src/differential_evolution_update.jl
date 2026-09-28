@@ -20,7 +20,7 @@ See doi.org/10.1007/s11222-006-8769-1 for more information.
   `UnivariateDistribution` (random scaling), or `nothing` (automatic based on `n_dims`).
   Defaults to `nothing`.
 - `β`: Distribution for small noise added to proposals. Must be a univariate continuous
-  distribution. Defaults to `Uniform(-1e-4, 1e-4)`.
+  distribution. Defaults to `Normal(0.0, 1e-12)`.
 - `n_dims`: Problem dimension used for automatic `γ` selection. If > 0 and `γ` is `nothing`,
   sets `γ` to the theoretically optimal `2.38 / sqrt(2 * n_dims)`. If ≤ 0, uses
   `Uniform(0.8, 1.2)`. Defaults to 0.
@@ -41,7 +41,7 @@ See also [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref), [`se
 """
 function setup_de_update(;
         γ::Union{Nothing, UnivariateDistribution, Real} = nothing,
-        β::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
+        β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         n_dims::Int = 0,
         check_args::Bool = true
     )

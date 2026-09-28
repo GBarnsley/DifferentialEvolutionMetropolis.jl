@@ -21,8 +21,8 @@ end
 # Helper function to update running variance using Welford's algorithm
 function calculate_running_variance!(
         adaptive_state::DifferentialEvolutionAdaptiveSubspace{T},
-        new_values::Vector{V}
-    ) where {T <: Real, V <: Vector{T}}
+        new_values::AbstractVector{V}
+    ) where {T <: Real, V <: AbstractVector{T}}
     for new_value in new_values
         adaptive_state.var_count += 1
         adaptive_state.delta .= new_value .- adaptive_state.var_mean
@@ -33,12 +33,24 @@ function calculate_running_variance!(
     return nothing
 end
 
-# Helper function to get current variance
-function calculate_current_variance!(adaptive_state::DifferentialEvolutionAdaptiveSubspace)
-    if adaptive_state.var_count ≥ 10
-        adaptive_state.variance .= adaptive_state.var_m2 ./ adaptive_state.var_count
+# Helper function to get current sample variance, returns whether it is available yet
+function calculate_current_variance!(
+        adaptive_state::DifferentialEvolutionAdaptiveSubspace, min_variance_count::Int
+    )
+    ready = adaptive_state.var_count ≥ min_variance_count
+    if ready
+        adaptive_state.variance .= adaptive_state.var_m2 ./ (adaptive_state.var_count - 1)
     end
-    return nothing
+    return ready
+end
+
+# Probabilities proportional to mean normalised squared jump, mixed with uniform (weight `w`) so none reach zero
+function adapted_cr_probabilities(adaptive_state::DifferentialEvolutionAdaptiveSubspace, w::Real)
+    p = adaptive_state.Δ ./ adaptive_state.L
+    sum_to_one!(p)
+    n_cr = length(p)
+    p .= (1 - w) .* p .+ w / n_cr
+    return p
 end
 
 #update the sampler with the adapted cr
@@ -52,7 +64,9 @@ function fix_sampler(
         sampler.n_cr,
         sampler.δ_spl,
         sampler.ϵ_spl,
-        sampler.e_spl
+        sampler.e_spl,
+        sampler.cr_uniform_weight,
+        sampler.min_variance_count
     )
 end
 
@@ -66,6 +80,8 @@ function fix_sampler(
         sampler.δ_spl,
         sampler.ϵ_spl,
         sampler.e_spl,
+        sampler.cr_uniform_weight,
+        sampler.min_variance_count,
         sampler.γ
     )
 end
@@ -77,7 +93,8 @@ Perform a single MCMC step during the warm-up (adaptive) phase.
 
 During warm-up, this function performs the same sampling as [`step`](@ref) but also
 updates adaptive parameters. For subspace samplers, it adapts crossover probabilities
-based on the effectiveness of different parameter subsets.
+based on the effectiveness of different parameter subsets. Only cold chains contribute
+to the adaptation, and jumps are recorded once the running variance is available.
 
 # Arguments
 - `rng`: Random number generator
@@ -131,7 +148,8 @@ function step_warmup(
     x = state.x
     adaptive_state = state.adaptive_state
 
-    calculate_current_variance!(adaptive_state)
+    variance_ready = calculate_current_variance!(adaptive_state, sampler.min_variance_count)
+    cold_chains = parentindices(state.x_smpl_view)[1]
 
     # loop through chains running the update
     fixed_sampler = fix_sampler(sampler, adaptive_state)
@@ -152,36 +170,37 @@ function step_warmup(
                 )
             end
         end
-        for i in eachindex(x)
-            adaptive_state.L[cr_update[i]] += 1
-            adaptive_state.Δ[cr_update[i]] += Δ_update[i]
+        if variance_ready
+            for i in cold_chains
+                adaptive_state.L[cr_update[i]] += 1
+                adaptive_state.Δ[cr_update[i]] += Δ_update[i]
+            end
         end
     else
         for i in eachindex(x)
             prop = proposal!(state, fixed_sampler, i)
             accepted = update_chain!(model, state, prop.offset, i)
 
-            cr_update = findfirst(prop.cr .== adaptive_state.cr_spl.support)
-            adaptive_state.L[cr_update] += 1
-            if accepted
-                adaptive_state.Δ[cr_update] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
+            if variance_ready && i in cold_chains
+                cr_update = findfirst(prop.cr .== adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_update] += 1
+                if accepted
+                    adaptive_state.Δ[cr_update] += sum(
+                        (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
+                            adaptive_state.variance
+                    )
+                end
             end
         end
     end
 
     #update variance
-    calculate_running_variance!(adaptive_state, state.xₚ)
-    if all(adaptive_state.L .> 0) && all(adaptive_state.Δ .> 0)
+    calculate_running_variance!(adaptive_state, state.xₚ_smpl_view)
+    if all(adaptive_state.L .> 0) && any(adaptive_state.Δ .> 0)
         adaptive_state.cr_spl = Distributions.sampler(
             DiscreteNonParametric(
                 adaptive_state.cr_spl.support,
-                sum_to_one!(
-                    sum(adaptive_state.L) .* (adaptive_state.Δ ./ adaptive_state.L) ./
-                        sum(adaptive_state.Δ)
-                )
+                adapted_cr_probabilities(adaptive_state, sampler.cr_uniform_weight)
             )
         )
     end

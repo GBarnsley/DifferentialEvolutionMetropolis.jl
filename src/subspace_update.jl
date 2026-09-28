@@ -12,6 +12,8 @@ struct DifferentialEvolutionSubspaceSampler{
     δ_spl::D
     ϵ_spl::E
     e_spl::F
+    cr_uniform_weight::Float64
+    min_variance_count::Int
 end
 
 struct DifferentialEvolutionSubspaceSamplerFixedGamma{
@@ -26,6 +28,8 @@ struct DifferentialEvolutionSubspaceSamplerFixedGamma{
     δ_spl::D
     ϵ_spl::E
     e_spl::F
+    cr_uniform_weight::Float64
+    min_variance_count::Int
     γ::T
 end
 
@@ -49,9 +53,19 @@ See doi.org/10.1515/IJNSNS.2009.10.3.273 for more information.
 - `δ`: Number of difference vectors to sum. Can be an `Integer` (fixed) or a
   `DiscreteUnivariateDistribution` (random). Defaults to `DiscreteUniform(1, 3)`.
 - `ϵ`: Distribution for small additive noise in the selected subspace. Defaults to
-  `Uniform(-1e-4, 1e-4)`.
+  `Normal(0.0, 1e-12)`.
 - `e`: Distribution for multiplicative noise `(1 + e)` applied to the difference vector sum.
-  Defaults to `Normal(0.0, 1e-2)`.
+  Defaults to `Uniform(-0.1, 0.1)`.
+- `cr_uniform_weight`: Weight `w` of the uniform distribution when adapting crossover
+  probabilities. The adapted probabilities are `p = (1 - w) q + w / n_cr`, where `q` is
+  proportional to the mean normalised squared jump distance of each crossover value. This
+  is a mixture of `q` with a uniform distribution over the `n_cr` values, so every value is
+  proposed with probability at least `w / n_cr` and can recover if it performs better later
+  in warm-up. `w = 0` gives the unmixed adaptation of Vrugt et al. (2009), `w = 1` disables
+  adaptation. Defaults to `0.05`.
+- `min_variance_count`: Number of cold-chain positions needed before the running variance
+  is used to normalise jump distances. Jumps before this are not recorded in the
+  adaptation. Must be at least 2. Defaults to `10`.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
@@ -74,8 +88,10 @@ function setup_subspace_sampling(;
         δ::Union{Integer, DiscreteUnivariateDistribution} = DiscreteUniform(
             1, 3
         ),
-        ϵ::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
-        e::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-2),
+        ϵ::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
+        e::ContinuousUnivariateDistribution = Uniform(-0.1, 0.1),
+        cr_uniform_weight::Real = 0.05,
+        min_variance_count::Int = 10,
         check_args::Bool = true
     )
     if isa(δ, Integer)
@@ -106,6 +122,11 @@ function setup_subspace_sampling(;
         end
         noise_checks(ϵ, "ϵ")
         noise_checks(e, "e")
+        if !(0 ≤ cr_uniform_weight ≤ 1)
+            error("cr_uniform_weight should be between 0 and 1")
+        elseif min_variance_count < 2
+            error("min_variance_count should be ≥ 2")
+        end
     end
 
     return if isnothing(γ)
@@ -114,7 +135,9 @@ function setup_subspace_sampling(;
             n_cr,
             sampler(δ),
             sampler(ϵ),
-            sampler(e)
+            sampler(e),
+            Float64(cr_uniform_weight),
+            min_variance_count
         )
     else
         if check_args
@@ -128,6 +151,8 @@ function setup_subspace_sampling(;
             sampler(δ),
             sampler(ϵ),
             sampler(e),
+            Float64(cr_uniform_weight),
+            min_variance_count,
             γ
         )
     end
