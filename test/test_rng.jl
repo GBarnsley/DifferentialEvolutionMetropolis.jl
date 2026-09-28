@@ -202,16 +202,16 @@
 
             res = [
                 begin
-                        DifferentialEvolutionMetropolis.fast_sample_chains!(
-                            rng,
-                            x,
-                            max_length,
-                            n_chains,
-                            indices,
-                            ordered_indices
-                        )
-                        copy(indices)
-                    end
+                    DifferentialEvolutionMetropolis.fast_sample_chains!(
+                        rng,
+                        x,
+                        max_length,
+                        n_chains,
+                        indices,
+                        ordered_indices
+                    )
+                    copy(indices)
+                end
                     for _ in 1:N_tests
             ]
 
@@ -226,17 +226,17 @@
 
             res = [
                 begin
-                        DifferentialEvolutionMetropolis.fast_sample_chains!(
-                            rng,
-                            x,
-                            max_length,
-                            n_chains_2,
-                            indices,
-                            ordered_indices,
-                            current_chain
-                        )
-                        copy(indices)
-                    end
+                    DifferentialEvolutionMetropolis.fast_sample_chains!(
+                        rng,
+                        x,
+                        max_length,
+                        n_chains_2,
+                        indices,
+                        ordered_indices,
+                        current_chain
+                    )
+                    copy(indices)
+                end
                     for _ in 1:N_tests
             ]
 
@@ -253,16 +253,16 @@
             disable_logging(Logging.Warn)
             res = [
                 begin
-                        DifferentialEvolutionMetropolis.fast_sample_chains!(
-                            rng,
-                            x,
-                            max_length,
-                            n_chains,
-                            indices,
-                            ordered_indices
-                        )
-                        copy(indices)
-                    end
+                    DifferentialEvolutionMetropolis.fast_sample_chains!(
+                        rng,
+                        x,
+                        max_length,
+                        n_chains,
+                        indices,
+                        ordered_indices
+                    )
+                    copy(indices)
+                end
                     for _ in 1:N_tests
             ]
             disable_logging(Logging.Info)
@@ -288,17 +288,17 @@
             disable_logging(Logging.Warn)
             res = [
                 begin
-                        DifferentialEvolutionMetropolis.fast_sample_chains!(
-                            rng,
-                            x,
-                            max_length,
-                            n_chains_2,
-                            indices,
-                            ordered_indices,
-                            current_chain
-                        )
-                        copy(indices)
-                    end
+                    DifferentialEvolutionMetropolis.fast_sample_chains!(
+                        rng,
+                        x,
+                        max_length,
+                        n_chains_2,
+                        indices,
+                        ordered_indices,
+                        current_chain
+                    )
+                    copy(indices)
+                end
                     for _ in 1:N_tests
             ]
             disable_logging(Logging.Info)
