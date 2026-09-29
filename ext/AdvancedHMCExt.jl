@@ -271,7 +271,14 @@ hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, state, κ::AbstractMCMCKernel,
-        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, parallel::Bool
+        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int},
+        backend::DEM.DistributedBackend
+    )
+    throw(ArgumentError("setup_hmc_update: `parallel = MCMCDistributed()` is not supported for HMC updates; use `MCMCThreads()` or `MCMCSerial()`."))
+end
+function run_trajectories!(
+        rng::AbstractRNG, model_wrapper::LogDensityModel, state, κ::AbstractMCMCKernel,
+        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, backend
     )
     # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
     for i in cold
@@ -284,7 +291,7 @@ function run_trajectories!(
     end
     ncold = length(cold)
     α = Vector{Float64}(undef, ncold)
-    if parallel
+    if backend isa AbstractMCMC.MCMCThreads
         Threads.@threads for k in 1:ncold
             i = cold[k]
             α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
@@ -959,9 +966,10 @@ end
 function step_warmup(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
-        parallel::Bool = false, update_memory::Bool = true,
+        parallel = state.parallel_backend, update_memory::Bool = true,
         num_warmup::Int = 1000, kwargs...
     ) where {T <: Real}
+    backend = DEM.parallel_backend(parallel, state.parallel_backend)
     astate = state.adaptive_state
     if !astate.initialized
         validate_metric_state(sampler.metric_strategy, state)
@@ -972,7 +980,7 @@ function step_warmup(
     fill_chain_metrics!(sampler.metric_strategy, astate, state)
     α = run_trajectories!(
         rng, model_wrapper, state, astate.κ, astate.chain_metrics,
-        astate.cold, astate.hot, parallel
+        astate.cold, astate.hot, backend
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
     return DEM.create_sample(state),
@@ -1005,15 +1013,16 @@ end
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
-        parallel::Bool = false, update_memory::Bool = true, kwargs...
+        parallel = state.parallel_backend, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
+    backend = DEM.parallel_backend(parallel, state.parallel_backend)
     if sampler.astate === nothing
         error("setup_hmc_update: this HMC update has not been warmed up. HMC updates resolve their chain assignments and step size during warmup; run with `adapt = true` (the default) and `num_warmup ≥ 1` / `n_burnin ≥ 1`.")
     end
     track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
     κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
     run_trajectories!(
-        rng, model_wrapper, state, κ, chain_metrics, sampler.cold, sampler.hot, parallel
+        rng, model_wrapper, state, κ, chain_metrics, sampler.cold, sampler.hot, backend
     )
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)

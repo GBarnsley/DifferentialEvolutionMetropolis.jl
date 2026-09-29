@@ -250,12 +250,11 @@ function step_warmup(
     model_wrapper::AbstractMCMC.LogDensityModel,
     sampler::AdaptiveMetropolisUpdate{T},
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, <:AdaptiveMetropolisState{T}};
-    parallel::Bool = false,
     kwargs...
 ) where {T<:Real}
 
-    # Perform regular step
-    sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
+    # Perform regular step, forwarding `parallel` and other options
+    sample, new_state = step(rng, model_wrapper, sampler, state; kwargs...)
 
     # Update adaptive parameters in-place
     adapt_state = new_state.adaptive_state
