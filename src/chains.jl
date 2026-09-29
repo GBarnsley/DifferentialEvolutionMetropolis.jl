@@ -367,7 +367,14 @@ function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSampler,
         model_wrapper::LogDensityModel, n_chains::Int
     )
-    return DifferentialEvolutionAdaptiveStatic{Float64}()
+    return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
+end
+
+function initialize_adaptive_state(
+        sampler::AbstractDifferentialEvolutionSampler,
+        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+    ) where {T <: Real}
+    return DifferentialEvolutionAdaptiveStatic{T}()
 end
 
 """
@@ -485,7 +492,7 @@ function step(
     n_true_chains = n_chains + n_hot_chains
 
     if adapt
-        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains)
+        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
         adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
     end

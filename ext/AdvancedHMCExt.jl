@@ -137,7 +137,7 @@ function DEM.setup_hmc_update(
 end
 
 """
-    initialize_adaptive_state(::DifferentialEvolutionHMCSampler, model_wrapper, n_chains)
+    initialize_adaptive_state(::DifferentialEvolutionHMCSampler, model_wrapper, n_chains, T)
 
 Build a fresh `HMCAdaptiveState` for this run from copies of the sampler's pieces (the
 metric and adaptor carry mutable adaptation state, so each run needs its own). Enforce that
@@ -148,8 +148,9 @@ target, so we fail loudly if the model is order-0 rather than silently assuming 
 carries a gradient.
 """
 function DEM.initialize_adaptive_state(
-        sampler::DifferentialEvolutionHMCSampler, model_wrapper::LogDensityModel, n_chains::Int
-    )
+        sampler::DifferentialEvolutionHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
+        ::Type{T}
+    ) where {T <: Real}
     ℓ = model_wrapper.logdensity
     cap = LogDensityProblems.capabilities(ℓ)
     cap === nothing && error(
@@ -173,10 +174,10 @@ function DEM.initialize_adaptive_state(
     chain_metrics = needs_private_scratch(metric) ?
         [deepcopy(metric) for _ in 1:n_chains] :
         Vector{typeof(metric)}(undef, n_chains)
-    return HMCAdaptiveState{Float64}(
+    return HMCAdaptiveState{T}(
         metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics, Int[], Int[], Matrix{Float64}(undef, d, 0), 0, typeof(metric)[],
-        Matrix{Float64}(undef, d, 0)
+        false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
+        Matrix{T}(undef, d, 0)
     )
 end
 
@@ -258,7 +259,7 @@ function run_trajectory!(state, metric, κ, i::Int, model)
     t = transition(state.rngs[i], h, κ, z)
     state.xₚ[i] .= t.z.θ
     state.ldₚ[i] = t.z.ℓπ.value
-    return Float64(t.stat.acceptance_rate)
+    return t.stat.acceptance_rate
 end
 
 # Chains HMC advances (cold) vs carries over (hot). Running the untempered kernel on hot chains would
@@ -283,7 +284,7 @@ function run_trajectories!(
         state.ldₚ[i] = state.ld[i]
     end
     ncold = length(cold)
-    α = Vector{Float64}(undef, ncold)
+    α = Vector{eltype(state.ld)}(undef, ncold)
     if parallel
         Threads.@threads for k in 1:ncold
             i = cold[k]
@@ -587,7 +588,7 @@ function multimodal_gate(positions)
     n = length(positions)
     n < 4 && return false
     D = length(first(positions))
-    col = Vector{Float64}(undef, n)
+    col = Vector{eltype(first(positions))}(undef, n)
     for d in 1:D
         for i in 1:n
             col[i] = positions[i][d]
