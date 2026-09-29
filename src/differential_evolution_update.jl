@@ -89,7 +89,7 @@ function proposal!(
         return (offset = -Inf)
     else
         rng = state.rngs[current_state]
-        (β,) = sampler.scratch.buffers[current_state]
+        (β,) = chain_buffers(sampler.scratch, eltype(x₁), current_state)
         γ = rand(rng, sampler.γ_spl)
         rand!(rng, sampler.β_spl, β)
         state.xₚ[current_state] .= state.x[current_state] .+ (γ .* (x₁ .- x₂)) .+ β

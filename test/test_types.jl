@@ -29,5 +29,20 @@
             @test result isa DifferentialEvolutionOutput{T}
             @test all(isfinite, result.samples)
         end
+
+        @testset "$T typed update parameters" begin
+            scheme = setup_sampler_scheme(
+                setup_de_update(γ = T(0.5), β = Normal(zero(T), T(1.0e-6))),
+                setup_snooker_update(γ = Uniform(T(0.8), T(1.2))),
+                setup_subspace_sampling(γ = T(1), cr = DiscreteNonParametric(T[0.5, 1], T[0.5, 0.5]))
+            )
+            result = sample(
+                backwards_compat_rng(1234), ld, scheme, 50;
+                num_warmup = 50, initial_position = initial_position, n_chains = 4,
+                silent = true, progress = false, chain_type = DifferentialEvolutionOutput
+            )
+            @test result isa DifferentialEvolutionOutput{T}
+            @test all(isfinite, result.samples)
+        end
     end
 end

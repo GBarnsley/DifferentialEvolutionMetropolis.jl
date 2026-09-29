@@ -12,20 +12,35 @@
 
     @testset "buffers are only reallocated when chains or dimensions change" begin
         scratch = DEM.ProposalScratch{2}()
-        DEM.ensure_size!(scratch, 4, 5)
+        DEM.ensure_size!(scratch, Float64, 4, 5)
         @test length(scratch.buffers) == 4
         @test all(length(buffer) == 5 for buffers in scratch.buffers for buffer in buffers)
         first_buffer = scratch.buffers[1][1]
-        DEM.ensure_size!(scratch, 4, 5)
+        DEM.ensure_size!(scratch, Float64, 4, 5)
         @test scratch.buffers[1][1] === first_buffer
-        DEM.ensure_size!(scratch, 8, 7)
+        DEM.ensure_size!(scratch, Float64, 8, 7)
         @test length(scratch.buffers) == 8
         @test all(length(buffer) == 7 for buffers in scratch.buffers for buffer in buffers)
         @test scratch.buffers[1][1] === first_buffer
         if check_allocations
-            ensure_bytes(s) = @allocated DifferentialEvolutionMetropolis.ensure_size!(s, 8, 7)
+            ensure_bytes(s) = @allocated DifferentialEvolutionMetropolis.ensure_size!(s, Float64, 8, 7)
             ensure_bytes(scratch)
             @test ensure_bytes(scratch) == 0
+        end
+    end
+
+    @testset "buffers follow the element type of the positions" begin
+        scratch = DEM.ProposalScratch{2}()
+        DEM.ensure_size!(scratch, Float64, 4, 5)
+        DEM.ensure_size!(scratch, Float32, 4, 5)
+        @test scratch.buffers isa Vector{NTuple{2, Vector{Float32}}}
+        @test length(scratch.buffers) == 4
+        @test all(length(buffer) == 5 for buffers in scratch.buffers for buffer in buffers)
+        @test DEM.chain_buffers(scratch, Float32, 1) === scratch.buffers[1]
+        if check_allocations
+            typed_ensure_bytes(s) = @allocated DifferentialEvolutionMetropolis.ensure_size!(s, Float32, 4, 5)
+            typed_ensure_bytes(scratch)
+            @test typed_ensure_bytes(scratch) == 0
         end
     end
 
@@ -36,10 +51,17 @@
         ("subspace fixed γ", setup_subspace_sampling(γ = 1.0)),
     )
     @testset "$name proposals do not allocate" for (name, update) in updates
-        for memory in (false, true)
-            state = initial_state(update; memory = memory)
+        for memory in (false, true), T in (Float64, Float32)
+            state = last(
+                AbstractMCMC.step(
+                    backwards_compat_rng(1), model, update;
+                    n_chains = 6, memory = memory,
+                    initial_position = [randn(backwards_compat_rng(i), T, n_dims) for i in 1:6]
+                )
+            )
             DEM.prepare_scratch!(update, state)
             @test length(update.scratch.buffers) == length(state.x)
+            @test update.scratch.buffers isa Vector{<:NTuple{<:Any, Vector{T}}}
             if check_allocations
                 proposal_bytes(s, u) = @allocated DifferentialEvolutionMetropolis.proposal!(s, u, 1)
                 proposal_bytes(state, update)
