@@ -5,6 +5,7 @@ authors = ["Greg Barnsley <63357847+GBarnsley@users.noreply.github.com>"]
 
 [deps]
 AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
+AliasTables = "66dad0bd-aa9a-41b7-9441-69ab47430ed8"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 FlexiChains = "4a37a8b9-6e57-4b92-8664-298d46e639f7"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -30,6 +31,7 @@ PathfinderExt = "Pathfinder"
 
 [compat]
 AbstractMCMC = "5.8"
+AliasTables = "1.1"
 AdvancedHMC = "0.8"
 Distributions = "0.25"
 FlexiChains = "0.1.6, 0.2, 0.3, 0.4, 0.5, 0.6"

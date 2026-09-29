@@ -56,13 +56,11 @@ See doi.org/10.1515/IJNSNS.2009.10.3.273 for more information.
   `Normal(0.0, 1e-12)`.
 - `e`: Distribution for multiplicative noise `(1 + e)` applied to the difference vector sum.
   Defaults to `Uniform(-0.1, 0.1)`.
-- `cr_uniform_weight`: Weight `w` of the uniform distribution when adapting crossover
-  probabilities. The adapted probabilities are `p = (1 - w) q + w / n_cr`, where `q` is
-  proportional to the mean normalised squared jump distance of each crossover value. This
-  is a mixture of `q` with a uniform distribution over the `n_cr` values, so every value is
-  proposed with probability at least `w / n_cr` and can recover if it performs better later
-  in warm-up. `w = 0` gives the unmixed adaptation of Vrugt et al. (2009), `w = 1` disables
-  adaptation. Defaults to `0.05`.
+- `cr_uniform_weight`: Cross over probabilities are mixed with a uniform distribution during adaption,
+  so that crossover probabilities that are never used are still sometimes proposed. The adapted
+  probabilities are `p = (1 - w) q + w / n_cr`, where `q` is proportional to the mean normalised
+  squared jump distance of each crossover value. `w = 0` gives the unmixed adaptation of Vrugt et al.
+  (2009), `w = 1` disables adaptation. Option does nothing if adaption is disabled. Defaults to `0.05`.
 - `min_variance_count`: Number of cold-chain positions needed before the running variance
   is used to normalise jump distances. Jumps before this are not recorded in the
   adaptation. Must be at least 2. Defaults to `10`.
@@ -131,7 +129,7 @@ function setup_subspace_sampling(;
 
     return if isnothing(γ)
         DifferentialEvolutionSubspaceSampler(
-            sampler(cr),
+            cr_sampler(cr),
             n_cr,
             sampler(δ),
             sampler(ϵ),
@@ -146,7 +144,7 @@ function setup_subspace_sampling(;
             end
         end
         DifferentialEvolutionSubspaceSamplerFixedGamma(
-            sampler(cr),
+            cr_sampler(cr),
             n_cr,
             sampler(δ),
             sampler(ϵ),
@@ -161,6 +159,25 @@ end
 function create_cr_dist(n_cr::Int)
     return DiscreteNonParametric(collect(1:n_cr) ./ n_cr, repeat([1 / n_cr], n_cr))
 end
+
+# Adaptable crossover distributions are kept as distributions so their support and probabilities stay accessible
+cr_sampler(cr::DiscreteNonParametric) = cr
+cr_sampler(cr) = sampler(cr)
+
+# Sampler over a fixed support whose alias table weights are updated in place without allocating
+struct CrossoverSampler{T <: Real} <: Sampleable{Univariate, Discrete}
+    support::Vector{T}
+    at::AliasTable{UInt64, Int}
+end
+
+function CrossoverSampler(support::AbstractVector{T}, weights::AbstractVector{<:Real}) where {T <: Real}
+    return CrossoverSampler{T}(collect(support), AliasTable(weights))
+end
+
+Random.rand(rng::AbstractRNG, s::CrossoverSampler) = s.support[rand(rng, s.at)]
+Distributions.support(s::CrossoverSampler) = s.support
+set_weights!(s::CrossoverSampler, weights::AbstractVector{<:Real}) = (set_weights!(s.at, weights); s)
+Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support && a.at == b.at
 
 function proposal!(
         state::DifferentialEvolutionState,

@@ -1,8 +1,8 @@
 show_distribution(io::IO, d) = show(IOContext(io, :compact => true), d)
 show_distribution(io::IO, d::Dirac{T}) where {T} = print(IOContext(io, :compact => true), d.value, "::", T)
-function show_distribution(io::IO, d::DiscreteNonParametricSampler)
+function show_distribution(io::IO, d::Union{DiscreteNonParametric, CrossoverSampler})
     print(io, "DiscreteNonParametric(support = ")
-    show(IOContext(io, :compact => true), d.support)
+    show(IOContext(io, :compact => true), Distributions.support(d))
     return print(io, ")")
 end
 

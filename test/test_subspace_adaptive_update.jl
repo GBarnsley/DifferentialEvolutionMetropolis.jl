@@ -127,9 +127,10 @@
         @test sum(L_values[:, end]) == ((its - skipped_its) * n_chains)
         @test all(L_values[:, skipped_its] .== 0)
         #probabilities stay above the floor
-        p = DifferentialEvolutionMetropolis.adapted_cr_probabilities(
+        DifferentialEvolutionMetropolis.adapted_cr_probabilities!(
             states[end].adaptive_state, de_sampler.cr_uniform_weight
         )
+        p = states[end].adaptive_state.p
         @test sum(p) ≈ 1.0
         @test all(p .≥ de_sampler.cr_uniform_weight / n_cr)
         #jump distances
@@ -234,8 +235,8 @@
         state.adaptive_state.L .= [10, 10, 10]
         state.adaptive_state.Δ .= [0.0, 1.0, 3.0]
         for w in (0.0, 0.05, 0.5)
-            p = DifferentialEvolutionMetropolis.adapted_cr_probabilities(state.adaptive_state, w)
-            @test p ≈ (1 - w) .* [0.0, 0.25, 0.75] .+ w / 3
+            DifferentialEvolutionMetropolis.adapted_cr_probabilities!(state.adaptive_state, w)
+            @test state.adaptive_state.p ≈ (1 - w) .* [0.0, 0.25, 0.75] .+ w / 3
         end
     end
 
@@ -256,8 +257,8 @@
             )
         end
         @test sum(state.adaptive_state.L) == (its - cld(40, n_chains)) * n_chains
-        p = DifferentialEvolutionMetropolis.adapted_cr_probabilities(state.adaptive_state, 0.3)
-        @test all(p .≥ 0.1 - 1.0e-12)
+        DifferentialEvolutionMetropolis.adapted_cr_probabilities!(state.adaptive_state, 0.3)
+        @test all(state.adaptive_state.p .≥ 0.1 - 1.0e-12)
         fixed = DifferentialEvolutionMetropolis.fix_sampler(de_sampler, state.adaptive_state)
         @test fixed.cr_uniform_weight == 0.3
         @test fixed.min_variance_count == 40

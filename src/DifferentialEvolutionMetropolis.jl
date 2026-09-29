@@ -6,10 +6,11 @@ export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
 
 import Distributions: UnivariateDistribution, DiscreteUnivariateDistribution,
-    ContinuousUnivariateDistribution, DiscreteNonParametricSampler
+    ContinuousUnivariateDistribution
 import Distributions: Sampleable, Discrete, Continuous, Univariate, sampler
 import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParametric
 import Distributions
+import AliasTables: AliasTable, set_weights!
 
 import LogDensityProblems: logdensity, dimension
 import StatsBase: wsample
