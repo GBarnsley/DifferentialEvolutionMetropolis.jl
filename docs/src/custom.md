@@ -16,7 +16,7 @@ function your_stopping_criteria(
     rng::AbstractRNG,
     model::AbstractModel,
     sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{DifferentialEvolutionSample},
+    samples::Vector{<:DifferentialEvolutionSample},
     state::DifferentialEvolutionState,
     iteration::Int;
     kwargs...
@@ -42,12 +42,12 @@ function max_iterations_stopping(
     rng::AbstractRNG,
     model::AbstractModel,
     sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{DifferentialEvolutionSample{V, VV}},
-    state::DifferentialEvolutionState{T, V, VV, A},
+    samples::Vector{<:DifferentialEvolutionSample},
+    state::DifferentialEvolutionState{T, A},
     iteration::Int;
     max_iterations::Int = 10000,
     kwargs...
-) where {T<:Real, V<:AbstractVector{T}, VV<:AbstractVector{V}, A<:AbstractDifferentialEvolutionAdaptiveState{T}}
+) where {T<:Real, A<:AbstractDifferentialEvolutionAdaptiveState{T}}
     if iteration >= max_iterations
         println("Reached maximum iterations ($max_iterations), stopping.")
         return true
@@ -140,8 +140,8 @@ DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
 
 The example above allocates a new vector for every proposal.
 This is usually negligible next to the cost of the log density, so it is the recommended starting point.
-To avoid allocations, an update can hold a `ProposalScratch{N}`, which gives each chain `N` preallocated `Float64` vectors the length of the parameter vector.
-The buffers are sized by `prepare_scratch!` before chains are updated, and only reallocated when the number of chains or parameters changes.
+To avoid allocations, an update can hold a `ProposalScratch{N}`, which gives each chain `N` preallocated vectors of the positions' element type the length of the parameter vector.
+The buffers are sized by `prepare_scratch!` before chains are updated, and only reallocated when the element type, number of chains or parameters changes.
 Only use the buffers belonging to `current_state`, as chains may be updated in parallel.
 
 ```@example MHSampler
@@ -165,7 +165,11 @@ function DifferentialEvolutionMetropolis.proposal!(
     current_state::Int
 )
     # Draw the random walk step into this chain's buffer rather than a new vector
-    (jump,) = sampler.scratch.buffers[current_state]
+    # We pass the type of the state (here Float64) to make `chain_buffers` type stable
+    # `scratch` itself if a mutable struct that can hold vectors of any type, allowing seem-less reuse of buffers
+    # across logdensities of different dimensions and types
+    T = eltype(state.x[current_state])
+    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, T, current_state)
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
     state.xₚ[current_state] .= state.x[current_state] .+ jump
     return (offset = 0.0)
@@ -184,7 +188,8 @@ You'll also need to define adaptive state structures and methods.
 Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
-using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics
+using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, LogDensityProblems
+import AbstractMCMC: step_warmup
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
@@ -214,13 +219,13 @@ function AdaptiveMetropolisUpdate(
 end
 
 # Initialize adaptive state
-function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate{T}, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int) where {T}
-    n_params = dimension(model_wrapper.logdensity)
+function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int, ::Type{T}) where {T<:Real}
+    n_params = LogDensityProblems.dimension(model_wrapper.logdensity)
     return AdaptiveMetropolisState{T}(
-        copy(sampler.initial_cov),
+        Matrix{T}(sampler.initial_cov),
         0,
         zeros(T, n_params),
-        copy(sampler.initial_cov)
+        Matrix{T}(sampler.initial_cov)
     )
 end
 
@@ -269,7 +274,7 @@ function step_warmup(
         empirical_cov = cov(positions)
 
         # Update proposal covariance with regularization in-place
-        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I
+        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I(size(empirical_cov, 1))
     end
 
     return sample, new_state

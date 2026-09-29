@@ -367,7 +367,14 @@ function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSampler,
         model_wrapper::LogDensityModel, n_chains::Int
     )
-    return DifferentialEvolutionAdaptiveStatic{Float64}()
+    return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
+end
+
+function initialize_adaptive_state(
+        sampler::AbstractDifferentialEvolutionSampler,
+        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+    ) where {T <: Real}
+    return DifferentialEvolutionAdaptiveStatic{T}()
 end
 
 """
@@ -449,6 +456,7 @@ function step(
         N₀::Union{Nothing, Int} = nothing,
         adapt::Bool = true,
         initial_position = nothing,
+        T::Union{Nothing, Type{<:AbstractFloat}} = nothing,
         stratify_initial_position::Bool = true,
         parallel::Bool = false,
         #parallel tempering and annealing parameters
@@ -470,7 +478,9 @@ function step(
         memory ? something(N₀, n_chains + n_hot_chains) : 0;
         stratify = stratify_initial_position
     )
-    T = isnothing(initial_position) ? Float64 : eltype(initial_position[1])
+    if isnothing(T)
+        T = isnothing(initial_position) ? Float64 : eltype(initial_position[1])
+    end
 
     if isnothing(temperature_ladder)
         temperature_ladder = create_temperature_ladder(
@@ -485,7 +495,7 @@ function step(
     n_true_chains = n_chains + n_hot_chains
 
     if adapt
-        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains)
+        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
         adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
     end
@@ -493,10 +503,10 @@ function step(
     extra_memory = nothing
 
     if isnothing(initial_position)
-        x = [randn(rng, dimension(model)) for _ in 1:n_true_chains]
+        x = [randn(rng, T, dimension(model)) for _ in 1:n_true_chains]
     else
         push!(log, "DifferentialEvolutionMetropolis: adjusting provided initial positions...")
-        initial_position = copy.(initial_position)
+        initial_position = [Vector{T}(position) for position in initial_position]
         current_N = length(initial_position)
         current_pars = length(initial_position[1])
         if current_pars != dimension(model)

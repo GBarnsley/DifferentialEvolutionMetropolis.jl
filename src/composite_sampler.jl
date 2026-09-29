@@ -165,13 +165,12 @@ end
 
 function initialize_adaptive_state(
         sampler::DifferentialEvolutionCompositeSampler,
-        model_wrapper::LogDensityModel, n_chains::Int
-    )
+        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+    ) where {T <: Real}
     adaptive_states = [
-        initialize_adaptive_state(s, model_wrapper, n_chains)
+        initialize_adaptive_state(s, model_wrapper, n_chains, T)
             for s in sampler.updates
     ]
-    T = Float64
 
     if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
         return DifferentialEvolutionAdaptiveStatic{T}()

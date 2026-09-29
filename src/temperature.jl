@@ -8,7 +8,7 @@ function create_temperature_ladder(
     else
         final_temperature = [
             cold_chains...,
-            ((collect(0:(1 / (n_hot_chains)):1) .^ α) .* (max_temp_pt - 1) .+ 1)[2:end]...,
+            ((range(zero(T), one(T); length = n_hot_chains + 1) .^ α) .* (max_temp_pt - 1) .+ 1)[2:end]...,
         ]
     end
 

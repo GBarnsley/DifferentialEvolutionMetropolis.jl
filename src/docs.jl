@@ -3,6 +3,10 @@ _generic_de_kwargs_1 = """
 - `n_chains`: Number of parallel chains. Defaults to `max(2 * dimension, 3)` for adequate mixing.
 - `adapt`: Whether to enable adaptive behavior during warm-up (if the sampler supports it).
   Defaults to `true`.
+- `T`: Position element type, e.g. `T = Float32` or `T = BigFloat`. If omitted, uses the
+  element type of resolved `initial_position`, or `Float64` for random initialization.
+  When supplied, converts initial positions (including Pathfinder draws) and initial memory
+  to `T`; random positions, scratch, log densities and adaptive state also use `T`.
 - `initial_position`: Starting positions for chains. Can be `nothing` (random initialization),
   or a vector of parameter vectors. If the provided vector is smaller than `n_chains + n_hot_chains`,
   it will be expanded; if larger and `memory=true`, excess positions become initial memory. Defaults to `nothing`.

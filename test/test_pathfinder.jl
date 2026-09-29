@@ -89,6 +89,23 @@ LogDensityProblems.capabilities(::Type{<:PathfinderBimodalModel}) = LogDensityPr
         @test length(state_unstratified.x) == n_chains
     end
 
+    @testset "Explicit position type with Pathfinder" begin
+        for T in (Float32, BigFloat), ip in (pf_left, (pf_left, pf_right), [pf_left, pf_right], mpf)
+            state = initialise(ip; T = T, N₀ = 20)
+            @test all(x -> eltype(x) === T, state.x)
+            @test all(x -> eltype(x) === T, state.memory.mem_x)
+            @test eltype(state.ld) === T
+            @test all(isfinite, state.ld)
+        end
+        result = deMCzs(
+            wrapped_model, 10; T = Float32, initial_position = mpf,
+            n_chains = n_chains, N₀ = 20, n_burnin = 10,
+            rng = backwards_compat_rng(6), silent = true, progress = false
+        )
+        @test result isa DifferentialEvolutionOutput{Float32}
+        @test all(isfinite, result.samples)
+    end
+
     @testset "Errors" begin
         model_3d = PathfinderBimodalModel(MvNormal(zeros(3), I))
         pf_3d = pathfinder(model_3d; rng = backwards_compat_rng(5))
