@@ -4,7 +4,10 @@ struct DifferentialEvolutionSampler{
     } <: AbstractDifferentialEvolutionSampler
     γ_spl::G
     β_spl::B
+    scratch::ProposalScratch{1}
 end
+
+prepare_scratch!(sampler::DifferentialEvolutionSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 """
 Set up a Differential Evolution (DE) update step for MCMC sampling.
@@ -64,7 +67,7 @@ function setup_de_update(;
         noise_checks(β, "β")
     end
 
-    return DifferentialEvolutionSampler(sampler(γ), sampler(β))
+    return DifferentialEvolutionSampler(sampler(γ), sampler(β), ProposalScratch{1}())
 end
 
 function noise_checks(dist, name)
@@ -85,14 +88,11 @@ function proposal!(
         state.xₚ[current_state] .= x₁
         return (offset = -Inf)
     else
-        state.xₚ[current_state] .= state.x[current_state] .+
-            (
-            rand(state.rngs[current_state], sampler.γ_spl) .*
-                (x₁ - x₂)
-        ) .+
-            rand(
-            state.rngs[current_state], sampler.β_spl, length(state.x[current_state])
-        )
+        rng = state.rngs[current_state]
+        (β,) = sampler.scratch.buffers[current_state]
+        γ = rand(rng, sampler.γ_spl)
+        rand!(rng, sampler.β_spl, β)
+        state.xₚ[current_state] .= state.x[current_state] .+ (γ .* (x₁ .- x₂)) .+ β
         return (offset = zero(eltype(x₁)))
     end
 end

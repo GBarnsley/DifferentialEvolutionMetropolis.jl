@@ -14,6 +14,7 @@ struct DifferentialEvolutionSubspaceSampler{
     e_spl::F
     cr_uniform_weight::Float64
     min_variance_count::Int
+    scratch::ProposalScratch{3}
 end
 
 struct DifferentialEvolutionSubspaceSamplerFixedGamma{
@@ -30,6 +31,7 @@ struct DifferentialEvolutionSubspaceSamplerFixedGamma{
     e_spl::F
     cr_uniform_weight::Float64
     min_variance_count::Int
+    scratch::ProposalScratch{3}
     γ::T
 end
 
@@ -135,7 +137,8 @@ function setup_subspace_sampling(;
             sampler(ϵ),
             sampler(e),
             Float64(cr_uniform_weight),
-            min_variance_count
+            min_variance_count,
+            ProposalScratch{3}()
         )
     else
         if check_args
@@ -151,6 +154,7 @@ function setup_subspace_sampling(;
             sampler(e),
             Float64(cr_uniform_weight),
             min_variance_count,
+            ProposalScratch{3}(),
             γ
         )
     end
@@ -174,10 +178,12 @@ function CrossoverSampler(support::AbstractVector{T}, weights::AbstractVector{<:
     return CrossoverSampler{T}(collect(support), AliasTable(weights))
 end
 
-Random.rand(rng::AbstractRNG, s::CrossoverSampler) = s.support[rand(rng, s.at)]
+rand(rng::AbstractRNG, s::CrossoverSampler) = s.support[rand(rng, s.at)]
 Distributions.support(s::CrossoverSampler) = s.support
 set_weights!(s::CrossoverSampler, weights::AbstractVector{<:Real}) = (set_weights!(s.at, weights); s)
 Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support && a.at == b.at
+
+prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 function proposal!(
         state::DifferentialEvolutionState,
@@ -186,36 +192,34 @@ function proposal!(
     rng = state.rngs[current_state]
     x = state.x[current_state]
     xₚ = state.xₚ[current_state]
+    u, e, ϵ = sampler.scratch.buffers[current_state]
 
-    copyto!(xₚ, x) #try the range methods?
-
-    #determine how many dimensions to update
+    #determine how many dimensions to update, those with u < cr
     cr = rand(rng, sampler.cr_spl)
-    to_update = rand(rng, length(x)) .< cr
-    d = sum(to_update)
+    rand!(rng, u)
+    d = count(<(cr), u)
 
     if d == 0
         #just pick one
-        to_update[rand(rng, eachindex(to_update))] = true
+        u[rand(rng, eachindex(u))] = -Inf
         d = 1
     end
 
     δ = rand(rng, sampler.δ_spl)
 
-    #set modified to 0
-    xₚ[to_update] .= zero(eltype(x))
-
     #generate candidate
+    fill!(xₚ, zero(eltype(x)))
     for _ in 1:δ
         #pick to random chains find the difference and add to the candidate
         x₁, x₂ = pick_chains(state, current_state, Val(2))
-        xₚ[to_update] .+= x₁[to_update] .- x₂[to_update]
+        xₚ .+= x₁ .- x₂
     end
 
-    #add the other parts of the equation
-    xₚ[to_update] .= x[to_update] .+ (
-        (1 .+ rand(rng, sampler.e_spl, d)) .* get_γ(rng, sampler, δ, d) .* xₚ[to_update]
-    ) .+ rand(rng, sampler.ϵ_spl, d)
+    #add the other parts of the equation, dimensions not updated stay at x
+    rand!(rng, sampler.e_spl, e)
+    rand!(rng, sampler.ϵ_spl, ϵ)
+    γ = get_γ(rng, sampler, δ, d)
+    xₚ .= ifelse.(u .< cr, x .+ (1 .+ e) .* γ .* xₚ .+ ϵ, x)
 
     return (offset = zero(eltype(xₚ)), cr = cr)
 end

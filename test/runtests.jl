@@ -49,6 +49,7 @@ end
     include("test_snooker_update.jl")
     include("test_subspace_update.jl")
     include("test_subspace_adaptive_update.jl")
+    include("test_scratch.jl")
     include("test_composite.jl")
     include("test_rng.jl")
     include("test_threadsafe.jl")

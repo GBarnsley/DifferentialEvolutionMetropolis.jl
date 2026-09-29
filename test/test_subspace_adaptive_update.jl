@@ -267,6 +267,18 @@
         @test_throws ErrorException setup_subspace_sampling(min_variance_count = 1)
     end
 
+    @testset "warn when adapting nonstandard crossover support" begin
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
+        custom_support = [0.1, 0.4, 0.9]
+        custom_cr = DiscreteNonParametric(custom_support, [0.2, 0.3, 0.5])
+        update = setup_subspace_sampling(cr = custom_cr)
+        adaptive_state = @test_logs (:warn, "Adapting provided crossover probabilities.") begin
+            DifferentialEvolutionMetropolis.initialize_adaptive_state(update, model, 4)
+        end
+        @test Distributions.support(adaptive_state.cr_spl) == custom_support
+        @test rand(backwards_compat_rng(1), adaptive_state.cr_spl) in custom_support
+    end
+
     @testset "warnings" begin
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])

@@ -68,7 +68,8 @@ function fix_sampler(
         sampler.ϵ_spl,
         sampler.e_spl,
         sampler.cr_uniform_weight,
-        sampler.min_variance_count
+        sampler.min_variance_count,
+        sampler.scratch
     )
 end
 
@@ -84,6 +85,7 @@ function fix_sampler(
         sampler.e_spl,
         sampler.cr_uniform_weight,
         sampler.min_variance_count,
+        sampler.scratch,
         sampler.γ
     )
 end
@@ -142,7 +144,7 @@ function step_warmup(
     ) where {T <: Real}
     # Derive per-chain RNGs deterministically from the provided rng for this step.
     for i in eachindex(state.rngs)
-        state.rngs[i] = Random.seed!(copy(rng), rand(rng, UInt))
+        reseed!(state.rngs[i], rng)
     end
     # Extract the wrapped model which implements LogDensityProblems.jl.
     model = model_wrapper.logdensity
@@ -155,6 +157,7 @@ function step_warmup(
 
     # loop through chains running the update
     fixed_sampler = fix_sampler(sampler, adaptive_state)
+    prepare_scratch!(fixed_sampler, state)
 
     if parallel
         # thread safe updating

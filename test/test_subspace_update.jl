@@ -19,6 +19,13 @@
         @test default.e_spl == Uniform(-0.1, 0.1)
     end
 
+    @testset "crossover sampler exposes its support" begin
+        support = [0.2, 0.5, 1.0]
+        cr_sampler = DifferentialEvolutionMetropolis.CrossoverSampler(support, [0.2, 0.3, 0.5])
+        @test Distributions.support(cr_sampler) == support
+        @test all(rand(backwards_compat_rng(seed), cr_sampler) in support for seed in 1:10)
+    end
+
     @testset "Subspace validation errors" begin
         # Test cr validation
         @test_throws ErrorException setup_subspace_sampling(cr = 0.0)  # should be > 0

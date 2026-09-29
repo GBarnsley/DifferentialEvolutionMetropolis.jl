@@ -275,7 +275,7 @@ function run_trajectories!(
     )
     # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
     for i in cold
-        Random.seed!(state.rngs[i], rand(rng, UInt))
+        DEM.reseed!(state.rngs[i], rng)
     end
     # Carry hot chains over unchanged so the `xₚ ↔ x` swap preserves them (empty without tempering).
     for i in hot

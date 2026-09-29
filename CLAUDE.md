@@ -40,7 +40,13 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 
 ### Update types
 
-Each implements `proposal!(state, sampler, i)` returning `(offset, ...)`; an offset of `-Inf` means auto-reject. - `differential_evolution_update.jl`: classic DE-MC. - `snooker_update.jl`: snooker update. - `subspace_update.jl` / `subspace_adaptive_update.jl`: DREAM-style randomised subspace with adaptive crossover. - `composite_sampler.jl`: `setup_sampler_scheme` weight-samples among updates each step; collapses to static adaptive state when all components are static. - Chain picking uses `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
+Each implements `proposal!(state, sampler, i)` returning `(offset, ...)`; an offset of `-Inf` means auto-reject.
+
+- `differential_evolution_update.jl`: classic DE-MC.
+- `snooker_update.jl`: snooker update.
+- `subspace_update.jl` / `subspace_adaptive_update.jl`: DREAM-style randomised subspace with adaptive crossover.
+- `composite_sampler.jl`: `setup_sampler_scheme` weight-samples among updates each step; collapses to static adaptive state when all components are static.
+- Chain picking uses `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
 ### Memory (`src/memory.jl`)
 

@@ -232,13 +232,14 @@ function step(
     # Derive per-chain RNGs deterministically from the provided rng for this step.
     # Keep this here so `step` depends only on `rng` and `state`, and can be called in isolation.
     for i in eachindex(state.rngs)
-        Random.seed!(state.rngs[i], rand(rng, UInt))
+        reseed!(state.rngs[i], rng)
     end
     # Extract the wrapped model which implements LogDensityProblems.jl.
     model = model_wrapper.logdensity
     # Extract the current states
     x = state.x
 
+    prepare_scratch!(sampler, state)
     # loop through chains running the update
     if parallel
         Threads.@threads for i in eachindex(x)
@@ -629,7 +630,7 @@ function step(
     end
 
     state = DifferentialEvolutionState(
-        Random.seed!(copy(rng), rand(rng, UInt)), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models
+        reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models
     )
 
     return create_sample(state), state
