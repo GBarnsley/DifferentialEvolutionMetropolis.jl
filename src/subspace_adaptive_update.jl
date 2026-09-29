@@ -216,10 +216,9 @@ end
 
 function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSubspaceSampler,
-        model_wrapper::LogDensityModel, n_chains::Int
-    )
+        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+    ) where {T <: Real}
     n_cr = sampler.n_cr
-    T = Float64
     d = dimension(model_wrapper.logdensity)
     if n_cr == 0
         @warn "sampler already has a fixed crossover probability, cannot adapt."
