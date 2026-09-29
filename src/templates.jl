@@ -62,7 +62,7 @@ function _deMC(
         γ₁::Union{Nothing, T} = nothing,
         γ₂::T = 1.0,
         p_γ₂::T = 0.1,
-        β::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
+        β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         chain_type = DifferentialEvolutionOutput,
         memory = false,
         kwargs...
@@ -157,7 +157,7 @@ function _deMCzs(
         γ::Union{Nothing, Real} = nothing,
         γₛ::Union{Nothing, Real} = nothing,
         p_snooker::Union{Nothing, Real} = 0.1,
-        β::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
+        β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         chain_type = DifferentialEvolutionOutput,
         kwargs...
     )
@@ -247,29 +247,40 @@ function _DREAMz(
         num_warmup::Int,
         save_burnt::Bool;
         rng::AbstractRNG = default_rng(),
-        γ₁::Union{Nothing, T} = nothing,
-        γ₂::Union{Nothing, T} = 1.0,
-        p_γ₂::Union{Nothing, T} = 0.2,
+        γ₁::Union{Nothing, Real} = nothing,
+        γ₂::Union{Nothing, Real} = 1.0,
+        p_γ₂::Real = 0.2,
         n_cr::Int = 3,
-        cr₁::Union{Nothing, T} = nothing,
-        cr₂::Union{Nothing, T} = nothing,
-        ϵ::Distributions.Uniform{T} = Distributions.Uniform(-1.0e-4, 1.0e-4),
-        e::Distributions.Normal{T} = Distributions.Normal(0.0, 1.0e-2),
-        δ::Distributions.DiscreteUniform = Distributions.DiscreteUniform(1, 3),
+        cr₁::Union{Nothing, Real, UnivariateDistribution} = nothing,
+        cr₂::Union{Nothing, Real, UnivariateDistribution} = nothing,
+        ϵ::ContinuousUnivariateDistribution = Distributions.Normal(0.0, 1.0e-12),
+        e::ContinuousUnivariateDistribution = Distributions.Uniform(-0.1, 0.1),
+        δ::Union{Integer, DiscreteUnivariateDistribution} = Distributions.DiscreteUniform(1, 3),
+        cr_uniform_weight::Real = 0.05,
+        min_variance_count::Int = 10,
         chain_type = DifferentialEvolutionOutput,
         kwargs...
-    ) where {T <: Real}
+    )
 
     #build sampler scheme
     if p_γ₂ == 0
         sampler_scheme = setup_sampler_scheme(
-            setup_subspace_sampling(γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e)
+            setup_subspace_sampling(
+                γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
+                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
+            )
         )
     else
         sampler_scheme = setup_sampler_scheme(
-            setup_subspace_sampling(γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e),
-            setup_subspace_sampling(γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e),
-            w = [1 - p_γ₂, p_γ₂]
+            setup_subspace_sampling(
+                γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
+                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
+            ),
+            setup_subspace_sampling(
+                γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e,
+                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
+            ),
+            w = Float64[1 - p_γ₂, p_γ₂]
         )
     end
 

@@ -6,17 +6,17 @@ export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
 
 import Distributions: UnivariateDistribution, DiscreteUnivariateDistribution,
-    ContinuousUnivariateDistribution, DiscreteNonParametricSampler
+    ContinuousUnivariateDistribution
 import Distributions: Sampleable, Discrete, Continuous, Univariate, sampler
 import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParametric
 import Distributions
+import AliasTables: AliasTable, set_weights!
 
 import LogDensityProblems: logdensity, dimension
 import StatsBase: wsample
 import StatsBase
-import LinearAlgebra: norm, normalize, dot
-import Random: AbstractRNG, default_rng
-import Random
+import LinearAlgebra: norm, normalize!, dot
+import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
 import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
@@ -62,6 +62,12 @@ struct DifferentialEvolutionState{
     ldₚ_smpl_view::V2
 end
 
+# Reseed a chain rng from `rng`, Xoshiro states are set directly as `seed!` allocates while hashing the seed
+reseed!(chain_rng::AbstractRNG, rng::AbstractRNG) = seed!(chain_rng, rand(rng, UInt))
+function reseed!(chain_rng::Xoshiro, rng::AbstractRNG)
+    return copy!(chain_rng, Xoshiro(rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64)))
+end
+
 function DifferentialEvolutionState(
         rng::R,
         x::VV,
@@ -78,7 +84,7 @@ function DifferentialEvolutionState(
         R <: AbstractRNG, Model,
     }
 
-    rngs = [Random.seed!(copy(rng), rand(rng, UInt)) for _ in 1:length(x)]
+    rngs = [reseed!(copy(rng), rng) for _ in 1:length(x)]
     xₚ = copy.(x)
     ldₚ = copy(ld)
     x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
@@ -137,6 +143,7 @@ include("hmc.jl")
 include("temperature.jl")
 include("memory.jl")
 include("fast_sample.jl")
+include("scratch.jl")
 include("chains.jl")
 include("differential_evolution_update.jl")
 include("snooker_update.jl")

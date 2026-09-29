@@ -16,14 +16,14 @@ LogDensityProblems.capabilities(::SwapCheckNormal) = LogDensityProblems.LogDensi
             rng, model, sampler; n_chains, n_hot_chains,
             num_warmup = warmups, memory = false, silent = true, initial_position = init
         )
-        seen = Vector{NTuple{3, Float64}}()
+        seen = Vector{Vector{Float64}}()
         for (stepfn, nsteps) in ((AbstractMCMC.step_warmup, warmups), (AbstractMCMC.step, posts))
             for _ in 1:nsteps
                 smpl, st = stepfn(rng, model, sampler, st; num_warmup = warmups)
                 @test parent(st.x_smpl_view) === st.x
                 @test parent(st.xₚ_smpl_view) === st.xₚ
                 @test smpl.x == st.x_smpl_view
-                push!(seen, Tuple(smpl.x[1]))
+                push!(seen, reduce(vcat, smpl.x))
             end
         end
         @test length(unique(seen)) > 1   # positions actually evolve across the run

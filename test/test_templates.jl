@@ -165,6 +165,17 @@
         )
         @test_logs (:warn,) deMC(ld_wide, 1000; thinning = 2, n_chains = 4)
     end
+    @testset "DREAMz noise distributions" begin
+        DREAMz(ld, 100; memory = false, ϵ = Uniform(-1.0e-4, 1.0e-4), e = Normal(0.0, 1.0e-2), δ = 2)
+        DREAMz(ld, 100; memory = false, ϵ = Laplace(0.0, 1.0e-6), e = Logistic(0.0, 1.0e-2), δ = Categorical([0.5, 0.5]))
+        deMC(ld, 100; memory = false, β = Uniform(-1.0e-4, 1.0e-4))
+        deMCzs(ld, 100; memory = false, β = Uniform(-1.0e-4, 1.0e-4))
+    end
+    @testset "DREAMz crossover and γ₂ weight types" begin
+        DREAMz(ld, 100; memory = false, γ₂ = 1, cr₁ = 0.5, cr₂ = Beta(2, 2))
+        DREAMz(ld, 100; memory = false, cr₁ = Uniform(0.1, 0.9), p_γ₂ = 1 // 5)
+        @test_throws TypeError DREAMz(ld, 100; memory = false, p_γ₂ = nothing)
+    end
     @testset "parallel" begin
         DREAMz(ld, 1000; thinning = 2, memory = true, parallel = true, epoch_limit = 3)
     end

@@ -4,7 +4,10 @@ struct DifferentialEvolutionSampler{
     } <: AbstractDifferentialEvolutionSampler
     γ_spl::G
     β_spl::B
+    scratch::ProposalScratch{1}
 end
+
+prepare_scratch!(sampler::DifferentialEvolutionSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 """
 Set up a Differential Evolution (DE) update step for MCMC sampling.
@@ -20,7 +23,7 @@ See doi.org/10.1007/s11222-006-8769-1 for more information.
   `UnivariateDistribution` (random scaling), or `nothing` (automatic based on `n_dims`).
   Defaults to `nothing`.
 - `β`: Distribution for small noise added to proposals. Must be a univariate continuous
-  distribution. Defaults to `Uniform(-1e-4, 1e-4)`.
+  distribution. Defaults to `Normal(0.0, 1e-12)`.
 - `n_dims`: Problem dimension used for automatic `γ` selection. If > 0 and `γ` is `nothing`,
   sets `γ` to the theoretically optimal `2.38 / sqrt(2 * n_dims)`. If ≤ 0, uses
   `Uniform(0.8, 1.2)`. Defaults to 0.
@@ -41,7 +44,7 @@ See also [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref), [`se
 """
 function setup_de_update(;
         γ::Union{Nothing, UnivariateDistribution, Real} = nothing,
-        β::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
+        β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         n_dims::Int = 0,
         check_args::Bool = true
     )
@@ -64,7 +67,7 @@ function setup_de_update(;
         noise_checks(β, "β")
     end
 
-    return DifferentialEvolutionSampler(sampler(γ), sampler(β))
+    return DifferentialEvolutionSampler(sampler(γ), sampler(β), ProposalScratch{1}())
 end
 
 function noise_checks(dist, name)
@@ -85,14 +88,11 @@ function proposal!(
         state.xₚ[current_state] .= x₁
         return (offset = -Inf)
     else
-        state.xₚ[current_state] .= state.x[current_state] .+
-            (
-            rand(state.rngs[current_state], sampler.γ_spl) .*
-                (x₁ - x₂)
-        ) .+
-            rand(
-            state.rngs[current_state], sampler.β_spl, length(state.x[current_state])
-        )
+        rng = state.rngs[current_state]
+        (β,) = sampler.scratch.buffers[current_state]
+        γ = rand(rng, sampler.γ_spl)
+        rand!(rng, sampler.β_spl, β)
+        state.xₚ[current_state] .= state.x[current_state] .+ (γ .* (x₁ .- x₂)) .+ β
         return (offset = zero(eltype(x₁)))
     end
 end

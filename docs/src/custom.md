@@ -14,7 +14,7 @@ The stopping criterion function has the following signature:
 ```julia
 function your_stopping_criteria(
     rng::AbstractRNG,
-    model::AbstractModel, 
+    model::AbstractModel,
     sampler::AbstractDifferentialEvolutionSampler,
     samples::Vector{DifferentialEvolutionSample},
     state::DifferentialEvolutionState,
@@ -41,7 +41,7 @@ using DifferentialEvolutionMetropolis, AbstractMCMC
 function max_iterations_stopping(
     rng::AbstractRNG,
     model::AbstractModel,
-    sampler::AbstractDifferentialEvolutionSampler, 
+    sampler::AbstractDifferentialEvolutionSampler,
     samples::Vector{DifferentialEvolutionSample{V, VV}},
     state::DifferentialEvolutionState{T, V, VV, A},
     iteration::Int;
@@ -62,9 +62,9 @@ model = LogDensityModel(your_log_density)
 sampler = setup_de_update()
 
 result = sample(
-    rng, 
-    model, 
-    sampler, 
+    rng,
+    model,
+    sampler,
     max_iterations_stopping;
     max_iterations = 5000,  # passed as keyword argument
     n_chains = 4
@@ -79,8 +79,8 @@ The method signature for the proposal is:
 
 ```julia
 function proposal!(
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, 
-    sampler::YourSampler, 
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::YourSampler,
     current_state::Int
 )
 ```
@@ -89,7 +89,10 @@ function proposal!(
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
-The function should modify `state.xₚ[current_state] = proposed_position` and return a named tuple with at least `(offset = hastings_correction)` where: - `proposed_position`: The proposed new position (vector) - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
+The function should modify `state.xₚ[current_state] = proposed_position` and return a named tuple with at least `(offset = hastings_correction)` where:
+
+- `proposed_position`: The proposed new position (vector)
+- `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 
 ### Chains Required for Memoryless Sampling
 
@@ -105,34 +108,80 @@ DifferentialEvolutionMetropolis.chains_required(::YourSampler) = 1
 
 Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:
 
-\`\`\`@example MHSampler using DifferentialEvolutionMetropolis, Distributions, Random
+```@example MHSampler
+using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
-
-struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler proposal_distribution::MvNormal end
+struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+    proposal_distribution::MvNormal
+end
 
 # Implement the proposal function
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::MetropolisHastingsUpdate,
+    current_state::Int
+)
+    # Get the current position of this chain
+    x_current = state.x[current_state]
 
-function DifferentialEvolutionMetropolis.proposal!( state::DifferentialEvolutionMetropolis.DifferentialEvolutionState, sampler::MetropolisHastingsUpdate, current_state::Int ) # Get the current position of this chain x_current = state.x[current_state]
+    # Propose a new point (stored in state) using a random walk
+    state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
 
-```
-# Propose a new point (stored in state) using a random walk
-state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
-
-# The proposal is symmetric, so no Hastings correction needed
-return (offset = 0.0)
-```
+    # The proposal is symmetric, so no Hastings correction needed
+    return (offset = 0.0)
 end
 
 DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
 
-````
+```
+
+### Avoiding Allocations with Scratch Buffers
+
+The example above allocates a new vector for every proposal.
+This is usually negligible next to the cost of the log density, so it is the recommended starting point.
+To avoid allocations, an update can hold a `ProposalScratch{N}`, which gives each chain `N` preallocated `Float64` vectors the length of the parameter vector.
+The buffers are sized by `prepare_scratch!` before chains are updated, and only reallocated when the number of chains or parameters changes.
+Only use the buffers belonging to `current_state`, as chains may be updated in parallel.
+
+```@example MHSampler
+struct ScratchMetropolisHastingsUpdate{D <: MvNormal} <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+    proposal_distribution::D
+    scratch::DifferentialEvolutionMetropolis.ProposalScratch{1}
+end
+
+function ScratchMetropolisHastingsUpdate(proposal_distribution::MvNormal)
+    return ScratchMetropolisHastingsUpdate(proposal_distribution, DifferentialEvolutionMetropolis.ProposalScratch{1}())
+end
+
+# Size the buffers before each step
+function DifferentialEvolutionMetropolis.prepare_scratch!(sampler::ScratchMetropolisHastingsUpdate, state)
+    return DifferentialEvolutionMetropolis.prepare_scratch!(sampler.scratch, state)
+end
+
+function DifferentialEvolutionMetropolis.proposal!(
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::ScratchMetropolisHastingsUpdate,
+    current_state::Int
+)
+    # Draw the random walk step into this chain's buffer rather than a new vector
+    (jump,) = sampler.scratch.buffers[current_state]
+    rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
+    state.xₚ[current_state] .= state.x[current_state] .+ jump
+    return (offset = 0.0)
+end
+
+DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
+```
 
 ### Adaptive Proposals with step_warmup
 
-For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well. This is called during the warm-up phase. Unless you want your sampler to be always adaptive then you must implement `step`.
+For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well.
+This is called during the warm-up phase.
+Unless you want your sampler to be always adaptive then you must implement `step`.
 
-You'll also need to define adaptive state structures and methods. Here's an example of an adaptive Metropolis-Hastings sampler:
+You'll also need to define adaptive state structures and methods.
+Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
 using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics
@@ -144,7 +193,7 @@ mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropoli
     running_cov::Matrix{T}
 end
 
-# Define the adaptive sampler  
+# Define the adaptive sampler
 struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
     initial_cov::Matrix{T}
     adapt_after::Int
@@ -204,49 +253,66 @@ function step_warmup(
     parallel::Bool = false,
     kwargs...
 ) where {T<:Real}
-    
+
     # Perform regular step
     sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
-    
+
     # Update adaptive parameters in-place
     adapt_state = new_state.adaptive_state
     adapt_state.adaptation_count += 1
-    
+
     # Only adapt after burn-in period and at specified intervals
     if adapt_state.adaptation_count > sampler.adapt_after && adapt_state.adaptation_count % sampler.adapt_every == 0
-        
+
         # Compute empirical covariance from current chain positions
         positions = reduce(hcat, new_state.x)'  # Convert to matrix
         empirical_cov = cov(positions)
-        
+
         # Update proposal covariance with regularization in-place
         adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I
     end
-    
+
     return sample, new_state
 end
-````
+```
 
 ## Example: Using Custom Components
 
 Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:
 
-\`\`\`@example MHSampler using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
+```@example MHSampler
+using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
 
 # Set up a simple log-density to sample from (a 2D standard normal distribution)
 
-ld = TransformedLogDensity(as(Array, 2), x -> -sum(x.^2) / 2) dimension(ld) = 2 model = AbstractMCMC.LogDensityModel(ld)
+ld = TransformedLogDensity(as(Array, 2), x -> -sum(x.^2) / 2)
+dimension(ld) = 2
+model = AbstractMCMC.LogDensityModel(ld)
 
 # Create custom samplers
-
-simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 \* I)) adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
+simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 * I))
+adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
 
 # Create a composite sampler scheme
-
-my_sampler_scheme = setup_sampler_scheme( simple_mh, adaptive_mh; w = [0.3, 0.7] # Use adaptive sampler 70% of the time )
+my_sampler_scheme = setup_sampler_scheme(
+    simple_mh,
+    adaptive_mh;
+    w = [0.3, 0.7]  # Use adaptive sampler 70% of the time
+)
 
 # Sample using AbstractMCMC.sample
+result = sample(
+    Random.default_rng(),
+    model,
+    my_sampler_scheme,
+    5000;
+    n_chains = 6,
+    num_warmup = 10000, #adaptive steps
+    memory = true,
+    parallel = false,
+    chain_type = DifferentialEvolutionOutput
+)
 
-result = sample( Random.default_rng(), model, my_sampler_scheme, 5000; n_chains = 6, num_warmup = 10000, #adaptive steps memory = true, parallel = false, chain_type = DifferentialEvolutionOutput )
-
-plot(result.samples[:, :, 1]) plot(result.samples[:, :, 2]) \`\`\`
+plot(result.samples[:, :, 1])
+plot(result.samples[:, :, 2])
+```

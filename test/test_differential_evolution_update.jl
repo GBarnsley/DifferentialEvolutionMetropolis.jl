@@ -27,10 +27,10 @@
             n_dims = 10
         )
         @test isa(det.γ_spl, Dirac)
-        @test isa(det.β_spl, Uniform)
+        @test isa(det.β_spl, Normal)
         ran = setup_de_update()
         @test isa(ran.γ_spl, Uniform)
-        @test isa(ran.β_spl, Uniform)
+        @test ran.β_spl == Normal(0.0, 1.0e-12)
     end
 
     @testset "deMC validation errors" begin

@@ -1,8 +1,8 @@
 show_distribution(io::IO, d) = show(IOContext(io, :compact => true), d)
-show_distribution(io::IO, d::Dirac{T}) where {T} = print(IOContext(io, :compact => true), d.value, "::", T)
-function show_distribution(io::IO, d::DiscreteNonParametricSampler)
+show_distribution(io::IO, d::Dirac{T}) where {T} = print(IOContext(io, :compact => true), Distributions.mode(d), "::", T)
+function show_distribution(io::IO, d::Union{DiscreteNonParametric, CrossoverSampler})
     print(io, "DiscreteNonParametric(support = ")
-    show(IOContext(io, :compact => true), d.support)
+    show(IOContext(io, :compact => true), Distributions.support(d))
     return print(io, ")")
 end
 
@@ -63,6 +63,9 @@ function Base.show(io::IO, ::MIME"text/plain", s::AbstractDifferentialEvolutionS
         "γ" => subspace_γ(s), "cr" => s.cr_spl, "n_cr" => string(s.n_cr),
         "δ" => s.δ_spl, "ϵ" => s.ϵ_spl, "e" => s.e_spl,
     ]
+    if is_adaptive(s)
+        push!(fields, "cr_uniform_weight" => string(s.cr_uniform_weight), "min_variance_count" => string(s.min_variance_count))
+    end
     return show_multiline(io, subspace_title(s), fields)
 end
 

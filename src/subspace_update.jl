@@ -12,6 +12,9 @@ struct DifferentialEvolutionSubspaceSampler{
     δ_spl::D
     ϵ_spl::E
     e_spl::F
+    cr_uniform_weight::Float64
+    min_variance_count::Int
+    scratch::ProposalScratch{3}
 end
 
 struct DifferentialEvolutionSubspaceSamplerFixedGamma{
@@ -26,6 +29,9 @@ struct DifferentialEvolutionSubspaceSamplerFixedGamma{
     δ_spl::D
     ϵ_spl::E
     e_spl::F
+    cr_uniform_weight::Float64
+    min_variance_count::Int
+    scratch::ProposalScratch{3}
     γ::T
 end
 
@@ -49,9 +55,17 @@ See doi.org/10.1515/IJNSNS.2009.10.3.273 for more information.
 - `δ`: Number of difference vectors to sum. Can be an `Integer` (fixed) or a
   `DiscreteUnivariateDistribution` (random). Defaults to `DiscreteUniform(1, 3)`.
 - `ϵ`: Distribution for small additive noise in the selected subspace. Defaults to
-  `Uniform(-1e-4, 1e-4)`.
+  `Normal(0.0, 1e-12)`.
 - `e`: Distribution for multiplicative noise `(1 + e)` applied to the difference vector sum.
-  Defaults to `Normal(0.0, 1e-2)`.
+  Defaults to `Uniform(-0.1, 0.1)`.
+- `cr_uniform_weight`: Cross over probabilities are mixed with a uniform distribution during adaption,
+  so that crossover probabilities that are never used are still sometimes proposed. The adapted
+  probabilities are `p = (1 - w) q + w / n_cr`, where `q` is proportional to the mean normalised
+  squared jump distance of each crossover value. `w = 0` gives the unmixed adaptation of Vrugt et al.
+  (2009), `w = 1` disables adaptation. Option does nothing if adaption is disabled. Defaults to `0.05`.
+- `min_variance_count`: Number of cold-chain positions needed before the running variance
+  is used to normalise jump distances. Jumps before this are not recorded in the
+  adaptation. Must be at least 2. Defaults to `10`.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
@@ -74,8 +88,10 @@ function setup_subspace_sampling(;
         δ::Union{Integer, DiscreteUnivariateDistribution} = DiscreteUniform(
             1, 3
         ),
-        ϵ::ContinuousUnivariateDistribution = Uniform(-1.0e-4, 1.0e-4),
-        e::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-2),
+        ϵ::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
+        e::ContinuousUnivariateDistribution = Uniform(-0.1, 0.1),
+        cr_uniform_weight::Real = 0.05,
+        min_variance_count::Int = 10,
         check_args::Bool = true
     )
     if isa(δ, Integer)
@@ -106,15 +122,23 @@ function setup_subspace_sampling(;
         end
         noise_checks(ϵ, "ϵ")
         noise_checks(e, "e")
+        if !(0 ≤ cr_uniform_weight ≤ 1)
+            error("cr_uniform_weight should be between 0 and 1")
+        elseif min_variance_count < 2
+            error("min_variance_count should be ≥ 2")
+        end
     end
 
     return if isnothing(γ)
         DifferentialEvolutionSubspaceSampler(
-            sampler(cr),
+            cr_sampler(cr),
             n_cr,
             sampler(δ),
             sampler(ϵ),
-            sampler(e)
+            sampler(e),
+            Float64(cr_uniform_weight),
+            min_variance_count,
+            ProposalScratch{3}()
         )
     else
         if check_args
@@ -123,11 +147,14 @@ function setup_subspace_sampling(;
             end
         end
         DifferentialEvolutionSubspaceSamplerFixedGamma(
-            sampler(cr),
+            cr_sampler(cr),
             n_cr,
             sampler(δ),
             sampler(ϵ),
             sampler(e),
+            Float64(cr_uniform_weight),
+            min_variance_count,
+            ProposalScratch{3}(),
             γ
         )
     end
@@ -137,6 +164,27 @@ function create_cr_dist(n_cr::Int)
     return DiscreteNonParametric(collect(1:n_cr) ./ n_cr, repeat([1 / n_cr], n_cr))
 end
 
+# Adaptable crossover distributions are kept as distributions so their support and probabilities stay accessible
+cr_sampler(cr::DiscreteNonParametric) = cr
+cr_sampler(cr) = sampler(cr)
+
+# Sampler over a fixed support whose alias table weights are updated in place without allocating
+struct CrossoverSampler{T <: Real} <: Sampleable{Univariate, Discrete}
+    support::Vector{T}
+    at::AliasTable{UInt64, Int}
+end
+
+function CrossoverSampler(support::AbstractVector{T}, weights::AbstractVector{<:Real}) where {T <: Real}
+    return CrossoverSampler{T}(collect(support), AliasTable(weights))
+end
+
+rand(rng::AbstractRNG, s::CrossoverSampler) = s.support[rand(rng, s.at)]
+Distributions.support(s::CrossoverSampler) = s.support
+set_weights!(s::CrossoverSampler, weights::AbstractVector{<:Real}) = (set_weights!(s.at, weights); s)
+Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support && a.at == b.at
+
+prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
+
 function proposal!(
         state::DifferentialEvolutionState,
         sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
@@ -144,36 +192,34 @@ function proposal!(
     rng = state.rngs[current_state]
     x = state.x[current_state]
     xₚ = state.xₚ[current_state]
+    u, e, ϵ = sampler.scratch.buffers[current_state]
 
-    copyto!(xₚ, x) #try the range methods?
-
-    #determine how many dimensions to update
+    #determine how many dimensions to update, those with u < cr
     cr = rand(rng, sampler.cr_spl)
-    to_update = rand(rng, length(x)) .< cr
-    d = sum(to_update)
+    rand!(rng, u)
+    d = count(<(cr), u)
 
     if d == 0
         #just pick one
-        to_update[rand(rng, eachindex(to_update))] = true
+        u[rand(rng, eachindex(u))] = -Inf
         d = 1
     end
 
     δ = rand(rng, sampler.δ_spl)
 
-    #set modified to 0
-    xₚ[to_update] .= zero(eltype(x))
-
     #generate candidate
+    fill!(xₚ, zero(eltype(x)))
     for _ in 1:δ
         #pick to random chains find the difference and add to the candidate
         x₁, x₂ = pick_chains(state, current_state, Val(2))
-        xₚ[to_update] .+= x₁[to_update] .- x₂[to_update]
+        xₚ .+= x₁ .- x₂
     end
 
-    #add the other parts of the equation
-    xₚ[to_update] .= x[to_update] .+ (
-        (1 .+ rand(rng, sampler.e_spl, d)) .* get_γ(rng, sampler, δ, d) .* xₚ[to_update]
-    ) .+ rand(rng, sampler.ϵ_spl, d)
+    #add the other parts of the equation, dimensions not updated stay at x
+    rand!(rng, sampler.e_spl, e)
+    rand!(rng, sampler.ϵ_spl, ϵ)
+    γ = get_γ(rng, sampler, δ, d)
+    xₚ .= ifelse.(u .< cr, x .+ (1 .+ e) .* γ .* xₚ .+ ϵ, x)
 
     return (offset = zero(eltype(xₚ)), cr = cr)
 end

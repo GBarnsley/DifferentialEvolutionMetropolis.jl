@@ -151,11 +151,11 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         a = hmc_adaptive_state(state)
         steps_after_warmup = a.metric_steps
         metric_after_warmup = copy(a.metric.M⁻¹)
-        for _ in 1:60
+        for _ in 1:200
             _, state = AbstractMCMC.step(rng, model, scheme, state)
         end
         a = hmc_adaptive_state(state)
-        @test a.metric_steps == steps_after_warmup + 60
+        @test a.metric_steps == steps_after_warmup + 200
         @test a.metric.M⁻¹ != metric_after_warmup
         @test isapprox(a.metric.M⁻¹, diag(Σ); atol = 0.3)
     end

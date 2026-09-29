@@ -1,5 +1,7 @@
 using Documenter, DifferentialEvolutionMetropolis, DocumenterInterLinks
 
+ENV["GKSwstype"] = "100" #prevents plots from opening windows
+
 links = InterLinks(
     "MCMCDiagnosticTools" => "https://turinglang.org/MCMCDiagnosticTools.jl/stable/objects.inv"
 );

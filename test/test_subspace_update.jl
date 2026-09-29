@@ -5,7 +5,7 @@
             δ = 1
         )
         @test isa(dist.δ_spl, Dirac)
-        @test isa(dist.cr_spl, Distributions.DiscreteNonParametricSampler)
+        @test isa(dist.cr_spl, DiscreteNonParametric)
         dist = setup_subspace_sampling(
             γ = 1.0,
             δ = truncated(Poisson(0.5), lower = 1),
@@ -14,6 +14,16 @@
         @test isa(dist.γ, Real)
         @test isa(dist.cr_spl, Dirac)
         @test isa(dist.δ_spl, Truncated{Poisson{Float64}})
+        default = setup_subspace_sampling()
+        @test default.ϵ_spl == Normal(0.0, 1.0e-12)
+        @test default.e_spl == Uniform(-0.1, 0.1)
+    end
+
+    @testset "crossover sampler exposes its support" begin
+        support = [0.2, 0.5, 1.0]
+        cr_sampler = DifferentialEvolutionMetropolis.CrossoverSampler(support, [0.2, 0.3, 0.5])
+        @test Distributions.support(cr_sampler) == support
+        @test all(rand(backwards_compat_rng(seed), cr_sampler) in support for seed in 1:10)
     end
 
     @testset "Subspace validation errors" begin

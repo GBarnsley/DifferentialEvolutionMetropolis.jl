@@ -29,7 +29,10 @@ That's not to discredit DifferentialEvolutionMCMC.jl, it has many features this 
 
 ## Next Steps
 
-A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues): - Implement multi-try and delayed rejection DREAM, I avoided these so far since I have been using these samplers for costly log-densities with relatively few parameters, such as one that solve an ODE. - Additional diagnostic checks and adaptive schemes.
+A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
+
+- Implement multi-try and delayed rejection DREAM, I avoided these so far since I have been using these samplers for costly log-densities with relatively few parameters, such as one that solve an ODE.
+- Additional diagnostic checks and adaptive schemes.
 
 ## Contents
 

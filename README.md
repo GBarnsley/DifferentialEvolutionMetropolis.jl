@@ -32,11 +32,11 @@ DREAMz(ld, 1000)
 ## Bibliography
 
 Braak, C.J.F.T. A Markov Chain Monte Carlo version of the genetic algorithm Differential Evolution: easy Bayesian computing for real parameter spaces.
-Stat Comput 16, 239--249 (2006).
+Stat Comput 16, 239–249 (2006).
 https://doi.org/10.1007/s11222-006-8769-1
 
 Braak, C.J.F.T., Vrugt, J.A. Differential Evolution Markov Chain with snooker updater and fewer chains.
-Stat Comput 18, 435--446 (2008).
+Stat Comput 18, 435–446 (2008).
 https://doi.org/10.1007/s11222-008-9104-9
 
 Vrugt, J.A., Braak, C.J.F.T., Diks, C.G.H., Robinson, B.A., Hyman, J.M., Higdon, D.

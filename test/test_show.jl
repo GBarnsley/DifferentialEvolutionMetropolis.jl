@@ -8,7 +8,7 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
 
     @testset "samplers" begin
         @test repr(de) == "DE update(γ = 1.0::Float64)"
-        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: Uniform{Float64}(a=-0.0001, b=0.0001)"
+        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: Normal{Float64}(μ=0.0, σ=1.0e-12)"
         @test repr(snooker) == "Snooker update(γ = 1.68291::Float64)"
         @test plain(snooker) == "Snooker update\n  γ: 1.68291::Float64"
         @test repr(subspace) == "Adaptive subspace update(γ = 2.38 / sqrt(2δd), cr = adaptive over 3 values)"
@@ -17,6 +17,9 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test repr(subspace_fixed) == "Subspace update(γ = 0.5, cr = 0.3::Float64)"
         @test startswith(plain(subspace_fixed), "Subspace update\n")
         @test occursin("n_cr: 0", plain(subspace_fixed))
+        @test occursin(r"cr_uniform_weight:\s+0.05", plain(subspace))
+        @test occursin(r"min_variance_count:\s+10", plain(subspace))
+        @test !occursin("cr_uniform_weight", plain(subspace_fixed))
 
         composite = setup_sampler_scheme(de, snooker; w = [3.0, 1.0])
         @test repr(composite) == "Composite sampler(" * repr(de) * ", " * repr(snooker) * ")"

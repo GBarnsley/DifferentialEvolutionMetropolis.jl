@@ -122,7 +122,17 @@
         @test any(L_values .> 0)
         @test size(L_values, 1) == n_cr
         @test all(diff(L_values, dims = 2) .≥ 0)
-        @test sum(L_values[:, end]) == (its * length(initial_state.x))
+        n_chains = length(initial_state.x)
+        skipped_its = cld(de_sampler.min_variance_count, n_chains)
+        @test sum(L_values[:, end]) == ((its - skipped_its) * n_chains)
+        @test all(L_values[:, skipped_its] .== 0)
+        #probabilities stay above the floor
+        DifferentialEvolutionMetropolis.adapted_cr_probabilities!(
+            states[end].adaptive_state, de_sampler.cr_uniform_weight
+        )
+        p = states[end].adaptive_state.p
+        @test sum(p) ≈ 1.0
+        @test all(p .≥ de_sampler.cr_uniform_weight / n_cr)
         #jump distances
         Δ_values = cat([state.adaptive_state.Δ for state in states]..., dims = 2)
         @test size(Δ_values, 1) == n_cr
@@ -193,6 +203,82 @@
         end
         @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DifferentialEvolutionState)
     end
+    @testset "adaption ignores hot chains" begin
+        rng = backwards_compat_rng(1234)
+        model = IsotropicNormalModel([-5.0, 5.0])
+        n_chains = 4
+        n_hot_chains = 3
+        its = 100
+        de_sampler = setup_subspace_sampling()
+
+        _, state = AbstractMCMC.step(
+            rng, AbstractMCMC.LogDensityModel(model), de_sampler;
+            adapt = true, n_chains = n_chains, n_hot_chains = n_hot_chains
+        )
+        for _ in 1:its
+            _, state = AbstractMCMC.step_warmup(
+                rng, AbstractMCMC.LogDensityModel(model), de_sampler, state
+            )
+        end
+        skipped_its = cld(de_sampler.min_variance_count, n_chains)
+        @test sum(state.adaptive_state.L) == (its - skipped_its) * n_chains
+        @test state.adaptive_state.var_count == its * n_chains
+    end
+
+    @testset "adaption with an unused crossover value" begin
+        rng = backwards_compat_rng(1234)
+        model = IsotropicNormalModel([-5.0, 5.0])
+        de_sampler = setup_subspace_sampling(n_cr = 3)
+        _, state = AbstractMCMC.step(
+            rng, AbstractMCMC.LogDensityModel(model), de_sampler; adapt = true
+        )
+        state.adaptive_state.L .= [10, 10, 10]
+        state.adaptive_state.Δ .= [0.0, 1.0, 3.0]
+        for w in (0.0, 0.05, 0.5)
+            DifferentialEvolutionMetropolis.adapted_cr_probabilities!(state.adaptive_state, w)
+            @test state.adaptive_state.p ≈ (1 - w) .* [0.0, 0.25, 0.75] .+ w / 3
+        end
+    end
+
+    @testset "user-set adaptation options" begin
+        rng = backwards_compat_rng(1234)
+        model = IsotropicNormalModel([-5.0, 5.0])
+        its = 50
+        de_sampler = setup_subspace_sampling(n_cr = 3, cr_uniform_weight = 0.3, min_variance_count = 40)
+        @test de_sampler.cr_uniform_weight == 0.3
+        @test de_sampler.min_variance_count == 40
+        _, state = AbstractMCMC.step(
+            rng, AbstractMCMC.LogDensityModel(model), de_sampler; adapt = true
+        )
+        n_chains = length(state.x)
+        for _ in 1:its
+            _, state = AbstractMCMC.step_warmup(
+                rng, AbstractMCMC.LogDensityModel(model), de_sampler, state
+            )
+        end
+        @test sum(state.adaptive_state.L) == (its - cld(40, n_chains)) * n_chains
+        DifferentialEvolutionMetropolis.adapted_cr_probabilities!(state.adaptive_state, 0.3)
+        @test all(state.adaptive_state.p .≥ 0.1 - 1.0e-12)
+        fixed = DifferentialEvolutionMetropolis.fix_sampler(de_sampler, state.adaptive_state)
+        @test fixed.cr_uniform_weight == 0.3
+        @test fixed.min_variance_count == 40
+        @test_throws ErrorException setup_subspace_sampling(cr_uniform_weight = 1.5)
+        @test_throws ErrorException setup_subspace_sampling(cr_uniform_weight = -0.1)
+        @test_throws ErrorException setup_subspace_sampling(min_variance_count = 1)
+    end
+
+    @testset "warn when adapting nonstandard crossover support" begin
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
+        custom_support = [0.1, 0.4, 0.9]
+        custom_cr = DiscreteNonParametric(custom_support, [0.2, 0.3, 0.5])
+        update = setup_subspace_sampling(cr = custom_cr)
+        adaptive_state = @test_logs (:warn, "Adapting provided crossover probabilities.") begin
+            DifferentialEvolutionMetropolis.initialize_adaptive_state(update, model, 4)
+        end
+        @test Distributions.support(adaptive_state.cr_spl) == custom_support
+        @test rand(backwards_compat_rng(1), adaptive_state.cr_spl) in custom_support
+    end
+
     @testset "warnings" begin
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])

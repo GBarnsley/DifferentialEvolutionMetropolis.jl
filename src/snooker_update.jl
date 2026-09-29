@@ -1,6 +1,9 @@
 struct DifferentialEvolutionSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDifferentialEvolutionSampler
     γ_spl::G
+    scratch::ProposalScratch{2}
 end
+
+prepare_scratch!(sampler::DifferentialEvolutionSnookerSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 """
 Set up a Snooker update step for MCMC sampling.
@@ -57,7 +60,7 @@ function setup_snooker_update(;
         end
     end
 
-    return DifferentialEvolutionSnookerSampler(sampler(γ))
+    return DifferentialEvolutionSnookerSampler(sampler(γ), ProposalScratch{2}())
 end
 
 function proposal!(
@@ -71,18 +74,17 @@ function proposal!(
         state.xₚ[current_state] .= x₁
         return (offset = -Inf)
     else
-        e = normalize(xₐ .- state.x[current_state])
-        state.xₚ[current_state] .= state.x[current_state] .+
-            rand(state.rngs[current_state], sampler.γ_spl) .*
-            dot(x₁ .- x₂, e) .* e
+        x = state.x[current_state]
+        xₚ = state.xₚ[current_state]
+        e, x_diff = sampler.scratch.buffers[current_state]
+        e .= xₐ .- x
+        norm_current = norm(e)
+        normalize!(e)
+        x_diff .= x₁ .- x₂
+        xₚ .= x .+ rand(state.rngs[current_state], sampler.γ_spl) .* dot(x_diff, e) .* e
+        x_diff .= xₐ .- xₚ
 
-        return (
-            offset = (length(state.x[current_state]) - 1) *
-                (
-                log(norm(xₐ .- state.xₚ[current_state])) -
-                    log(norm(xₐ .- state.x[current_state]))
-            )
-        )
+        return (offset = (length(x) - 1) * (log(norm(x_diff)) - log(norm_current)))
     end
 end
 
