@@ -168,6 +168,9 @@ Independent ensembles can still be run in parallel with the usual AbstractMCMC i
 sample(model, setup_sampler_scheme(setup_de_update()), MCMCThreads(), 1000, 4; parallel = MCMCThreads())
 ```
 
+Every combination of ensemble and in-step backend gives the same chains for the same `rng`.
+With an `MCMCDistributed()` ensemble, `parallel = MCMCDistributed()` spreads each ensemble's log-density evaluations over all workers, and a returned final state gets a new worker pool on the main process.
+
 ## Interpreting Results
 
 After running the sampler, you will have a collection of samples from the target distribution.
