@@ -3,6 +3,13 @@ struct DistributedBackend{P <: CachingPool}
     pool::P
 end
 
+# `CachingPool`s cannot be serialised, so a state sent between processes (or saved) gets a fresh pool on the receiving side
+function serialize(s::AbstractSerializer, ::DistributedBackend)
+    writetag(s.io, OBJECT_TAG)
+    return serialize(s, DistributedBackend)
+end
+deserialize(::AbstractSerializer, ::Type{<:DistributedBackend}) = parallel_backend(MCMCDistributed())
+
 """
     parallel_backend(parallel)
     parallel_backend(parallel, current)

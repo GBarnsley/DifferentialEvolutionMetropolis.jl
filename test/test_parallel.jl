@@ -1,4 +1,4 @@
-using Distributed
+using Distributed, Serialization
 
 @testset "parallel backends" begin
     DEM = DifferentialEvolutionMetropolis
@@ -74,6 +74,31 @@ using Distributed
                 backwards_compat_rng(1), ld, sampler, state; parallel = MCMCDistributed()
             )
             @test state.parallel_backend === pool
+        end
+
+        flat(chains) = [(s.x, s.ld) for chain in chains for s in chain]
+        run_ensemble(ensemble, parallel; kwargs...) = sample(
+            backwards_compat_rng(5), ld, setup_sampler_scheme(setup_de_update()), ensemble, 50, 2;
+            parallel = parallel, n_chains = 6, progress = false, silent = true, kwargs...
+        )
+        reference = flat(run_ensemble(MCMCSerial(), MCMCSerial()))
+        ensembles = (MCMCSerial(), MCMCThreads(), MCMCDistributed())
+        @testset "ensemble $(nameof(typeof(ensemble))) × in-step $(nameof(typeof(parallel))) matches serial" for ensemble in ensembles, parallel in ensembles
+            @test flat(run_ensemble(ensemble, parallel)) == reference
+        end
+
+        @testset "distributed backend survives serialisation" begin
+            _, state = AbstractMCMC.step(
+                backwards_compat_rng(1), ld, setup_sampler_scheme(setup_de_update());
+                n_chains = 6, parallel = MCMCDistributed(), silent = true
+            )
+            io = IOBuffer()
+            serialize(io, state)
+            new_state = deserialize(seekstart(io))
+            @test new_state.parallel_backend isa DEM.DistributedBackend
+            @test new_state.parallel_backend !== state.parallel_backend
+            @test new_state.x == state.x
+            @test run_ensemble(MCMCDistributed(), MCMCDistributed(); save_final_state = true) isa Tuple
         end
     finally
         rmprocs(new_workers)

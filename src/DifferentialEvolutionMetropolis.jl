@@ -21,6 +21,7 @@ import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
 import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC: MCMCSerial, MCMCThreads, MCMCDistributed
 import Distributed: CachingPool, pmap, workers
+import Serialization: AbstractSerializer, serialize, deserialize, writetag, OBJECT_TAG
 import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
