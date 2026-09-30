@@ -4,6 +4,7 @@ export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
+export MCMCSerial, MCMCThreads, MCMCDistributed
 
 import Distributions: UnivariateDistribution, DiscreteUnivariateDistribution,
     ContinuousUnivariateDistribution
@@ -18,6 +19,9 @@ import StatsBase
 import LinearAlgebra: norm, normalize!, dot
 import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
 import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
+import AbstractMCMC: MCMCSerial, MCMCThreads, MCMCDistributed
+import Distributed: CachingPool, pmap, workers
+import Serialization: AbstractSerializer, serialize, deserialize, writetag, OBJECT_TAG
 import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
@@ -35,7 +39,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B,
     }
     "current position"
     x::VV
@@ -60,6 +64,8 @@ struct DifferentialEvolutionState{
     ld_smpl_view::V2
     xₚ_smpl_view::V1
     ldₚ_smpl_view::V2
+    "in-step log-density evaluation backend, see `parallel_backend`"
+    parallel_backend::B
 end
 
 # Reseed a chain rng from `rng`, Xoshiro states are set directly as `seed!` allocates while hashing the seed
@@ -75,7 +81,8 @@ function DifferentialEvolutionState(
         adaptive_state::A,
         temperature_ladder::L,
         memory::M,
-        chain_models::Vector{Model}
+        chain_models::Vector{Model},
+        parallel_backend
     ) where {
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
@@ -102,7 +109,8 @@ function DifferentialEvolutionState(
         x_smpl_view,
         ld_smpl_view,
         xₚ_smpl_view,
-        ldₚ_smpl_view
+        ldₚ_smpl_view,
+        parallel_backend
     )
 end
 
@@ -144,6 +152,7 @@ include("temperature.jl")
 include("memory.jl")
 include("fast_sample.jl")
 include("scratch.jl")
+include("parallel.jl")
 include("chains.jl")
 include("differential_evolution_update.jl")
 include("snooker_update.jl")

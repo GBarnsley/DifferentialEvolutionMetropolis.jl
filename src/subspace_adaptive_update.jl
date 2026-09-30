@@ -91,7 +91,7 @@ function fix_sampler(
 end
 
 """
-    step_warmup(rng, model_wrapper, sampler, state; parallel=false, kwargs...)
+    step_warmup(rng, model_wrapper, sampler, state; parallel=state.parallel_backend, kwargs...)
 
 Perform a single MCMC step during the warm-up (adaptive) phase.
 
@@ -109,7 +109,8 @@ to the adaptation, and jumps are recorded once the running variance is available
 # Keyword Arguments
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers).
   Defaults to `true`. Useful if memory has grown too large.
-- `parallel`: Whether to run chains in parallel using threading. Defaults to `false`.
+- `parallel`: How to evaluate the chains' log-densities: `false`/`MCMCSerial()`, `true`/`MCMCThreads()`, or `MCMCDistributed()`.
+  Defaults to the backend chosen at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions
 
 # Returns
@@ -139,63 +140,39 @@ function step_warmup(
             T, <:DifferentialEvolutionAdaptiveSubspace{T},
         };
         update_memory::Bool = true,
-        parallel::Bool = false,
+        parallel = state.parallel_backend,
         kwargs...
     ) where {T <: Real}
     # Derive per-chain RNGs deterministically from the provided rng for this step.
     for i in eachindex(state.rngs)
         reseed!(state.rngs[i], rng)
     end
-    # Extract the wrapped model which implements LogDensityProblems.jl.
-    model = model_wrapper.logdensity
-    # Extract the current state
+    backend = parallel_backend(parallel, state.parallel_backend)
     x = state.x
     adaptive_state = state.adaptive_state
 
     variance_ready = calculate_current_variance!(adaptive_state, sampler.min_variance_count)
     cold_chains = parentindices(state.x_smpl_view)[1]
 
-    # loop through chains running the update
     fixed_sampler = fix_sampler(sampler, adaptive_state)
     prepare_scratch!(fixed_sampler, state)
 
-    if parallel
-        # thread safe updating
-        Δ_update = zeros(T, length(x))
-        cr_update = Vector{Int}(undef, length(x))
-
-        Threads.@threads for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
-            accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
-            cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-            if accepted
-                Δ_update[i] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
-            end
+    # per-chain records keep the adaptive updates thread safe and in chain order
+    Δ_update = zeros(T, length(x))
+    cr_update = Vector{Int}(undef, length(x))
+    update_chains!(backend, model_wrapper.logdensity, state, fixed_sampler) do i, prop, accepted
+        cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
+        if accepted
+            Δ_update[i] = sum(
+                (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
+                    adaptive_state.variance
+            )
         end
-        if variance_ready
-            for i in cold_chains
-                adaptive_state.L[cr_update[i]] += 1
-                adaptive_state.Δ[cr_update[i]] += Δ_update[i]
-            end
-        end
-    else
-        for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
-            accepted = update_chain!(model, state, prop.offset, i)
-
-            if variance_ready && i in cold_chains
-                cr_update = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_update] += 1
-                if accepted
-                    adaptive_state.Δ[cr_update] += sum(
-                        (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                            adaptive_state.variance
-                    )
-                end
-            end
+    end
+    if variance_ready
+        for i in cold_chains
+            adaptive_state.L[cr_update[i]] += 1
+            adaptive_state.Δ[cr_update[i]] += Δ_update[i]
         end
     end
 

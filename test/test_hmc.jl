@@ -193,4 +193,12 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
             backwards_compat_rng(1234), model, scheme, state
         )
     end
+
+    @testset "MCMCDistributed is rejected for HMC updates" begin
+        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        @test_throws ArgumentError sample(
+            backwards_compat_rng(13), model, scheme, 10;
+            n_chains = 6, num_warmup = 5, parallel = MCMCDistributed(), progress = false, silent = true
+        )
+    end
 end

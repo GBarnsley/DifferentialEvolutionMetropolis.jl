@@ -137,6 +137,40 @@ custom_results = sample(
 
 You can also define your own samplers for more specialized use cases by extending the abstract types.
 
+## Parallel Sampling
+
+The DE chains interact at every step, so the chains of one sampler cannot be run as independent AbstractMCMC chains.
+Instead, the `parallel` keyword sets how the chains' log-densities are evaluated within each step, using the AbstractMCMC ensemble types:
+
+```julia
+deMC(model, 1000; parallel = MCMCSerial())      # same as parallel = false (default)
+deMC(model, 1000; parallel = MCMCThreads())     # same as parallel = true
+deMC(model, 1000; parallel = MCMCDistributed()) # log-densities evaluated on Distributed workers
+```
+
+With `MCMCDistributed()` the proposals and the accept/reject decisions are made on the main process, and only the log-density evaluations are sent to the workers, so the chains are identical to the serial run with the same `rng`.
+Each worker keeps its own copy of the model for the whole run.
+The workers need the package and the model's type loaded, for example:
+
+```julia
+using Distributed
+addprocs(4)
+@everywhere using DifferentialEvolutionMetropolis, LogDensityProblems
+@everywhere include("my_model.jl")
+```
+
+`MCMCDistributed()` adds a fixed cost per step for the communication, so it only pays off for slow models (roughly 1 ms or more per evaluation on one machine), for spreading chains across several machines, or for models that are not thread-safe.
+It is not supported for HMC updates.
+
+Independent ensembles can still be run in parallel with the usual AbstractMCMC interface, and this can be combined with the in-step `parallel` option:
+
+```julia
+sample(model, setup_sampler_scheme(setup_de_update()), MCMCThreads(), 1000, 4; parallel = MCMCThreads())
+```
+
+Every combination of ensemble and in-step backend gives the same chains for the same `rng`.
+With an `MCMCDistributed()` ensemble, `parallel = MCMCDistributed()` spreads each ensemble's log-density evaluations over all workers, and a returned final state gets a new worker pool on the main process.
+
 ## Interpreting Results
 
 After running the sampler, you will have a collection of samples from the target distribution.

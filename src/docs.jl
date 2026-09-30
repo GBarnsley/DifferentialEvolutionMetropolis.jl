@@ -11,8 +11,9 @@ _generic_de_kwargs_1 = """
 - `stratify_initial_position`: If `true`, chain starting positions drawn from a mixture of Pathfinder results cycle
   through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
-- `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
-  Defaults to `false`.
+- `parallel`: How to evaluate the chains' log-densities within each step. `false`/`MCMCSerial()` evaluates
+  them in turn, `true`/`MCMCThreads()` uses threads, and `MCMCDistributed()` sends them to the
+  Distributed workers (not supported for HMC updates). Useful for expensive models. Defaults to `false`.
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.
