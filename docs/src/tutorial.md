@@ -137,6 +137,36 @@ custom_results = sample(
 
 You can also define your own samplers for more specialized use cases by extending the abstract types.
 
+## Parallel Sampling
+
+There are two levels of parallelism possible:
+
+- **Across independent ensembles:** `MCMCSerial()`, `MCMCThreads()`, or `MCMCDistributed()` argument to `sample` schedules completely independent sampler runs.
+  Handled entirely by `AbstractMCMC.jl`.
+  For example `sample(model, sampler, MCMCThreads(), 1000, 3; n_chains = 10)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
+  The 3 ensembles would be run concurrently with multi-threading.
+- **Within one interacting DE ensemble:** `parallel = false` chains within the ensemble update sequentially, with `parallel = true` these can be multithreaded and update in parallel.
+  For example For example `sample(model, sampler, MCMCDistributed(), 1000, 3; n_chains = 10, parallel = true)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
+  The ensembles would run in parallel using `Distributed.jl`, while within each ensemble, updates are multithreaded.
+
+```julia
+using AbstractMCMC, DifferentialEvolutionMetropolis
+
+# One interacting ensemble, threaded chain updates:
+deMC(model, 1000; parallel = true)
+
+sampler = setup_sampler_scheme(setup_de_update())
+# Four independent ensembles, each containing eight interacting chains:
+sample(model, sampler, MCMCSerial(), 1000, 4; n_chains = 8, parallel = true)
+sample(model, sampler, MCMCThreads(), 1000, 4; n_chains = 8, parallel = true)
+sample(model, sampler, MCMCDistributed(), 1000, 4; n_chains = 8, parallel = true)
+```
+
+All schedules are compatible with within ensemble multi-threading.
+With the same seeded RNG and a deterministic log-density, all six combinations produce identical chains.
+For cheap log-densities, in-step multi-threading is usually slower.
+The sampler is thread-safe by using per-chain copies of shared resources, including the `LogDensity` but it is the users job to ensure that their `LogDensity` function supports concurrent evaluation.
+
 ## Interpreting Results
 
 After running the sampler, you will have a collection of samples from the target distribution.
