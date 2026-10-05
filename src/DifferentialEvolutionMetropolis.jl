@@ -12,7 +12,7 @@ import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParame
 import Distributions
 import AliasTables: AliasTable, set_weights!
 
-import LogDensityProblems: logdensity, dimension, capabilities, LogDensityOrder
+import LogDensityProblems: logdensity, dimension
 import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot

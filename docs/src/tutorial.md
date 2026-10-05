@@ -101,9 +101,21 @@ Other implementations of the differential evolution MCMC algorithm are available
 An explicit `AbstractMCMC.LogDensityModel` wrapper is optional: an untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to any template, or `AbstractMCMC.sample`.
 There is no requirement to use `TransformedLogDensities.jl`, but it is recommended for constrained or structured parameters, as it applies Jacobian corrections and constrains proposals.
 
-```julia
-insert example of the untransformed target
+```@example UntransformedTarget
+using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+
+struct StandardNormalTarget end
+LogDensityProblems.dimension(::StandardNormalTarget) = 2
+LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
+
+target = StandardNormalTarget()
+result = DREAMz(target, 100; rng = Xoshiro(123), n_chains = 8, n_burnin = 100, progress = false)
+custom_result = sample(Xoshiro(123), target, setup_de_update(), 100; n_chains = 4, progress = false)
 ```
+
+Raw functions are not adapted automatically: define the LogDensityProblems interface explicitly.
+Wrapping a target does not transform parameters or add Jacobian corrections.
 
 ## Custom Scheme
 
