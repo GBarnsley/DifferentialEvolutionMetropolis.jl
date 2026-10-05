@@ -98,28 +98,11 @@ Other implementations of the differential evolution MCMC algorithm are available
 
 ## Other log-density inputs
 
-An untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to `deMC`, `deMCzs`, `DREAMz`, or `AbstractMCMC.sample`; an explicit `AbstractMCMC.LogDensityModel` wrapper is optional.
-There is no requirement to use `TransformedLogDensities`.
-
-For an ordinary Julia function taking a parameter vector and returning a scalar log density, supply its dimension explicitly:
+An explicit `AbstractMCMC.LogDensityModel` wrapper is optional: an untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to any template, or `AbstractMCMC.sample`.
+There is no requirement to use `TransformedLogDensities.jl`, but it is recommended for constrained or structured parameters, as it applies Jacobian corrections and constrains proposals.
 
 ```julia
-logtarget(x) = -sum(abs2, x) / 2
-result = DREAMz(logtarget, 1000; n_dims = 2, n_chains = 8)
-# Custom samplers accept raw functions too:
-result = sample(logtarget, setup_de_update(), 1000; n_dims = 2, n_chains = 4)
-```
-
-The templates also accept callable structs with `n_dims`.
-The internal adapter implements the order-zero LogDensityProblems interface, not gradients.
-For HMC, provide a gradient-capable LogDensityProblems target as usual.
-
-These conveniences only wrap the target: they do **not** transform parameters, apply Jacobian corrections, or constrain the proposals.
-For constrained or structured parameters, use `TransformedLogDensities`/`TransformVariables` or `Bijectors` yourself, and pass the resulting vector-space log-density target.
-Samples are returned in the coordinates of the supplied target.
-
-```@docs
-DifferentialEvolutionMetropolis.sample(::DifferentialEvolutionMetropolis.AbstractRNG, ::Function, ::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler, ::Any)
+insert example of the untransformed target
 ```
 
 ## Custom Scheme
