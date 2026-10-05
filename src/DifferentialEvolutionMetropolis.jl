@@ -12,7 +12,7 @@ import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParame
 import Distributions
 import AliasTables: AliasTable, set_weights!
 
-import LogDensityProblems: logdensity, dimension
+import LogDensityProblems: logdensity, dimension, capabilities, LogDensityOrder
 import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot
@@ -138,6 +138,7 @@ struct DifferentialEvolutionOutput{T <: Real}
     ld::Matrix{T}
 end
 
+include("logdensity.jl")
 include("docs.jl")
 include("hmc.jl")
 include("temperature.jl")

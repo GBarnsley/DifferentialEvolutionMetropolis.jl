@@ -6,10 +6,11 @@ $(deMC_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: LogDensityModel containing the target log-density function
+- `model_wrapper`: A `LogDensityModel`, a LogDensityProblems target, or a vector-to-scalar log-density callable
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
+- `n_dims`: Required for raw log-density callables; not needed for LogDensityProblems targets. No parameter transformation is performed.
 - `rng`: Random number generator. Defaults to `default_rng()`.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(deMC_kwargs)
@@ -22,13 +23,13 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run differential evolution MCMC
-result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
+result = deMC(model_wrapper, 1000; n_dims = 2, n_chains = 10, parallel = false)
 ```
 
 # Notes
@@ -37,8 +38,10 @@ $(generic_notes)
 See also [`deMCzs`](@ref), [`DREAMz`](@ref), [`setup_de_update`](@ref).
 """
 function deMC(
-        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper, n_its::Int; n_dims = nothing, n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
+
+    model_wrapper = as_logdensity_model(model_wrapper; n_dims = n_dims)
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin
     )
@@ -102,10 +105,11 @@ $(deMCzs_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: LogDensityModel containing the target log-density function
+- `model_wrapper`: A `LogDensityModel`, a LogDensityProblems target, or a vector-to-scalar log-density callable
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
+- `n_dims`: Required for raw log-density callables; not needed for LogDensityProblems targets. No parameter transformation is performed.
 - `rng`: Random number generator. Defaults to `default_rng()`.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(deMCzs_kwargs)
@@ -118,13 +122,13 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run differential evolution MCMC
-result = deMCzs(model_wrapper, 1000; n_chains = 3)
+result = deMCzs(model_wrapper, 1000; n_dims = 2, n_chains = 3)
 ```
 
 # Notes
@@ -133,8 +137,10 @@ $(generic_notes)
 See also [`deMC`](@ref), [`DREAMz`](@ref).
 """
 function deMCzs(
-        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper, n_its::Int; n_dims = nothing, n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
+
+    model_wrapper = as_logdensity_model(model_wrapper; n_dims = n_dims)
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin
     )
@@ -195,10 +201,11 @@ $(DREAMz_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: LogDensityModel containing the target log-density function
+- `model_wrapper`: A `LogDensityModel`, a LogDensityProblems target, or a vector-to-scalar log-density callable
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
+- `n_dims`: Required for raw log-density callables; not needed for LogDensityProblems targets. No parameter transformation is performed.
 - `rng`: Random number generator. Defaults to `default_rng()`.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(DREAMz_kwargs)
@@ -211,13 +218,13 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra
 
 # Define a simple log-density function
 model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run DREAM with subspace sampling
-result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
+result = DREAMz(model_wrapper, 1000; n_dims = 2, n_chains = 10, memory = false)
 ```
 # Notes
 $(generic_notes)
@@ -225,8 +232,10 @@ $(generic_notes)
 See also [`deMC`](@ref), [`deMCzs`](@ref), [`setup_subspace_sampling`](@ref).
 """
 function DREAMz(
-        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper, n_its::Int; n_dims = nothing, n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
+
+    model_wrapper = as_logdensity_model(model_wrapper; n_dims = n_dims)
 
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin
