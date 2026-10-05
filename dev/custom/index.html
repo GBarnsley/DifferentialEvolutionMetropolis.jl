@@ -3,7 +3,7 @@
     rng::AbstractRNG,
     model::AbstractModel,
     sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{DifferentialEvolutionSample},
+    samples::Vector{&lt;:DifferentialEvolutionSample},
     state::DifferentialEvolutionState,
     iteration::Int;
     kwargs...
@@ -13,12 +13,12 @@ function max_iterations_stopping(
     rng::AbstractRNG,
     model::AbstractModel,
     sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{DifferentialEvolutionSample{V, VV}},
-    state::DifferentialEvolutionState{T, V, VV, A},
+    samples::Vector{&lt;:DifferentialEvolutionSample},
+    state::DifferentialEvolutionState{T, A},
     iteration::Int;
     max_iterations::Int = 10000,
     kwargs...
-) where {T&lt;:Real, V&lt;:AbstractVector{T}, VV&lt;:AbstractVector{V}, A&lt;:AbstractDifferentialEvolutionAdaptiveState{T}}
+) where {T&lt;:Real, A&lt;:AbstractDifferentialEvolutionAdaptiveState{T}}
     if iteration &gt;= max_iterations
         println(&quot;Reached maximum iterations ($max_iterations), stopping.&quot;)
         return true
@@ -67,7 +67,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     return (offset = 0.0)
 end
 
-DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1</code></pre><h3 id="Avoiding-Allocations-with-Scratch-Buffers"><a class="docs-heading-anchor" href="#Avoiding-Allocations-with-Scratch-Buffers">Avoiding Allocations with Scratch Buffers</a><a id="Avoiding-Allocations-with-Scratch-Buffers-1"></a><a class="docs-heading-anchor-permalink" href="#Avoiding-Allocations-with-Scratch-Buffers" title="Permalink"></a></h3><p>The example above allocates a new vector for every proposal. This is usually negligible next to the cost of the log density, so it is the recommended starting point. To avoid allocations, an update can hold a <code>ProposalScratch{N}</code>, which gives each chain <code>N</code> preallocated <code>Float64</code> vectors the length of the parameter vector. The buffers are sized by <code>prepare_scratch!</code> before chains are updated, and only reallocated when the number of chains or parameters changes. Only use the buffers belonging to <code>current_state</code>, as chains may be updated in parallel.</p><pre><code class="language-julia hljs">struct ScratchMetropolisHastingsUpdate{D &lt;: MvNormal} &lt;: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1</code></pre><h3 id="Avoiding-Allocations-with-Scratch-Buffers"><a class="docs-heading-anchor" href="#Avoiding-Allocations-with-Scratch-Buffers">Avoiding Allocations with Scratch Buffers</a><a id="Avoiding-Allocations-with-Scratch-Buffers-1"></a><a class="docs-heading-anchor-permalink" href="#Avoiding-Allocations-with-Scratch-Buffers" title="Permalink"></a></h3><p>The example above allocates a new vector for every proposal. This is usually negligible next to the cost of the log density, so it is the recommended starting point. To avoid allocations, an update can hold a <code>ProposalScratch{N}</code>, which gives each chain <code>N</code> preallocated vectors of the positions&#39; element type the length of the parameter vector. The buffers are sized by <code>prepare_scratch!</code> before chains are updated, and only reallocated when the element type, number of chains or parameters changes. Only use the buffers belonging to <code>current_state</code>, as chains may be updated in parallel.</p><pre><code class="language-julia hljs">struct ScratchMetropolisHastingsUpdate{D &lt;: MvNormal} &lt;: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
     proposal_distribution::D
     scratch::DifferentialEvolutionMetropolis.ProposalScratch{1}
 end
@@ -87,13 +87,18 @@ function DifferentialEvolutionMetropolis.proposal!(
     current_state::Int
 )
     # Draw the random walk step into this chain&#39;s buffer rather than a new vector
-    (jump,) = sampler.scratch.buffers[current_state]
+    # We pass the type of the state (here Float64) to make `chain_buffers` type stable
+    # `scratch` itself if a mutable struct that can hold vectors of any type, allowing seem-less reuse of buffers
+    # across logdensities of different dimensions and types
+    T = eltype(state.x[current_state])
+    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, T, current_state)
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
     state.xₚ[current_state] .= state.x[current_state] .+ jump
     return (offset = 0.0)
 end
 
-DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1</code></pre><h3 id="Adaptive-Proposals-with-step_warmup"><a class="docs-heading-anchor" href="#Adaptive-Proposals-with-step_warmup">Adaptive Proposals with step_warmup</a><a id="Adaptive-Proposals-with-step_warmup-1"></a><a class="docs-heading-anchor-permalink" href="#Adaptive-Proposals-with-step_warmup" title="Permalink"></a></h3><p>For proposals that require adaptation during warm-up, you need to implement the <code>step_warmup</code> as well. This is called during the warm-up phase. Unless you want your sampler to be always adaptive then you must implement <code>step</code>.</p><p>You&#39;ll also need to define adaptive state structures and methods. Here&#39;s an example of an adaptive Metropolis-Hastings sampler:</p><pre><code class="language-julia hljs">using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics
+DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1</code></pre><h3 id="Adaptive-Proposals-with-step_warmup"><a class="docs-heading-anchor" href="#Adaptive-Proposals-with-step_warmup">Adaptive Proposals with step_warmup</a><a id="Adaptive-Proposals-with-step_warmup-1"></a><a class="docs-heading-anchor-permalink" href="#Adaptive-Proposals-with-step_warmup" title="Permalink"></a></h3><p>For proposals that require adaptation during warm-up, you need to implement the <code>step_warmup</code> as well. This is called during the warm-up phase. Unless you want your sampler to be always adaptive then you must implement <code>step</code>.</p><p>You&#39;ll also need to define adaptive state structures and methods. Here&#39;s an example of an adaptive Metropolis-Hastings sampler:</p><pre><code class="language-julia hljs">using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, LogDensityProblems
+import AbstractMCMC: step_warmup
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T&lt;:Real} &lt;:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
@@ -123,13 +128,13 @@ function AdaptiveMetropolisUpdate(
 end
 
 # Initialize adaptive state
-function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate{T}, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int) where {T}
-    n_params = dimension(model_wrapper.logdensity)
+function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int, ::Type{T}) where {T&lt;:Real}
+    n_params = LogDensityProblems.dimension(model_wrapper.logdensity)
     return AdaptiveMetropolisState{T}(
-        copy(sampler.initial_cov),
+        Matrix{T}(sampler.initial_cov),
         0,
         zeros(T, n_params),
-        copy(sampler.initial_cov)
+        Matrix{T}(sampler.initial_cov)
     )
 end
 
@@ -178,11 +183,11 @@ function step_warmup(
         empirical_cov = cov(positions)
 
         # Update proposal covariance with regularization in-place
-        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I
+        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I(size(empirical_cov, 1))
     end
 
     return sample, new_state
-end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">step_warmup (generic function with 1 method)</code></pre><h2 id="Example:-Using-Custom-Components"><a class="docs-heading-anchor" href="#Example:-Using-Custom-Components">Example: Using Custom Components</a><a id="Example:-Using-Custom-Components-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Using-Custom-Components" title="Permalink"></a></h2><p>Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:</p><pre><code class="language-julia hljs">using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">step_warmup (generic function with 5 methods)</code></pre><h2 id="Example:-Using-Custom-Components"><a class="docs-heading-anchor" href="#Example:-Using-Custom-Components">Example: Using Custom Components</a><a id="Example:-Using-Custom-Components-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Using-Custom-Components" title="Permalink"></a></h2><p>Here is a complete example that shows how to use custom components with the new AbstractMCMC interface:</p><pre><code class="language-julia hljs">using Distributions, TransformedLogDensities, LinearAlgebra, TransformVariables, Plots
 
 # Set up a simple log-density to sample from (a 2D standard normal distribution)
 
@@ -215,4 +220,4 @@ result = sample(
 )
 
 plot(result.samples[:, :, 1])
-plot(result.samples[:, :, 2])</code></pre><img src="74ded38d.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../hmc/">« Combining HMC with differential evolution</a><a class="docs-footer-nextpage" href="../pathfinder/">Initialising from Pathfinder »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Monday 5 October 2026 12:09">Monday 5 October 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(result.samples[:, :, 2])</code></pre><img src="07eae2de.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../hmc/">« Combining HMC with differential evolution</a><a class="docs-footer-nextpage" href="../pathfinder/">Initialising from Pathfinder »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Monday 5 October 2026 13:09">Monday 5 October 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
