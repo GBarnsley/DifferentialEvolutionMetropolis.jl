@@ -114,9 +114,6 @@ result = DREAMz(target, 100; rng = Xoshiro(123), n_chains = 8, n_burnin = 100, p
 custom_result = sample(Xoshiro(123), target, setup_de_update(), 100; n_chains = 4, progress = false)
 ```
 
-Raw functions are not adapted automatically: define the LogDensityProblems interface explicitly.
-Wrapping a target does not transform parameters or add Jacobian corrections.
-
 ## Custom Scheme
 
 DREAMz can be further customized.
