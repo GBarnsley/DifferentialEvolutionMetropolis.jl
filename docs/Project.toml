@@ -20,6 +20,3 @@ TransformedLogDensities = "f9bc47f6-f3f8-4f3b-ab21-f8bc73906f26"
 
 [sources]
 DifferentialEvolutionMetropolis = {path = ".."}
-
-[compat]
-DynamicPPL = "0.42"
