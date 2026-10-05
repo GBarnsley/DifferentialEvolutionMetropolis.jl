@@ -43,6 +43,11 @@ For HMC updates, the AdvancedHMC components **must** use the same type as the po
 A mismatched metric should error at initialization; it is not converted automatically.
 <!-- panache-ignore-end -->
 
+## Diagnostic checks
+
+See [Diagnostic checks and chain rescue](@ref) for the assessment of periodic monitoring and warmup-only chain rescue.
+No automatic rescue policy is currently implemented.
+
 ## Next Steps
 
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
