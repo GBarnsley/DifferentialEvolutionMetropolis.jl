@@ -49,7 +49,7 @@ function check_exchange()
     @test exchange!(Xoshiro(2), state, [(1, 4)]) == 0 # ratio -25
     @test exchange!(Xoshiro(2), state, [(1, 2)]) == 1 # equal temperature
     # Normal DE stepping remains valid after exchange; do not use the pre-exchange sample.
-    _, state = AbstractMCMC.step(Xoshiro(3), model, sampler, state)
+    _, state = AbstractMCMC.step(Xoshiro(3), model, sampler, state; replica_exchange = false)
     @test state.ld == LogDensityProblems.logdensity.(Ref(model.logdensity), state.x)
     return @test parent(state.x_smpl_view) === state.x
 end
@@ -80,7 +80,7 @@ function trial(dims, separation, hot, seed, swaps; warmup = 2000, draws = 6000)
     # One randomly selected cold chain participates at the cold/hot boundary;
     # remaining hot neighbours use alternating non-overlapping matchings.
     elapsed = @elapsed for t in 1:(warmup + draws)
-        _, state = AbstractMCMC.step(rng, model, sampler, state)
+        _, state = AbstractMCMC.step(rng, model, sampler, state; replica_exchange = false)
         if swaps
             c = rand(swap_rng, 1:cold)
             order = [c; collect((cold + 1):(cold + hot))]

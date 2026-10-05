@@ -963,7 +963,7 @@ end
 function step_warmup(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
-        parallel::Bool = false, update_memory::Bool = true,
+        parallel::Bool = false, update_memory::Bool = true, replica_exchange::Bool = true,
         num_warmup::Int = 1000, kwargs...
     ) where {T <: Real}
     astate = state.adaptive_state
@@ -979,6 +979,7 @@ function step_warmup(
         astate.cold, astate.hot, parallel
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
+    DEM.replica_exchange!(rng, state; enabled = replica_exchange)
     return DEM.create_sample(state),
         DEM.update_state(
             state; swap_positions = Val(true),
@@ -1009,7 +1010,7 @@ end
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
         state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
-        parallel::Bool = false, update_memory::Bool = true, kwargs...
+        parallel::Bool = false, update_memory::Bool = true, replica_exchange::Bool = true, kwargs...
     ) where {T <: Real}
     if sampler.astate === nothing
         error("setup_hmc_update: this HMC update has not been warmed up. HMC updates resolve their chain assignments and step size during warmup; run with `adapt = true` (the default) and `num_warmup ≥ 1` / `n_burnin ≥ 1`.")
@@ -1019,6 +1020,7 @@ function step(
     run_trajectories!(
         rng, model_wrapper, state, κ, chain_metrics, sampler.cold, sampler.hot, parallel
     )
+    DEM.replica_exchange!(rng, state; enabled = replica_exchange)
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end

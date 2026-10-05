@@ -5,7 +5,7 @@
 Explicit replica exchange can help even though differential-evolution proposals already use information from other temperatures.
 They are different mechanisms: DE transfers a *difference vector*, whereas exchange offers a whole explored position to a colder chain.
 In the controlled experiment below, exchange improved cold-chain mode-occupancy error on separated mixtures.
-This is evidence for an optional exchange kernel, not for enabling swaps by default on every model.
+Replica exchange is now enabled by default when hot chains are present; pass `replica_exchange = false` to disable it.
 
 The investigation is deliberately outside the production sampler.
 Run it with:
@@ -17,7 +17,7 @@ julia --project=. benchmark/tempering_swaps.jl
 
 No generated sample files are needed or written.
 
-## What the current code does
+## DE information sharing
 
 With `memory=false`, `pick_chains` in `src/chains.jl` draws donor positions from all live chains, regardless of temperature.
 `proposal!` in `src/differential_evolution_update.jl` adds their scaled difference to the current position.
@@ -100,11 +100,12 @@ The exchange itself uses cached densities.
 
 ## Recommendation and limits
 
-- Investigate an **opt-in** exchange stage: the benefit is not redundant with DE donor sharing on these separated mixtures.
+- Replica exchange is not redundant with DE donor sharing on these separated mixtures.
+  Following review, the production exchange stage is enabled by default for hot chains, with an explicit opt-out.
 - Tune the ladder using **edge-specific** acceptance and mode transport.
   More hot rungs improve overlap between hot neighbours, but do not change the cold-to-1.5 boundary.
   A high overall acceptance rate can hide a bottleneck.
-- Do not choose a default from this small target family.
+- The experiments do not establish a universally optimal default.
   Compare further targets, longer runs, multiple swap frequencies, memory-based schemes and observables beyond mode occupancy.
   Measure ESS per model evaluation and per second using diagnostics that account for interacting chains.
 - A production implementation must exchange before creating the returned sample and updating the archive.
@@ -115,3 +116,19 @@ The exchange itself uses cached densities.
 
 The script's nine deterministic checks cover the acceptance-ratio sign, equal-temperature exchange, cached densities, cold-view aliases and a subsequent DE step.
 The experimental helper is not exported and does not change existing APIs.
+
+## Production implementation
+
+Each completed local sweep (DE, adaptive subspace, composite or HMC) proposes a random odd/even matching of adjacent distinct **current** temperature rungs.
+A random representative is chosen within each equal-temperature group, so every cold chain can participate at the cold/hot boundary.
+Positions and cached log densities move together; rung RNGs, models and adaptation stay fixed.
+Exchange occurs before creating the output sample, writing memory and advancing the annealing ladder.
+
+With simultaneous annealing and parallel tempering, rungs are sorted by their current temperature on every sweep, including custom schedules whose ordering changes.
+Thus only neighbouring current temperatures are paired, never distant index neighbours.
+When all current temperatures coincide there are no distinct-rung pairs.
+Pure annealing without hot chains and untempered sampling are unchanged.
+Adjacency does not guarantee a small numerical temperature gap on a sparse ladder: use a denser ladder if boundary acceptance is poor.
+
+The benchmark above remains an explicit experimental exchange implementation.
+Its local steps disable production exchange to preserve the original on/off comparison.

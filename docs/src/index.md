@@ -20,8 +20,7 @@ That's not to discredit DifferentialEvolutionMCMC.jl, it has many features this 
 ## Main features
 
 - Original differential evolution, snooker, and adaptive subspace sampling (i.e. from DREAM) updates
-- Optional parallel tempering (no swaps yet, information is shared by the DE updates!)
-  and annealing
+- Optional parallel tempering (adjacent-temperature replica exchange and information shared by DE updates) and annealing
 - Composite samplers, can combine any of the implemented updates (in future I'll wrap other abstractMCMC based samplers)
 - Easy to implement your own updates!
 - Can output in `MCMCChains` or `FlexiChains` format, though you use multiple sampling chains (i.e. chains of the DE-chains) these will all be appended together

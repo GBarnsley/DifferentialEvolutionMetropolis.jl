@@ -56,6 +56,7 @@ end
     include("test_parallel.jl")
     include("test_swapping.jl")
     include("test_temperature.jl")
+    include("test_replica_exchange.jl")
     include("test_hmc.jl")
     include("test_hmc_memory_metric.jl")
     include("test_hmc_cluster_pooled_metric.jl")
