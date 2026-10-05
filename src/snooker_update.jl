@@ -76,7 +76,7 @@ function proposal!(
     else
         x = state.x[current_state]
         xₚ = state.xₚ[current_state]
-        e, x_diff = sampler.scratch.buffers[current_state]
+        e, x_diff = chain_buffers(sampler.scratch, eltype(x), current_state)
         e .= xₐ .- x
         norm_current = norm(e)
         normalize!(e)

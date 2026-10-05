@@ -192,7 +192,7 @@ function proposal!(
     rng = state.rngs[current_state]
     x = state.x[current_state]
     xₚ = state.xₚ[current_state]
-    u, e, ϵ = sampler.scratch.buffers[current_state]
+    u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
 
     #determine how many dimensions to update, those with u < cr
     cr = rand(rng, sampler.cr_spl)

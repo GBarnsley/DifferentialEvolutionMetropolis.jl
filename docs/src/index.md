@@ -27,6 +27,22 @@ That's not to discredit DifferentialEvolutionMCMC.jl, it has many features this 
 - Can output in `MCMCChains` or `FlexiChains` format, though you use multiple sampling chains (i.e. chains of the DE-chains) these will all be appended together
 - Accepts `Pathfinder.jl` results to determine initial positions, and, if passing a `mulitpathfinder` result, the package will ensure that each mode is represented in the initial chain positions or memory (given sufficient chains or initial memory positions)
 
+## Supported position types
+
+This package currently supports log-densities using `Float64` (the default), `Float32`, and `BigFloat`.
+Pass `T = Float32` or `T = BigFloat` to `step`, `sample`, `deMC`, `deMCzs`, or `DREAMz` to choose the position and output type.
+Any supplied positions and initial memory draws are converted to type `T`.
+If `T` is not provided, the type determined by `initial_position`, or defaults to `Float64` if no initial positions are supplied.
+By default update parameters and distributions remain `Float64` and are converted when used with typed positions.
+If using a type other than `Float64`, you are encouraged to create custom updates that use the correct types, for example `setup_de_update(γ = 0.5f0, β = Normal(0.0f0, 1.0f-6))`.
+The precision and draw-type behavior of all distributions depend on Distributions.jl and are not supported in this package.
+
+<!-- panache-ignore-start -->
+!!! warning "Experimental"
+For HMC updates, the AdvancedHMC components **must** use the same type as the positions: `setup_hmc_update(NUTS(0.8f0); n_dims = D)` for `Float32`, or `setup_hmc_update(NUTS(BigFloat("0.8")); n_dims = D)` for `BigFloat`.
+A mismatched metric should error at initialization; it is not converted automatically.
+<!-- panache-ignore-end -->
+
 ## Next Steps
 
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
