@@ -118,6 +118,10 @@ These conveniences only wrap the target: they do **not** transform parameters, a
 For constrained or structured parameters, use `TransformedLogDensities`/`TransformVariables` or `Bijectors` yourself, and pass the resulting vector-space log-density target.
 Samples are returned in the coordinates of the supplied target.
 
+```@docs
+DifferentialEvolutionMetropolis.sample(::DifferentialEvolutionMetropolis.AbstractRNG, ::Function, ::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler, ::Any)
+```
+
 ## Custom Scheme
 
 DREAMz can be further customized.
