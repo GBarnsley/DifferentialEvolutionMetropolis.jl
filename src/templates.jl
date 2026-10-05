@@ -6,7 +6,7 @@ $(deMC_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: A `LogDensityModel` or a target implementing the LogDensityProblems interface
+- `model_wrapper`: LogDensityModel containing the target log-density function
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
@@ -22,14 +22,10 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra, LogDensityProblems
+using DifferentialEvolutionMetropolis, Random, Distributions
 
-# Define an untransformed target on two real-valued parameters
-struct StandardNormalTarget end
-LogDensityProblems.dimension(::StandardNormalTarget) = 2
-LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
-model_wrapper = StandardNormalTarget()
+# Define a simple log-density function
+model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run differential evolution MCMC
 result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
@@ -41,10 +37,8 @@ $(generic_notes)
 See also [`deMCzs`](@ref), [`DREAMz`](@ref), [`setup_de_update`](@ref).
 """
 function deMC(
-        model_wrapper, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
-
-    model_wrapper = as_logdensity_model(model_wrapper)
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin
     )
@@ -108,7 +102,7 @@ $(deMCzs_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: A `LogDensityModel` or a target implementing the LogDensityProblems interface
+- `model_wrapper`: LogDensityModel containing the target log-density function
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
@@ -124,14 +118,10 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra, LogDensityProblems
+using DifferentialEvolutionMetropolis, Random, Distributions
 
-# Define an untransformed target on two real-valued parameters
-struct StandardNormalTarget end
-LogDensityProblems.dimension(::StandardNormalTarget) = 2
-LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
-model_wrapper = StandardNormalTarget()
+# Define a simple log-density function
+model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run differential evolution MCMC
 result = deMCzs(model_wrapper, 1000; n_chains = 3)
@@ -143,10 +133,8 @@ $(generic_notes)
 See also [`deMC`](@ref), [`DREAMz`](@ref).
 """
 function deMCzs(
-        model_wrapper, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
-
-    model_wrapper = as_logdensity_model(model_wrapper)
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin
     )
@@ -207,7 +195,7 @@ $(DREAMz_description)
 The algorithm runs for a fixed number of iterations with optional burn-in.
 
 # Arguments
-- `model_wrapper`: A `LogDensityModel` or a target implementing the LogDensityProblems interface
+- `model_wrapper`: LogDensityModel containing the target log-density function
 - `n_its`: Number of sampling iterations per chain
 
 # Keyword Arguments
@@ -223,14 +211,10 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, Random, Distributions, LinearAlgebra, LogDensityProblems
+using DifferentialEvolutionMetropolis, Random, Distributions
 
-# Define an untransformed target on two real-valued parameters
-struct StandardNormalTarget end
-LogDensityProblems.dimension(::StandardNormalTarget) = 2
-LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
-model_wrapper = StandardNormalTarget()
+# Define a simple log-density function
+model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
 
 # Run DREAM with subspace sampling
 result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
@@ -241,10 +225,8 @@ $(generic_notes)
 See also [`deMC`](@ref), [`deMCzs`](@ref), [`setup_subspace_sampling`](@ref).
 """
 function DREAMz(
-        model_wrapper, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
+        model_wrapper::LogDensityModel, n_its::Int; n_burnin::Int = n_its * 5, save_burnt::Bool = false, kwargs...
     )
-
-    model_wrapper = as_logdensity_model(model_wrapper)
 
     n_its, num_warmup = set_iterations(
         save_burnt, n_its, n_burnin

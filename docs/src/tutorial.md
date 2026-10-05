@@ -98,7 +98,8 @@ Other implementations of the differential evolution MCMC algorithm are available
 
 ## Other log-density inputs
 
-An explicit `AbstractMCMC.LogDensityModel` wrapper is optional: an untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to any template, or `AbstractMCMC.sample`.
+An untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to `AbstractMCMC.sample`.
+For the templates (`deMC`, `deMCzs`, and `DREAMz`), wrap the target explicitly in `AbstractMCMC.LogDensityModel`.
 There is no requirement to use `TransformedLogDensities.jl`, but it is recommended for constrained or structured parameters, as it applies Jacobian corrections and constrains proposals.
 
 ```@example UntransformedTarget
@@ -110,7 +111,7 @@ LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProble
 LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
 
 target = StandardNormalTarget()
-result = DREAMz(target, 100; rng = Xoshiro(123), n_chains = 8, n_burnin = 100, progress = false)
+result = DREAMz(AbstractMCMC.LogDensityModel(target), 100; rng = Xoshiro(123), n_chains = 8, n_burnin = 100, progress = false)
 custom_result = sample(Xoshiro(123), target, setup_de_update(), 100; n_chains = 4, progress = false)
 ```
 

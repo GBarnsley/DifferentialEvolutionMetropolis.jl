@@ -138,7 +138,6 @@ struct DifferentialEvolutionOutput{T <: Real}
     ld::Matrix{T}
 end
 
-include("logdensity.jl")
 include("docs.jl")
 include("hmc.jl")
 include("temperature.jl")
