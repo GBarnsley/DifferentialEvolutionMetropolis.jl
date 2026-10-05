@@ -79,6 +79,7 @@ end
 
     using MCMCDiagnosticTools, MCMCChains, FlexiChains
     include("test_templates.jl")
+    include("test_logdensity.jl")
     include("test_convergence.jl")
     include("test_pathfinder.jl")
     #include("test_diagnostics.jl")
