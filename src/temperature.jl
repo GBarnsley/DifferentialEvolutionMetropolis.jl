@@ -112,3 +112,43 @@ function update_ladder!!(ladder::DifferentialEvolutionAnnealingTemperatureLadder
         )
     end
 end
+
+# Exchange the accepted proposal buffers before sampling, memory writes and ladder advance.
+# Pair neighbouring *current* temperatures, not neighbouring indices: custom annealing
+# schedules can change their ordering. Choose a random representative of each tied rung.
+function replica_exchange!(rng, state; enabled::Bool = true)
+    ladder = state.temperature_ladder
+    if !enabled || ladder isa DifferentialEvolutionNullTemperatureLadder ||
+            length(ladder.cold_chains) == length(state.x)
+        return nothing
+    end
+    order = sortperm(ladder.temperature)
+    representatives = Int[]
+    first = 1
+    while first <= length(order)
+        last = first
+        while last < length(order) && ladder.temperature[order[last + 1]] == ladder.temperature[order[first]]
+            last += 1
+        end
+        push!(representatives, order[rand(rng, first:last)])
+        first = last + 1
+    end
+    # Random odd/even matching is position-independent and each pair is disjoint.
+    for k in rand(rng, 1:2):2:(length(representatives) - 1)
+        i, j = representatives[k], representatives[k + 1]
+        exchange_pair!(rng, state, i, j)
+    end
+    return nothing
+end
+
+function exchange_pair!(rng, state, i, j)
+    ti = get_temperature(state.temperature_ladder, i)
+    tj = get_temperature(state.temperature_ladder, j)
+    logratio = (inv(ti) - inv(tj)) * (state.ldₚ[j] - state.ldₚ[i])
+    if log(rand(rng)) < min(zero(logratio), logratio)
+        state.xₚ[i], state.xₚ[j] = state.xₚ[j], state.xₚ[i]
+        state.ldₚ[i], state.ldₚ[j] = state.ldₚ[j], state.ldₚ[i]
+        return true
+    end
+    return false
+end

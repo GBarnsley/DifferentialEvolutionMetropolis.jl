@@ -32,6 +32,31 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     grad_model = ADgradient(:ForwardDiff, raw_model)
     model = AbstractMCMC.LogDensityModel(grad_model)
 
+    @testset "replica exchange with HMC preserves density caches and samples" begin
+        for parallel in (false, true)
+            scheme = setup_sampler_scheme(setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+            rng = backwards_compat_rng(44)
+            _, state = AbstractMCMC.step(
+                rng, model, scheme;
+                n_chains = 3, n_hot_chains = 2, memory = true,
+                num_warmup = 20, silent = true
+            )
+            for _ in 1:5
+                p0 = state.memory.fill.position
+                draw, state = AbstractMCMC.step_warmup(
+                    rng, model, scheme, state;
+                    num_warmup = 20, parallel
+                )
+                @test draw.x == state.x_smpl_view
+                @test state.ld ≈ LogDensityProblems.logdensity.(Ref(grad_model), state.x)
+                @test state.memory.mem_x[(p0 + 1):state.memory.fill.position] == reverse(state.x)
+            end
+            draw, state = AbstractMCMC.step(rng, model, scheme, state; parallel)
+            @test draw.x == state.x_smpl_view
+            @test state.ld ≈ LogDensityProblems.logdensity.(Ref(grad_model), state.x)
+        end
+    end
+
     @testset "a symbol-metric sampler needs n_dims" begin
         # NUTS/HMC/HMCDA store the metric as a symbol, so the dimension must be supplied.
         @test_throws ErrorException DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8))

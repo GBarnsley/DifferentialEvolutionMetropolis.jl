@@ -32,6 +32,7 @@ _generic_de_kwargs_2 = """
   position is stored in memory.
 ## Parallel Tempering and Simulated Annealing Arguments
 - `n_hot_chains`: Number of hot chains for parallel tempering. Defaults to 0 (no parallel tempering).
+- `replica_exchange`: Propose position swaps between adjacent current temperature rungs after each local sweep. Defaults to `true` when hot chains exist; set `false` to disable. Also applies during annealing with hot chains.
 - `max_temp_pt`: Maximum temperature for parallel tempering. Defaults to 2*sqrt(dimension).
 - `max_temp_sa`: Maximum temperature for simulated annealing. Defaults to `max_temp_pt`.
 - `α`: Temperature ladder spacing parameter. Controls the geometric spacing between temperatures.
