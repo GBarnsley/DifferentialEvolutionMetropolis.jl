@@ -12,6 +12,7 @@ makedocs(
     pages = [
         "index.md",
         "tutorial.md",
+        "tempering_swaps.md",
         "hmc.md",
         "custom.md",
         "pathfinder.md",
