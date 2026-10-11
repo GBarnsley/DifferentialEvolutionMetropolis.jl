@@ -55,6 +55,26 @@ __,
     rng, am_model, de_update; memory = false, initial_position = initial_position,
     n_chains = n_chains, n_hot_chains = 10, annealing_steps = 5
 )
+# The first annealing rung ties every chain, so exchange is benchmarked one step in.
+__,
+    initial_state_mid_annealing = AbstractMCMC.step_warmup(
+    rng, am_model, de_update, initial_state_pt_and_annealing
+)
+__,
+    initial_state_pt = AbstractMCMC.step(
+    rng, am_model, de_update; memory = false, initial_position = initial_position,
+    n_chains = n_chains, n_hot_chains = 10
+)
+# A custom schedule whose current temperature order differs from the final order.
+unsorted_ladder = [
+    vcat(ones(n_chains), reverse(range(2.0, 20.0; length = 10))),
+    vcat(ones(n_chains), range(2.0, 20.0; length = 10)),
+]
+__,
+    initial_state_unsorted_annealing = AbstractMCMC.step(
+    rng, am_model, de_update; memory = false, initial_position = initial_position,
+    n_chains = n_chains, n_hot_chains = 10, temperature_ladder = unsorted_ladder
+)
 
 hmc_model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, IsotropicNormalModel(zeros(5))))
 hmc_update = setup_hmc_update(NUTS(0.8); n_dims = 5)
@@ -138,7 +158,7 @@ SUITE["pt"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
     SUITE["pt"][name] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $update, state),
-        setup = (rng = copy($rng); state = deepcopy($initial_state_pt_and_annealing))
+        setup = (rng = copy($rng); state = deepcopy($initial_state_pt))
     )
 end
 
@@ -147,6 +167,21 @@ for (update, name) in zip(updates, names)
     SUITE["annealing"][name] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $update, state),
         setup = (rng = copy($rng); state = deepcopy($initial_state_pt_and_annealing))
+    )
+end
+
+SUITE["replica_exchange"] = BenchmarkGroup(["string"])
+for (exchange_state, name) in zip(
+        (initial_state_pt, initial_state_mid_annealing, initial_state_unsorted_annealing),
+        ("pt", "annealing", "unsorted_annealing")
+    )
+    SUITE["replica_exchange"][name] = @benchmarkable(
+        DifferentialEvolutionMetropolis.replica_exchange!(rng, state),
+        setup = (rng = copy($rng); state = deepcopy($exchange_state))
+    )
+    SUITE["replica_exchange"][name * "_de_update_disabled"] = @benchmarkable(
+        AbstractMCMC.step_warmup(rng, $am_model, $de_update, state; replica_exchange = false),
+        setup = (rng = copy($rng); state = deepcopy($exchange_state))
     )
 end
 

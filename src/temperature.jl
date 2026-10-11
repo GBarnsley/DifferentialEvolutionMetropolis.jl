@@ -40,7 +40,8 @@ function setup_temperature_struct(ladder::Vector{Vector{T}}) where {T <: Real}
         return DifferentialEvolutionAnnealingTemperatureLadder{T}(
             ladder[1],
             view(ladder, 1:n_steps),
-            cold_chains
+            cold_chains,
+            collect(eachindex(ladder[1]))
         )
     end
 end
@@ -91,6 +92,8 @@ struct DifferentialEvolutionAnnealingTemperatureLadder{T <: Real} <:
     temperature_ladder::SubArray{Vector{T}, 1, Vector{Vector{T}}}
     "indicator for cold chains"
     cold_chains::Vector{Int}
+    "chain indices in current temperature order, reused between steps"
+    order::Vector{Int}
 end
 
 function update_ladder!!(ladder::DifferentialEvolutionAnnealingTemperatureLadder{T}) where {
@@ -108,35 +111,54 @@ function update_ladder!!(ladder::DifferentialEvolutionAnnealingTemperatureLadder
         return DifferentialEvolutionAnnealingTemperatureLadder{T}(
             ladder.temperature_ladder[2],
             view(ladder.temperature_ladder, 2:n_steps),
-            ladder.cold_chains
+            ladder.cold_chains,
+            ladder.order
         )
     end
 end
 
 # Exchange the accepted proposal buffers before sampling, memory writes and ladder advance.
-# Pair neighbouring *current* temperatures, not neighbouring indices: custom annealing
-# schedules can change their ordering. Choose a random representative of each tied rung.
 function replica_exchange!(rng, state; enabled::Bool = true)
-    ladder = state.temperature_ladder
-    if !enabled || ladder isa DifferentialEvolutionNullTemperatureLadder ||
-            length(ladder.cold_chains) == length(state.x)
-        return nothing
+    enabled || return nothing
+    return replica_exchange!(rng, state, state.temperature_ladder)
+end
+
+replica_exchange!(rng, state, ::DifferentialEvolutionNullTemperatureLadder) = nothing
+
+# Static temperatures are sorted at setup, so chain index order is rung order.
+function replica_exchange!(rng, state, ladder::DifferentialEvolutionStaticTemperatureLadder)
+    return exchange_adjacent_rungs!(rng, state, ladder.temperature, eachindex(ladder.temperature))
+end
+
+# Custom annealing schedules can reorder chains, so re-sort from the previous step's order.
+function replica_exchange!(rng, state, ladder::DifferentialEvolutionAnnealingTemperatureLadder)
+    length(ladder.cold_chains) == length(ladder.temperature) && return nothing
+    if issorted(ladder.temperature)
+        order = eachindex(ladder.temperature)
+    else
+        order = sortperm!(ladder.order, ladder.temperature; alg = InsertionSort, initialized = true)
     end
-    order = sortperm(ladder.temperature)
-    representatives = Int[]
-    first = 1
-    while first <= length(order)
+    return exchange_adjacent_rungs!(rng, state, ladder.temperature, order)
+end
+
+# Random odd/even matching of neighbouring distinct temperatures; a random chain represents each tied rung.
+function exchange_adjacent_rungs!(rng, state, temperature, order)
+    offset = rand(rng, 1:2)
+    rung = 0
+    previous = 0
+    first = firstindex(order)
+    while first <= lastindex(order)
         last = first
-        while last < length(order) && ladder.temperature[order[last + 1]] == ladder.temperature[order[first]]
+        while last < lastindex(order) && temperature[order[last + 1]] == temperature[order[first]]
             last += 1
         end
-        push!(representatives, order[rand(rng, first:last)])
+        rung += 1
+        representative = first == last ? order[first] : order[rand(rng, first:last)]
+        if rung > offset && iseven(rung - 1 - offset)
+            exchange_pair!(rng, state, previous, representative)
+        end
+        previous = representative
         first = last + 1
-    end
-    # Random odd/even matching is position-independent and each pair is disjoint.
-    for k in rand(rng, 1:2):2:(length(representatives) - 1)
-        i, j = representatives[k], representatives[k + 1]
-        exchange_pair!(rng, state, i, j)
     end
     return nothing
 end

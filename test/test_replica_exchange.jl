@@ -47,6 +47,18 @@
             @test s.xₚ == original
         end
     end
+    # Exchange must not allocate for static, sorted annealing or reordered annealing ladders.
+    exchange_allocations(r, s) = @allocated DifferentialEvolutionMetropolis.replica_exchange!(r, s)
+    for ladder in (
+            [[1.0, 1.0, 1.0, 2.0, 4.0]],
+            [[3.0, 3.0, 3.0, 4.0, 5.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
+            [[2.0, 8.0, 1.0, 16.0, 4.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
+        )
+        s = exchange_state(ladder)
+        r = backwards_compat_rng(5)
+        exchange_allocations(r, s)
+        @test exchange_allocations(r, s) == 0
+    end
     # The public step actually enables exchange by default, with an explicit opt-out.
     changed = false
     for seed in 1:20

@@ -124,8 +124,10 @@ A random representative is chosen within each equal-temperature group, so every 
 Positions and cached log densities move together; rung RNGs, models and adaptation stay fixed.
 Exchange occurs before creating the output sample, writing memory and advancing the annealing ladder.
 
-With simultaneous annealing and parallel tempering, rungs are sorted by their current temperature on every sweep, including custom schedules whose ordering changes.
+Static parallel-tempering ladders are sorted once at setup, so the exchange walks chains in index order without sorting.
+During annealing, the current temperatures are only re-sorted when a custom schedule has put them out of index order; the order buffer is kept between sweeps so this is an allocation-free insertion sort.
 Thus only neighbouring current temperatures are paired, never distant index neighbours.
+The exchange step itself does not allocate.
 When all current temperatures coincide there are no distinct-rung pairs.
 Pure annealing without hot chains and untempered sampling are unchanged.
 Adjacency does not guarantee a small numerical temperature gap on a sparse ladder: use a denser ladder if boundary acceptance is poor.
