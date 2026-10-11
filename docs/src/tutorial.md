@@ -96,6 +96,25 @@ dreamz = DREAMz(model, 10000; n_chains = 6, progress = true);
 
 Other implementations of the differential evolution MCMC algorithm are available in `DifferentialEvolutionMetropolis.jl`, such as `deMC` and `deMCzs`, which can be used similarly.
 
+## Other log-density inputs
+
+An untransformed target implementing `LogDensityProblems.logdensity`, `dimension`, and `capabilities` can be passed directly to `AbstractMCMC.sample`.
+For the templates (`deMC`, `deMCzs`, and `DREAMz`), wrap the target explicitly in `AbstractMCMC.LogDensityModel`.
+There is no requirement to use `TransformedLogDensities.jl`, but it is recommended for constrained or structured parameters, as it applies Jacobian corrections and constrains proposals.
+
+```@example UntransformedTarget
+using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+
+struct StandardNormalTarget end
+LogDensityProblems.dimension(::StandardNormalTarget) = 2
+LogDensityProblems.capabilities(::Type{StandardNormalTarget}) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(::StandardNormalTarget, θ) = -sum(abs2, θ) / 2
+
+target = StandardNormalTarget()
+result = DREAMz(AbstractMCMC.LogDensityModel(target), 100; rng = Xoshiro(123), n_chains = 8, n_burnin = 100, progress = false)
+custom_result = sample(Xoshiro(123), target, setup_de_update(), 100; n_chains = 4, progress = false)
+```
+
 ## Custom Scheme
 
 DREAMz can be further customized.
