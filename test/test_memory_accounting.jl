@@ -9,7 +9,7 @@ using Random, AbstractMCMC, LogDensityProblems
     n_chains = 4
 
     @testset "Memory writes exactly n_chains" begin
-        spl = setup_sampler_scheme(
+        spl = setup_composite_scheme(
             setup_subspace_sampling(),
             setup_subspace_sampling(γ = 1.0)
         )
@@ -41,7 +41,7 @@ using Random, AbstractMCMC, LogDensityProblems
     end
 
     @testset "Refill conversion conversion" begin
-        spl = setup_sampler_scheme(
+        spl = setup_composite_scheme(
             setup_subspace_sampling(),
             setup_subspace_sampling(γ = 1.0)
         )
@@ -66,7 +66,7 @@ using Random, AbstractMCMC, LogDensityProblems
     end
 
     @testset "Temperature ladder advances" begin
-        spl = setup_sampler_scheme(
+        spl = setup_composite_scheme(
             setup_subspace_sampling(),
             setup_subspace_sampling(γ = 1.0)
         )
@@ -101,7 +101,7 @@ using Random, AbstractMCMC, LogDensityProblems
     end
 
     @testset "memory_size too small errors" begin
-        spl = setup_sampler_scheme(
+        spl = setup_composite_scheme(
             setup_subspace_sampling(),
             setup_subspace_sampling(γ = 1.0)
         )
@@ -147,7 +147,7 @@ using Random, AbstractMCMC, LogDensityProblems
 
     @testset "memoryless chain count validation" begin
         # Memoryless snooker with n_chains = 3 should error
-        snooker_spl = setup_sampler_scheme(setup_snooker_update())
+        snooker_spl = setup_composite_scheme(setup_snooker_update())
         @test_throws ErrorException AbstractMCMC.step(
             rng, wrapped_model, snooker_spl;
             n_chains = 3,
@@ -167,7 +167,7 @@ using Random, AbstractMCMC, LogDensityProblems
         @test length(state_snooker.x) == 4
 
         # Memoryless DE with n_chains = 3 should still work
-        de_spl = setup_sampler_scheme(setup_de_update())
+        de_spl = setup_composite_scheme(setup_de_update())
         _, state_de = AbstractMCMC.step(
             rng, wrapped_model, de_spl;
             n_chains = 3,
@@ -179,7 +179,7 @@ using Random, AbstractMCMC, LogDensityProblems
     end
 
     @testset "Float32 initial positions work correctly" begin
-        spl = setup_sampler_scheme(setup_de_update())
+        spl = setup_composite_scheme(setup_de_update())
         init_pos = [Float32[1.0, 2.0], Float32[3.0, 4.0], Float32[5.0, 6.0]]
         _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;
@@ -193,7 +193,7 @@ using Random, AbstractMCMC, LogDensityProblems
     end
 
     @testset "Default N₀ keeps all supplied initial positions" begin
-        spl = setup_sampler_scheme(setup_subspace_sampling())
+        spl = setup_composite_scheme(setup_subspace_sampling())
         init = [randn(rng, 2) for _ in 1:20]
 
         _, state = AbstractMCMC.step(

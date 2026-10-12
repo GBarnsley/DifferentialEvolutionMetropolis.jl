@@ -1,5 +1,5 @@
 module DifferentialEvolutionMetropolis
-export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_fixed_order_scheme, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
+export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_composite_scheme, setup_random_order_composite, setup_fixed_order_composite, setup_sampler_scheme, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
@@ -149,7 +149,6 @@ include("differential_evolution_update.jl")
 include("snooker_update.jl")
 include("subspace_update.jl")
 include("subspace_adaptive_update.jl")
-include("fixed_order_sampler.jl")
 include("composite_sampler.jl")
 include("utilities.jl")
 include("convergence.jl")

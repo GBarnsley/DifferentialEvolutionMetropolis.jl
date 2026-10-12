@@ -21,15 +21,15 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test occursin(r"min_variance_count:\s+10", plain(subspace))
         @test !occursin("cr_uniform_weight", plain(subspace_fixed))
 
-        composite = setup_sampler_scheme(de, snooker; w = [3.0, 1.0])
-        @test repr(composite) == "Composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
-        @test plain(composite) == "Composite sampler with 2 updates\n    0.75 × " * repr(de) * "\n    0.25 × " * repr(snooker)
-        @test sprint(show, MIME"text/plain"(), composite; context = :compact => true) == "Composite sampler with 2 updates"
+        composite = setup_composite_scheme(de, snooker; w = [3.0, 1.0])
+        @test repr(composite) == "Random order composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
+        @test plain(composite) == "Random order composite sampler with 2 updates\n    0.75 × " * repr(de) * "\n    0.25 × " * repr(snooker)
+        @test sprint(show, MIME"text/plain"(), composite; context = :compact => true) == "Random order composite sampler with 2 updates"
     end
 
     @testset "state" begin
         model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0, 0.0]))
-        scheme = setup_sampler_scheme(de, subspace)
+        scheme = setup_composite_scheme(de, subspace)
         sample, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; n_chains = 4)
         @test repr(sample) == "DifferentialEvolutionSample(4 chains, 2 parameters)"
         @test repr(state.temperature_ladder) == "none"
@@ -84,7 +84,7 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
             ADgradient(:ForwardDiff, CorrelatedGaussianModel(MvNormal(zeros(2), [1.0 0.0; 0.0 1.0])))
         )
         _, state = AbstractMCMC.step(
-            backwards_compat_rng(1), model, setup_sampler_scheme(hmc, de); n_chains = 4
+            backwards_compat_rng(1), model, setup_composite_scheme(hmc, de); n_chains = 4
         )
         @test occursin("adaptive state: composite(HMC (not initialised, 0 HMC steps), static)", plain(state))
     end

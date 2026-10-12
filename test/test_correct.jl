@@ -176,7 +176,7 @@
     α_across = 10^-5
     k = 7
 
-    composite_update = setup_sampler_scheme(
+    composite_update = setup_composite_scheme(
         setup_de_update(n_dims = LogDensityProblems.dimension(base_model)),
         setup_snooker_update(),
         setup_subspace_sampling()

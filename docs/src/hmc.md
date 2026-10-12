@@ -8,7 +8,7 @@ HMC is the reverse: with a well-chosen mass matrix it explores a correlated, hig
 The hard case for either method alone is therefore a **high-dimensional posterior with separated modes of different shape** — one shared mass matrix cannot precondition them all at once.
 
 This is exactly the situation where it pays to combine the two: run an HMC kernel on each chain for gradient-guided local exploration, and a [`setup_subspace_sampling`](@ref) (DREAM-z) update for population moves.
-When `AdvancedHMC.jl` is loaded this package exposes [`setup_hmc_update`](@ref), which wraps an AdvancedHMC sampler so it can act as one update inside a [`setup_sampler_scheme`](@ref) composite, sharing a single, population-pooled metric across all of the chains — or, as we will see, a metric estimated separately for each mode.
+When `AdvancedHMC.jl` is loaded this package exposes [`setup_hmc_update`](@ref), which wraps an AdvancedHMC sampler so it can act as one update inside a [`setup_composite_scheme`](@ref) composite, sharing a single, population-pooled metric across all of the chains — or, as we will see, a metric estimated separately for each mode.
 
 ## A high-dimensional bimodal target
 
@@ -182,7 +182,7 @@ function seeded_positions(rng; n_mem = 60)
     return vcat(chains, plus[3:end], minus[2:end])      # the rest seed the memory
 end
 
-scheme = setup_sampler_scheme(
+scheme = setup_composite_scheme(
     setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = D, metric_strategy = per_cluster_metric()),
     setup_subspace_sampling(),                  # local population moves
     setup_subspace_sampling(γ = 1.0, cr = 1.0); # full-dimensional mode jump

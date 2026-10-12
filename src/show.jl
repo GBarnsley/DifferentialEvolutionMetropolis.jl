@@ -69,15 +69,15 @@ function Base.show(io::IO, ::MIME"text/plain", s::AbstractDifferentialEvolutionS
     return show_multiline(io, subspace_title(s), fields)
 end
 
-function Base.show(io::IO, s::DifferentialEvolutionCompositeSampler)
-    print(io, "Composite sampler(")
+function Base.show(io::IO, s::DifferentialEvolutionCompositeSamplerRandom)
+    print(io, "Random order composite sampler(")
     join(io, (sprint(show, u; context = io) for u in s.updates), ", ")
     return print(io, ")")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionCompositeSampler)
+function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionCompositeSamplerRandom)
     n = length(s.updates)
-    print(io, "Composite sampler with ", n, n == 1 ? " update" : " updates")
+    print(io, "Random order composite sampler with ", n, n == 1 ? " update" : " updates")
     get(io, :compact, false) && return nothing
     probabilities = s.update_weights ./ sum(s.update_weights)
     for (update, p) in zip(s.updates, probabilities)
@@ -87,18 +87,18 @@ function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionComposite
     return nothing
 end
 
-function Base.show(io::IO, s::DifferentialEvolutionFixedOrderSampler)
-    print(io, "Fixed order sampler(", s.n_main, " × ")
+function Base.show(io::IO, s::DifferentialEvolutionCompositeSamplerFixedOrder)
+    print(io, "Fixed order composite sampler(", s.n, " × ")
     show(io, s.updates[1])
     print(io, ", 1 × ")
     show(io, s.updates[2])
     return print(io, ")")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionFixedOrderSampler)
-    print(io, "Fixed order sampler, cycle of ", s.n_main + 1, " iterations")
+function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionCompositeSamplerFixedOrder)
+    print(io, "Fixed order composite sampler, cycle of ", s.n + 1, " iterations")
     get(io, :compact, false) && return nothing
-    for (update, n) in zip(s.updates, (s.n_main, 1))
+    for (update, n) in zip(s.updates, (s.n, 1))
         print(io, "\n  ", lpad(string(n), 6), " × ")
         show(io, update)
     end
@@ -115,12 +115,6 @@ end
 
 function Base.show(io::IO, a::DifferentialEvolutionAdaptiveComposite)
     print(io, "composite(")
-    join(io, (sprint(show, s; context = io) for s in a.adaptive_states), ", ")
-    return print(io, ")")
-end
-
-function Base.show(io::IO, a::DifferentialEvolutionAdaptiveFixedOrder)
-    print(io, "fixed order(", a.iteration, " iterations; ")
     join(io, (sprint(show, s; context = io) for s in a.adaptive_states), ", ")
     return print(io, ")")
 end

@@ -34,7 +34,7 @@ LogDensityProblems.capabilities(::SwapCheckNormal) = LogDensityProblems.LogDensi
         check_swap(setup_de_update(); n_hot_chains = 4)
     end
     @testset "composite scheme (no tempering / tempering)" begin
-        check_swap(setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update()))
-        check_swap(setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update()); n_hot_chains = 4)
+        check_swap(setup_composite_scheme(setup_subspace_sampling(), setup_snooker_update()))
+        check_swap(setup_composite_scheme(setup_subspace_sampling(), setup_snooker_update()); n_hot_chains = 4)
     end
 end

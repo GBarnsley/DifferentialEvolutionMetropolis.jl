@@ -44,7 +44,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
         integrator = Leapfrog(0.1)
         κ = HMCKernel(Trajectory{MultinomialTS}(integrator, GeneralisedNoUTurn(10, 1000.0)))
         adaptor = StanHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.8, integrator))
-        scheme = setup_sampler_scheme(
+        scheme = setup_composite_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(HMCSampler(κ, metric, adaptor))
         )
         out = sample(
@@ -60,7 +60,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
 
     @testset "gradient requirement fails loudly on order-0 target" begin
         order0 = AbstractMCMC.LogDensityModel(raw_model)
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        scheme = setup_composite_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         @test_throws ErrorException sample(
             backwards_compat_rng(1), order0, scheme, 50;
             n_chains = 6, num_warmup = 20, memory = false, progress = false
@@ -88,7 +88,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     # historical pool even though its own kernel does not read it) and with memory
     # disabled, to cover both update_state paths.
     @testset "recovers a unimodal Gaussian (mean & covariance)" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        scheme = setup_composite_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
@@ -103,7 +103,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
 
     @testset "warmup → sampling freezes ϵ and the metric" begin
         rng = backwards_compat_rng(99)
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        scheme = setup_composite_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 6, num_warmup = 200, memory = false, silent = true)
         for _ in 1:200
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 200)
@@ -130,7 +130,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     end
 
     @testset "interleaves with DE updates in a composite" begin
-        scheme = setup_sampler_scheme(
+        scheme = setup_composite_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)),
             setup_de_update();
             w = [0.5, 0.5]
@@ -147,7 +147,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     end
 
     @testset "threaded trajectory loop matches the serial result statistically" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        scheme = setup_composite_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         out = sample(
             backwards_compat_rng(13), model, scheme, 800;
             n_chains = 6, num_warmup = 300, parallel = true, progress = false,
@@ -167,7 +167,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
         runit(parallel) = reshape(
             sample(
                 backwards_compat_rng(13), model,
-                setup_sampler_scheme(
+                setup_composite_scheme(
                     DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = length(μ))
                 ),
                 800; n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
@@ -184,7 +184,7 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
     end
 
     @testset "HMC update errors when never warmed up" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
+        scheme = setup_composite_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
         _, state = AbstractMCMC.step(
             backwards_compat_rng(1234), model, scheme;
             n_chains = 6, num_warmup = 0, memory = false, adapt = false, silent = true

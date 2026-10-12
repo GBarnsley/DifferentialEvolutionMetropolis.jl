@@ -25,7 +25,7 @@
 
         @testset "$T HMC scheme $(keys(hmc_kw))" for hmc_kw in ((;), (; metric_strategy = memory_metric()))
             model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, ld.logdensity))
-            scheme = setup_sampler_scheme(
+            scheme = setup_composite_scheme(
                 setup_de_update(),
                 setup_hmc_update(NUTS(T(0.8)); n_dims = 2, hmc_kw...)
             )
@@ -39,7 +39,7 @@
         end
 
         @testset "$T typed update parameters" begin
-            scheme = setup_sampler_scheme(
+            scheme = setup_composite_scheme(
                 setup_de_update(γ = T(0.5), β = Normal(zero(T), T(1.0e-6))),
                 setup_snooker_update(γ = Uniform(T(0.8), T(1.2))),
                 setup_subspace_sampling(γ = T(1), cr = DiscreteNonParametric(T[0.5, 1], T[0.5, 0.5]))

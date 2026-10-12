@@ -189,7 +189,7 @@ Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
 using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, LogDensityProblems
-import AbstractMCMC: step_warmup
+import AbstractMCMC: step, step_warmup
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
     proposal_cov::Matrix{T}
@@ -299,7 +299,7 @@ simple_mh = MetropolisHastingsUpdate(MvNormal([0.0, 0.0], 0.1 * I))
 adaptive_mh = AdaptiveMetropolisUpdate(2; initial_std = 0.1)
 
 # Create a composite sampler scheme
-my_sampler_scheme = setup_sampler_scheme(
+my_sampler_scheme = setup_composite_scheme(
     simple_mh,
     adaptive_mh;
     w = [0.3, 0.7]  # Use adaptive sampler 70% of the time

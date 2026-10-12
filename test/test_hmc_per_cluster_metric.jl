@@ -144,7 +144,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
     end
 
     @testset "recovers a unimodal correlated Gaussian (gate stays closed, K = 1)" begin
-        scheme = setup_sampler_scheme(per_cluster_update())
+        scheme = setup_composite_scheme(per_cluster_update())
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
@@ -158,7 +158,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
 
     @testset "the single cluster metric tracks the marginal variances when unimodal" begin
         rng = backwards_compat_rng(99)
-        scheme = setup_sampler_scheme(per_cluster_update())
+        scheme = setup_composite_scheme(per_cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 300, memory = true, silent = true
         )
@@ -175,7 +175,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
 
     @testset "the cluster metrics keep tracking the archive during sampling" begin
         rng = backwards_compat_rng(77)
-        scheme = setup_sampler_scheme(per_cluster_update(; every = 1))
+        scheme = setup_composite_scheme(per_cluster_update(; every = 1))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true, silent = true
         )
@@ -199,7 +199,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         # metrics (and their centres) are held fixed — the set is recomputed only on the cadence,
         # even though chains are relabelled against it every step (see the next testset).
         rng = backwards_compat_rng(31)
-        scheme = setup_sampler_scheme(per_cluster_update(; every = 1000))
+        scheme = setup_composite_scheme(per_cluster_update(; every = 1000))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 40, memory = true, silent = true
         )
@@ -249,7 +249,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
 
     @testset "running memoryless is rejected on the first warmup step" begin
         rng = backwards_compat_rng(7)
-        scheme = setup_sampler_scheme(per_cluster_update())
+        scheme = setup_composite_scheme(per_cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = false, silent = true
         )
@@ -261,7 +261,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
     @testset "static parallel tempering is rejected on the first warmup step" begin
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
-        scheme = setup_sampler_scheme(per_cluster_update())
+        scheme = setup_composite_scheme(per_cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
             num_warmup = 50, memory = true, silent = true,
@@ -277,7 +277,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
     @testset "pure annealing (every chain cools) is accepted" begin
         rng = backwards_compat_rng(125)
         init = [rand(Xoshiro(200 + i), MvNormal(μ, Σ)) for i in 1:24]
-        scheme = setup_sampler_scheme(per_cluster_update())
+        scheme = setup_composite_scheme(per_cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, annealing_steps = 5,
             num_warmup = 50, memory = true, silent = true, initial_position = init
@@ -300,7 +300,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         )
         runit(parallel) = reshape(
             sample(
-                backwards_compat_rng(13), model, setup_sampler_scheme(dense_update()), 800;
+                backwards_compat_rng(13), model, setup_composite_scheme(dense_update()), 800;
                 n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
                 progress = false, chain_type = DifferentialEvolutionOutput
             ).samples, :, length(μ)

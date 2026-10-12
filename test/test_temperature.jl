@@ -260,7 +260,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
         wrapped_model = AbstractMCMC.LogDensityModel(model)
 
-        spl = setup_sampler_scheme(setup_de_update())
+        spl = setup_composite_scheme(setup_de_update())
 
         _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;
@@ -307,7 +307,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
         wrapped_model = AbstractMCMC.LogDensityModel(model)
 
-        spl = setup_sampler_scheme(setup_de_update())
+        spl = setup_composite_scheme(setup_de_update())
 
         _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;

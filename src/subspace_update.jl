@@ -69,7 +69,7 @@ See doi.org/10.1515/IJNSNS.2009.10.3.273 for more information.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
-- A subspace sampler that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
+- A subspace sampler that can be used with [`setup_composite_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
 
 # Example
 ```@example subspace_sampling
@@ -79,7 +79,7 @@ using DifferentialEvolutionMetropolis, Distributions
 subspace_config = setup_subspace_sampling(cr = Beta(1, 2), δ = 2)
 ```
 
-See also [`setup_de_update`](@ref), [`setup_snooker_update`](@ref), [`setup_sampler_scheme`](@ref).
+See also [`setup_de_update`](@ref), [`setup_snooker_update`](@ref), [`setup_composite_scheme`](@ref).
 """
 function setup_subspace_sampling(;
         γ::Union{Nothing, Real} = nothing,

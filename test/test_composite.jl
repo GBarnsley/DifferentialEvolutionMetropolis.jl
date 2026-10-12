@@ -1,14 +1,14 @@
 @testset "Composite Sampler" begin
     @testset "Composite Setup" begin
         # Test single update
-        single_sampler = setup_sampler_scheme(setup_de_update())
+        single_sampler = setup_composite_scheme(setup_de_update())
         @test isa(single_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
         @test length(single_sampler.updates) == 1
         @test length(single_sampler.update_weights) == 1
         @test single_sampler.update_weights[1] == 1.0
 
         # Test multiple updates with equal weights
-        multi_sampler = setup_sampler_scheme(
+        multi_sampler = setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update(),
             setup_subspace_sampling()
@@ -19,7 +19,7 @@
         @test all(multi_sampler.update_weights .== 1.0)
 
         # Test with custom weights
-        weighted_sampler = setup_sampler_scheme(
+        weighted_sampler = setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update(),
             w = [0.7, 0.3]
@@ -29,13 +29,13 @@
         @test weighted_sampler.update_weights == [0.7, 0.3]
 
         # Test error cases
-        @test_throws ErrorException setup_sampler_scheme(
+        @test_throws ErrorException setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update(),
             w = [0.5, 0.3, 0.2]  # Wrong number of weights
         )
 
-        @test_throws ErrorException setup_sampler_scheme(
+        @test_throws ErrorException setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update(),
             w = [-0.1, 0.5]  # Negative weights
@@ -47,7 +47,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # DE + Snooker composite
-        de_sampler = setup_sampler_scheme(
+        de_sampler = setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update()
         )
@@ -100,7 +100,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # DE + Subspace + Snooker composite with weights
-        de_sampler = setup_sampler_scheme(
+        de_sampler = setup_composite_scheme(
             setup_de_update(),
             setup_subspace_sampling(),
             setup_snooker_update(),
@@ -155,7 +155,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # Adaptive subspace + non-adaptive DE
-        de_sampler = setup_sampler_scheme(
+        de_sampler = setup_composite_scheme(
             setup_subspace_sampling(),
             setup_de_update(),
             w = [0.6, 0.4]
@@ -222,7 +222,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # All non-adaptive samplers should result in static adaptive state
-        de_sampler = setup_sampler_scheme(
+        de_sampler = setup_composite_scheme(
             setup_de_update(),
             setup_snooker_update(),
             w = [0.7, 0.3]
@@ -265,7 +265,7 @@
         its = 100
 
         # Create composite with adaptive subspace sampler
-        de_sampler = setup_sampler_scheme(
+        de_sampler = setup_composite_scheme(
             setup_subspace_sampling(n_cr = n_cr),
             setup_de_update(),
             w = [0.8, 0.2]
@@ -358,7 +358,7 @@
 
         # Test single DE sampler in composite
         individual_sampler = setup_de_update()
-        composite_sampler = setup_sampler_scheme(setup_de_update())
+        composite_sampler = setup_composite_scheme(setup_de_update())
 
         # Compare initialization
         _,
