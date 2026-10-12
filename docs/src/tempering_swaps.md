@@ -125,7 +125,8 @@ Positions and cached log densities move together; rung RNGs, models and adaptati
 Exchange occurs before creating the output sample, writing memory and advancing the annealing ladder.
 
 Static parallel-tempering ladders are sorted once at setup, so the exchange walks chains in index order without sorting.
-During annealing, the current temperatures are only re-sorted when a custom schedule has put them out of index order; the order buffer is kept between sweeps so this is an allocation-free insertion sort.
+During annealing with the built-in schedule the current temperatures stay in index order.
+A custom schedule can put them out of index order; the exchange then finds each next-hotter rung by scanning the current temperatures, so no permutation buffer is stored and nothing is allocated.
 Thus only neighbouring current temperatures are paired, never distant index neighbours.
 The exchange step itself does not allocate.
 When all current temperatures coincide there are no distinct-rung pairs.

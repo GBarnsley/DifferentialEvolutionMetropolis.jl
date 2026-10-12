@@ -34,6 +34,21 @@
             @test i == j || minmax(i, j) in neighbours
         end
     end
+    # Tied rungs in an unsorted schedule: groups (3,5) < (1,2) < 4; a swap only crosses neighbouring groups.
+    ladder = [[2.0, 2.0, 1.0, 4.0, 1.0], [1.0, 1.0, 1.0, 2.0, 4.0]]
+    neighbours = Set([(1, 3), (1, 5), (2, 3), (2, 5), (1, 4), (2, 4)])
+    swapped = Set{Tuple{Int, Int}}()
+    for seed in 1:80
+        s = exchange_state(ladder)
+        fill!(s.ldₚ, 0.0)
+        original = copy(s.xₚ)
+        DEM.replica_exchange!(backwards_compat_rng(seed), s)
+        for i in eachindex(original)
+            j = findfirst(x -> x === s.xₚ[i], original)
+            i == j || push!(swapped, minmax(i, j))
+        end
+    end
+    @test swapped == neighbours
     for ladder in (
             [[1.0, 1.0, 1.0, 2.0, 4.0]],
             [[8.0, 8.0, 8.0, 8.0, 8.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
@@ -53,6 +68,7 @@
             [[1.0, 1.0, 1.0, 2.0, 4.0]],
             [[3.0, 3.0, 3.0, 4.0, 5.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
             [[2.0, 8.0, 1.0, 16.0, 4.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
+            [[2.0, 2.0, 1.0, 4.0, 1.0], [1.0, 1.0, 1.0, 2.0, 4.0]],
         )
         s = exchange_state(ladder)
         r = backwards_compat_rng(5)
