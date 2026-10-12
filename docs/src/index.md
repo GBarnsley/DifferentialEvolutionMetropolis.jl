@@ -48,7 +48,10 @@ A mismatched metric should error at initialization; it is not converted automati
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
 
 - Implement multi-try and delayed rejection DREAM, I avoided these so far since I have been using these samplers for costly log-densities with relatively few parameters, such as one that solve an ODE.
-- Additional diagnostic checks and adaptive schemes.
+- Fixed order (rather than random) updates
+- Kalman filtering for warmup (might require additions to the LD interface)
+- Investigate implementations with Gibbs/particle-filtering to support the sampling of discrete parameters
+- Investigate implementations alongside particle-gibbs/rj-MCMC with changing problem dimensions
 
 ## Contents
 
