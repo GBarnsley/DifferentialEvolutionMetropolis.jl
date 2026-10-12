@@ -3,6 +3,17 @@
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
     # Proposals from this update round back to the current position, so chains only move on secondary iterations
     still_update = setup_de_update(γ = 1.0e-300, β = Normal(0.0, 1.0e-300))
+    # Steps `scheme` `n` times (warm-up for the first `n_warmup`) and records whether any chain moved
+    function record_moves!(rng, scheme, state, n; n_warmup = 0)
+        moved = Bool[]
+        for it in 1:n
+            x_old = copy.(state.x)
+            step_function = it <= n_warmup ? AbstractMCMC.step_warmup : AbstractMCMC.step
+            _, state = step_function(rng, model, scheme, state)
+            push!(moved, state.x != x_old)
+        end
+        return moved, state
+    end
 
     @testset "Setup" begin
         scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n_main = 10)
@@ -26,10 +37,11 @@
     end
 
     @testset "Cycle order" begin
+        scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n_main = 3)
         adaptive_state = DEM.DifferentialEvolutionAdaptiveFixedOrder{Float64}(
             (DEM.DifferentialEvolutionAdaptiveStatic{Float64}(), DEM.DifferentialEvolutionAdaptiveStatic{Float64}()), 0
         )
-        @test [DEM.next_update!(adaptive_state, 3) for _ in 1:8] == [1, 1, 1, 2, 1, 1, 1, 2]
+        @test [DEM.select_update!(backwards_compat_rng(1), scheme, adaptive_state) for _ in 1:8] == [1, 1, 1, 2, 1, 1, 1, 2]
         @test adaptive_state.iteration == 8
     end
 
@@ -38,13 +50,7 @@
         scheme = setup_fixed_order_scheme(still_update, setup_de_update(); n_main = 3)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
         @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveFixedOrder
-        moved = Bool[]
-        for it in 1:12
-            x_old = copy.(state.x)
-            step_function = it <= 6 ? AbstractMCMC.step_warmup : AbstractMCMC.step
-            _, state = step_function(rng, model, scheme, state)
-            push!(moved, state.x != x_old)
-        end
+        moved, state = record_moves!(rng, scheme, state, 12; n_warmup = 6)
         @test moved == repeat([false, false, false, true], 3)
         @test state.adaptive_state.iteration == 12
     end
@@ -63,22 +69,55 @@
         @test subspace_state.var_count > 0
     end
 
-    @testset "Nesting with composite schemes" begin
+    @testset "Nested random schemes pick updates with the product of their weights (adapt = $adapt)" for adapt in (true, false)
+        # The DE update is the only one that moves, picked with probability 1/2 × 1/2
         rng = backwards_compat_rng(1234)
-        inner_fixed = setup_fixed_order_scheme(still_update, setup_de_update(); n_main = 1)
-        outer_composite = setup_sampler_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
-        for adapt in (true, false)
-            _, state = AbstractMCMC.step(rng, model, outer_composite; n_chains = 20, memory = false, adapt = adapt)
-            @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveComposite
-            moved = Bool[]
-            for it in 1:4
-                x_old = copy.(state.x)
-                step_function = it <= 2 ? AbstractMCMC.step_warmup : AbstractMCMC.step
-                _, state = step_function(rng, model, outer_composite, state)
-                push!(moved, state.x != x_old)
-            end
-            @test moved == [false, true, false, true]
+        inner = setup_sampler_scheme(still_update, setup_de_update(), setup_subspace_sampling(); w = [1.0, 1.0, 0.0])
+        scheme = setup_sampler_scheme(inner, still_update)
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
+        @test state.adaptive_state isa (adapt ? DEM.DifferentialEvolutionAdaptiveComposite : DEM.DifferentialEvolutionAdaptiveStatic)
+        moved, _ = record_moves!(rng, scheme, state, 2000; n_warmup = 1000)
+        @test isapprox(mean(moved), 0.25; atol = 0.04)
+    end
+
+    @testset "Adaptive updates inside nested random schemes adapt" begin
+        rng = backwards_compat_rng(1234)
+        scheme = setup_sampler_scheme(
+            setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [0.0, 1.0]),
+            setup_snooker_update(); w = [1.0, 0.0]
+        )
+        _, state = AbstractMCMC.step(rng, model, scheme; memory = true)
+        subspace_state = state.adaptive_state.adaptive_states[1].adaptive_states[2]
+        @test subspace_state isa DEM.DifferentialEvolutionAdaptiveSubspace
+        for _ in 1:5
+            _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         end
+        @test subspace_state.var_count > 0
+        @test state.adaptive_state.adaptive_states[1].adaptive_states[2] === subspace_state
+    end
+
+    @testset "Random inside fixed order inside random (adapt = $adapt)" for adapt in (true, false)
+        rng = backwards_compat_rng(1234)
+        inner_random = setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [1.0, 0.0])
+        inner_fixed = setup_fixed_order_scheme(inner_random, setup_de_update(); n_main = 1)
+        scheme = setup_sampler_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
+        @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveComposite
+        moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
+        @test moved == [false, true, false, true, false, true]
+        @test state.adaptive_state.adaptive_states[1].iteration == 6
+    end
+
+    @testset "Nested fixed order schemes keep their own position" begin
+        rng = backwards_compat_rng(1234)
+        # Outer cycle: inner, inner, still. Inner cycle: still, DE. So DE runs on the 2nd of every 3 iterations
+        inner = setup_fixed_order_scheme(still_update, setup_de_update(); n_main = 1)
+        scheme = setup_fixed_order_scheme(inner, still_update; n_main = 2)
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
+        moved, state = record_moves!(rng, scheme, state, 9; n_warmup = 4)
+        @test moved == repeat([false, true, false], 3)
+        @test state.adaptive_state.iteration == 9
+        @test state.adaptive_state.adaptive_states[1].iteration == 6
 
         outer_fixed = setup_fixed_order_scheme(
             setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling(); n_main = 2),
@@ -90,28 +129,48 @@
         @test all(s -> all(x -> all(isfinite, x), s.x), samples)
     end
 
-    @testset "fix_sampler_state keeps the cycle position" begin
+    @testset "fix_sampler_state restarts the cycle" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n_main = 2)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
         _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
-        @test fixed_state.adaptive_state.iteration == 1
+        @test fixed_state.adaptive_state.iteration == 0
         @test all(s -> s isa DEM.DifferentialEvolutionAdaptiveStatic, fixed_state.adaptive_state.adaptive_states)
-        moved = Bool[]
-        for _ in 1:3
-            x_old = copy.(fixed_state.x)
-            _, fixed_state = AbstractMCMC.step(rng, model, fixed_scheme, fixed_state)
-            push!(moved, fixed_state.x != x_old)
-        end
-        @test moved == [false, true, false]
+        moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 3)
+        @test moved == [false, false, true]
     end
 
-    @testset "A state without a cycle position errors" begin
+    @testset "fix_sampler_state fixes updates inside nested schemes" begin
         rng = backwards_compat_rng(1234)
-        scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update())
-        _, state = AbstractMCMC.step(rng, model, setup_de_update(); memory = false)
-        @test_throws ErrorException AbstractMCMC.step(rng, model, scheme, state)
+        scheme = setup_fixed_order_scheme(
+            still_update, setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update(); w = [1.0, 0.0])
+        )
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = true)
+        subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]
+        fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
+        @test fixed_scheme.updates[2].updates[1].cr_spl === subspace_state.cr_spl
+        @test fixed_state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveFixedOrder
+        @test fixed_state.adaptive_state.adaptive_states[2] isa DEM.DifferentialEvolutionAdaptiveStatic
+        moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 4)
+        @test moved == [false, true, false, true]
+    end
+
+    @testset "Type stability (adapt = $adapt)" for adapt in (true, false)
+        rng = backwards_compat_rng(1234)
+        schemes = (
+            setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling(); n_main = 2),
+            setup_sampler_scheme(setup_de_update(), setup_subspace_sampling(), setup_snooker_update()),
+            setup_fixed_order_scheme(
+                setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling()),
+                setup_sampler_scheme(setup_snooker_update(), setup_subspace_sampling())
+            ),
+        )
+        for scheme in schemes
+            _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 10, memory = false, adapt = adapt)
+            @inferred AbstractMCMC.step(rng, model, scheme, state)
+            @inferred AbstractMCMC.step_warmup(rng, model, scheme, state)
+        end
     end
 
     @testset "Templates accept an integer instead of a probability" begin
@@ -130,5 +189,7 @@
         @test !(out[2].adaptive_state isa DEM.DifferentialEvolutionAdaptiveFixedOrder)
         out = deMCzs(model, 100; n_burnin = 100, p_snooker = 0, rng = rng, progress = false, save_final_state = true)
         @test !(out[2].adaptive_state isa DEM.DifferentialEvolutionAdaptiveFixedOrder)
+        out = deMC(model, 100; n_burnin = 100, p_γ₂ = 0.1f0, γ₂ = 1.0f0, rng = rng, progress = false)
+        @test all(isfinite, out.samples)
     end
 end

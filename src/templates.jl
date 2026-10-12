@@ -79,7 +79,7 @@ function _deMC(
         sampler_scheme = setup_sampler_scheme(
             setup_de_update(γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity)),
             setup_de_update(γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity));
-            w = Float64[p_γ₂, 1 - p_γ₂]
+            w = [p_γ₂, 1 - p_γ₂]
         )
     else
         sampler_scheme = setup_sampler_scheme(
@@ -304,7 +304,7 @@ function _DREAMz(
                 γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e,
                 cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
             ),
-            w = Float64[1 - p_γ₂, p_γ₂]
+            w = [1 - p_γ₂, p_γ₂]
         )
     end
 

@@ -326,10 +326,11 @@ function fix_sampler_state(
         sampler::AbstractDifferentialEvolutionSampler,
         state::DifferentialEvolutionState{T}
     ) where {T <: Real}
-    return fix_sampler(sampler, state.adaptive_state),
+    fixed_sampler = fix_sampler(sampler, state.adaptive_state)
+    return fixed_sampler,
         update_state(
             state; update_memory = false,
-            adaptive_state = DifferentialEvolutionAdaptiveStatic{T}(),
+            adaptive_state = initialize_nonadaptive_state(fixed_sampler, T),
             temperature_ladder = state.temperature_ladder
         )
 end
