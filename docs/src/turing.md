@@ -5,7 +5,7 @@ Its modelling backend, `DynamicPPL.jl`, allows the construction of a `LogDensity
 
 ## Converting your model
 
-The example below uses `DynamicPPL.jl` v0.42 and does not explicitly call `Turing` (due to compatibility problems with `PathFinder`) but the `@model` can be defined identically using `Turing`.
+The example below uses `DynamicPPL.jl` and does not explicitly call `Turing` (due to compatibility problems with `PathFinder`, used elsewhere in these examples) but the `@model` can be defined identically using `Turing`.
 
 ```@example turing
 using DynamicPPL, Distributions, Random, AbstractMCMC
@@ -70,5 +70,6 @@ See the [DynamicPPL log-density API](https://turinglang.org/DynamicPPL.jl/stable
 
 ## Can this be used as a Turing external sampler?
 
-No, `Turing` can only accept one set of positions instead of the ensemble, meaning any `Turing.externalsampler` implementation would be incredibly wasteful.
-Any `Turing` specific samplers like NUTS and HMC are already accessible (see [Combining HMC with differential evolution](@ref)) or would be simple enough to implement (see [Customizing your sampler](@ref)) or wouldn't really be a benefit to the continuous-valued, fixed-dimension parameter spaces that this package requires (i.e. PG, and Gibbs).
+No, `Turing` can only accept one set of positions instead of the ensemble, meaning any `Turing.externalsampler` implementation would be quite wasteful, only one DEM position could be recorded or exposed other samplers.
+Any `Turing` specific samplers like NUTS and HMC are already accessible (see [Combining HMC with differential evolution](@ref)) or would be simple enough to implement (see [Customizing your sampler](@ref)).
+Implementations of differential evolution updates within a Gibbs update or alongside particle-Gibbs (or any particle filter or reversible jump MCMC) are not straight forward to adaption to past parameter-spaces and/or changing model dimensions, and are not implemented here.
