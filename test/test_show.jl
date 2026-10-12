@@ -37,7 +37,7 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test repr(state) == "DifferentialEvolutionState{Float64}(4 chains, 2 parameters)"
         text = plain(state)
         @test occursin("chains:         4\n", text)
-        @test occursin("adaptive state: composite(0 iterations; static, adaptive subspace (3 crossover probabilities))", text)
+        @test occursin("adaptive state: composite(static, adaptive subspace (3 crossover probabilities))", text)
         @test occursin("temperature:    none", text)
         @test occursin("memory:         8 stored positions (filled every iteration, grows when full)", text)
 
@@ -86,6 +86,6 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         _, state = AbstractMCMC.step(
             backwards_compat_rng(1), model, setup_sampler_scheme(hmc, de); n_chains = 4
         )
-        @test occursin("adaptive state: composite(0 iterations; HMC (not initialised, 0 HMC steps), static)", plain(state))
+        @test occursin("adaptive state: composite(HMC (not initialised, 0 HMC steps), static)", plain(state))
     end
 end

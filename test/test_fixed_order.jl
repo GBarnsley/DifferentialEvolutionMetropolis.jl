@@ -50,7 +50,7 @@
     @testset "Cycle order" begin
         scheme = setup_fixed_order_composite(setup_de_update(), setup_snooker_update(); n = 3)
         adaptive_state = DEM.DifferentialEvolutionAdaptiveComposite{Float64}(
-            (DEM.DifferentialEvolutionAdaptiveStatic{Float64}(), DEM.DifferentialEvolutionAdaptiveStatic{Float64}())
+            (DEM.DifferentialEvolutionAdaptiveStatic{Float64}(), DEM.DifferentialEvolutionAdaptiveStatic{Float64}()), 0
         )
         @test [DEM.select_update!(backwards_compat_rng(1), scheme, adaptive_state) for _ in 1:8] == [1, 1, 1, 2, 1, 1, 1, 2]
         @test adaptive_state.iteration == 8
@@ -117,8 +117,8 @@
         moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
         @test moved == [false, true, false, true, false, true]
         @test state.adaptive_state.adaptive_states[1].iteration == 6
-        @test state.adaptive_state.iteration == 6
-        @test occursin("composite(6 iterations; composite(6 iterations; ", repr(state.adaptive_state))
+        @test isnothing(state.adaptive_state.iteration)
+        @test startswith(repr(state.adaptive_state), "composite(composite(6 iterations; ")
     end
 
     @testset "Nested fixed order schemes keep their own position" begin

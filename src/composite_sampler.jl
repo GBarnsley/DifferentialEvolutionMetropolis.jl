@@ -207,21 +207,21 @@ mutable struct DifferentialEvolutionAdaptiveComposite{
             AbstractDifferentialEvolutionAdaptiveState{T},
             Vararg{AbstractDifferentialEvolutionAdaptiveState{T}},
         },
+        I <: Union{Int, Nothing},
     } <: AbstractDifferentialEvolutionAdaptiveState{T}
     const adaptive_states::A
-    "number of completed iterations, used by fixed order schemes to find their position in the cycle"
-    iteration::Int
+    "number of completed iterations, used by fixed order schemes to find their position in the cycle, `nothing` for random order schemes"
+    iteration::I
 end
 
-function DifferentialEvolutionAdaptiveComposite{T}(adaptive_states::A) where {T <: Real, A}
-    return DifferentialEvolutionAdaptiveComposite{T, A}(adaptive_states, 0)
+function DifferentialEvolutionAdaptiveComposite{T}(adaptive_states::A, iteration::I) where {T <: Real, A, I}
+    return DifferentialEvolutionAdaptiveComposite{T, A, I}(adaptive_states, iteration)
 end
 
 function select_update!(
         rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom,
-        adaptive_state::DifferentialEvolutionAdaptiveComposite
+        ::DifferentialEvolutionAdaptiveComposite
     )
-    adaptive_state.iteration += 1
     return wsample(rng, sampler.update_weights)
 end
 
@@ -366,14 +366,14 @@ function composite_adaptive_state(
     if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
         return DifferentialEvolutionAdaptiveStatic{T}()
     else
-        return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states)
+        return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states, nothing)
     end
 end
 
 function composite_adaptive_state(
         ::DifferentialEvolutionCompositeSamplerFixedOrder, adaptive_states::Tuple, ::Type{T}
     ) where {T <: Real}
-    return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states)
+    return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states, 0)
 end
 
 chains_required(s::DifferentialEvolutionCompositeSampler) = maximum(chains_required, s.updates)
