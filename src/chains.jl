@@ -204,7 +204,6 @@ function automatically fixes adaptive parameters before sampling.
 
 # Keyword Arguments
 - `parallel`: Whether to run chains in parallel using threading. Defaults to `false`. Advisable for slow models.
-- `replica_exchange`: Enable adjacent-current-temperature position swaps when hot chains exist. Defaults to `true`.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Over writes memory options given at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions (see https://turinglang.org/AbstractMCMC.jl/stable/api/#Common-keyword-arguments)
 
@@ -227,7 +226,6 @@ function step(
             T, DifferentialEvolutionAdaptiveStatic{T},
         };
         parallel::Bool = false,
-        replica_exchange::Bool = true,
         update_memory::Bool = true,
         kwargs...
     ) where {T <: Real}
@@ -255,7 +253,6 @@ function step(
         end
     end
 
-    replica_exchange!(rng, state; enabled = replica_exchange)
     return create_sample(state),
         update_state(
             state;
@@ -637,6 +634,7 @@ function step(
     end
 
     temperature_ladder_struct = setup_temperature_struct(temperature_ladder)
+    check_swap_setup(sampler, temperature_ladder_struct)
 
     if !silent
         print_log(log)

@@ -140,7 +140,6 @@ function step_warmup(
         };
         update_memory::Bool = true,
         parallel::Bool = false,
-        replica_exchange::Bool = true,
         kwargs...
     ) where {T <: Real}
     # Derive per-chain RNGs deterministically from the provided rng for this step.
@@ -207,7 +206,6 @@ function step_warmup(
         set_weights!(adaptive_state.cr_spl, adaptive_state.p)
     end
 
-    replica_exchange!(rng, state; enabled = replica_exchange)
     return create_sample(state),
         update_state(
             state;

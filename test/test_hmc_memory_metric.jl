@@ -286,12 +286,11 @@ using LinearAlgebra: diag, Diagonal
         @test a.metric.M⁻¹ != ones(length(μ))
     end
 
-    @testset "parallel tempering: HMC advances only cold chains without exchange (stock metric)" begin
+    @testset "parallel tempering: HMC advances only the cold chains (stock metric)" begin
         # The HMC kernel samples the untempered target, so it must not move the hot chains (they
         # mix through the tempered DE updates instead). memory_metric is rejected under tempering,
         # so this run_trajectories! regression uses the default stock-adaptor metric, which does
-        # support tempering. Disable replica exchange to isolate the local trajectory kernel: swaps
-        # may move hot positions, but HMC trajectories themselves must not advance hot chains.
+        # support tempering. We check the hot chains are bit-for-bit unchanged and the cold move.
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
         scheme = setup_sampler_scheme(
@@ -308,7 +307,7 @@ using LinearAlgebra: diag, Diagonal
         hot_before = [copy(state.x[i]) for i in hot]
         cold_before = [copy(state.x[i]) for i in cold]
         for _ in 1:20
-            _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50, replica_exchange = false)
+            _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50)
         end
         # Hot chains untouched by HMC; cold chains have moved.
         @test all(state.x[i] == hot_before[k] for (k, i) in enumerate(hot))

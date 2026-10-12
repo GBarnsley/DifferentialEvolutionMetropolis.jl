@@ -69,6 +69,8 @@ function Base.show(io::IO, ::MIME"text/plain", s::AbstractDifferentialEvolutionS
     return show_multiline(io, subspace_title(s), fields)
 end
 
+Base.show(io::IO, ::DifferentialEvolutionSwapSampler) = print(io, "Swap update")
+
 function Base.show(io::IO, s::DifferentialEvolutionCompositeSampler)
     print(io, "Composite sampler(")
     join(io, (sprint(show, u; context = io) for u in s.updates), ", ")

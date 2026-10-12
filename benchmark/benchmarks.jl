@@ -29,6 +29,7 @@ N₀ = size(initial_position_with_memory, 1) - n_chains
 de_update = setup_de_update()
 snooker_update = setup_snooker_update()
 subspace_update = setup_subspace_sampling()
+swap_update = setup_swap_update()
 updates = (de_update, snooker_update, subspace_update)
 names = ("de_update", "snooker_update", "subspace_update")
 
@@ -55,7 +56,7 @@ __,
     rng, am_model, de_update; memory = false, initial_position = initial_position,
     n_chains = n_chains, n_hot_chains = 10, annealing_steps = 5
 )
-# The first annealing rung ties every chain, so swaps are benchmarked one step in.
+# All chains share the first annealing temperature, so swaps are benchmarked one step in.
 __,
     initial_state_mid_annealing = AbstractMCMC.step_warmup(
     rng, am_model, de_update, initial_state_pt_and_annealing
@@ -152,7 +153,7 @@ for (update, name) in zip(updates, names)
     )
 end
 SUITE["pt"]["swap_update"] = @benchmarkable(
-    DifferentialEvolutionMetropolis.replica_exchange!(rng, state),
+    AbstractMCMC.step_warmup(rng, $am_model, $swap_update, state),
     setup = (rng = copy($rng); state = deepcopy($initial_state_pt))
 )
 
@@ -164,7 +165,7 @@ for (update, name) in zip(updates, names)
     )
 end
 SUITE["annealing"]["swap_update"] = @benchmarkable(
-    DifferentialEvolutionMetropolis.replica_exchange!(rng, state),
+    AbstractMCMC.step_warmup(rng, $am_model, $swap_update, state),
     setup = (rng = copy($rng); state = deepcopy($initial_state_mid_annealing))
 )
 
