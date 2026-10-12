@@ -634,6 +634,7 @@ function step(
     end
 
     temperature_ladder_struct = setup_temperature_struct(temperature_ladder)
+    check_swap_setup(sampler, temperature_ladder_struct)
 
     if !silent
         print_log(log)
