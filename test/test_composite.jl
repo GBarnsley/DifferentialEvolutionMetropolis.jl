@@ -1,3 +1,5 @@
+struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler end
+
 @testset "Composite Sampler" begin
     @testset "Composite Setup" begin
         # Test single update
@@ -40,6 +42,14 @@
             setup_snooker_update(),
             w = [-0.1, 0.5]  # Negative weights
         )
+    end
+
+    @testset "Chains required" begin
+        DEM = DifferentialEvolutionMetropolis
+        @test DEM.chains_required(FallbackSampler()) == 3
+        @test DEM.chains_required(setup_swap_update()) == 2
+        @test DEM.chains_required(setup_sampler_scheme(setup_swap_update(), setup_snooker_update())) == 4
+        @test DEM.chains_required(setup_sampler_scheme(setup_swap_update(), FallbackSampler())) == 3
     end
 
     @testset "Sample using regular Composite (non-adaptive)" begin

@@ -138,6 +138,16 @@
         end
     end
 
+    @testset "swap update and hot chain detection" begin
+        de = setup_de_update(n_dims = 1)
+        @test !DEM.has_swap_update(de)
+        @test DEM.has_swap_update(swap)
+        @test DEM.has_swap_update(setup_sampler_scheme(de, swap))
+        @test !DEM.has_swap_update(setup_sampler_scheme(de, setup_snooker_update()))
+        @test !DEM.has_hot_chains(DEM.DifferentialEvolutionNullTemperatureLadder{Float64}())
+        @test DEM.has_hot_chains(swap_state([[1.0, 1.0, 1.0, 2.0, 4.0]]).temperature_ladder)
+    end
+
     @testset "setup warnings" begin
         de = setup_de_update(n_dims = 1)
         kw = (n_chains = 3, memory = false, silent = true)

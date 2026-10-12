@@ -22,7 +22,7 @@ import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
 
-chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback
+chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
 abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
 

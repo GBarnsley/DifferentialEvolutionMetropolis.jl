@@ -33,13 +33,13 @@ See also [`setup_sampler_scheme`](@ref), [`setup_de_update`](@ref).
 """
 setup_swap_update() = DifferentialEvolutionSwapSampler()
 
-chains_required(::DifferentialEvolutionSwapSampler) = 2
+chains_required(::DifferentialEvolutionSwapSampler) = 2  # COV_EXCL_LINE
 
-has_swap_update(::AbstractDifferentialEvolutionSampler) = false
-has_swap_update(::DifferentialEvolutionSwapSampler) = true
+has_swap_update(::AbstractDifferentialEvolutionSampler) = false  # COV_EXCL_LINE
+has_swap_update(::DifferentialEvolutionSwapSampler) = true  # COV_EXCL_LINE
 has_swap_update(s::DifferentialEvolutionCompositeSampler) = any(has_swap_update, s.updates)
 
-has_hot_chains(::DifferentialEvolutionNullTemperatureLadder) = false
+has_hot_chains(::DifferentialEvolutionNullTemperatureLadder) = false  # COV_EXCL_LINE
 has_hot_chains(ladder::AbstractDifferentialEvolutionTemperatureLadder) =
     length(ladder.cold_chains) < length(ladder.temperature)
 
@@ -112,19 +112,19 @@ function swap_pass_sorted!(rng, state, temperature, pass)
 end
 
 function swap_pass_unsorted!(rng, state, temperature, pass)
-    level = 0
-    previous = 0
+    level = 1
     current = minimum(temperature)
-    while true
+    previous = random_chain_at(rng, temperature, current)
+    next = next_temperature(temperature, current)
+    while next != current
         level += 1
+        current = next
         chain = random_chain_at(rng, temperature, current)
         pair_with_previous(level, pass) && propose_swap!(rng, state, previous, chain)
         previous = chain
         next = next_temperature(temperature, current)
-        next == current && return nothing
-        current = next
     end
-    return
+    return nothing
 end
 
 function next_temperature(temperature, current)
@@ -140,13 +140,12 @@ end
 function random_chain_at(rng, temperature, t)
     n = count(==(t), temperature)
     k = n == 1 ? 1 : rand(rng, 1:n)
-    for i in eachindex(temperature)
-        if temperature[i] == t
-            k -= 1
-            k == 0 && return i
-        end
+    i = firstindex(temperature) - 1
+    while k > 0
+        i += 1
+        temperature[i] == t && (k -= 1)
     end
-    return 0
+    return i
 end
 
 function propose_swap!(rng, state, i, j)
