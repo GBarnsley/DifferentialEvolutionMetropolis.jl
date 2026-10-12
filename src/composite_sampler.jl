@@ -93,13 +93,29 @@ function step(
         state::DifferentialEvolutionState{
             T, <:DifferentialEvolutionAdaptiveComposite{T},
         };
+        update_memory::Bool = true,
         kwargs...
     ) where {T <: Real}
     sampler_id = wsample(rng, 1:length(sampler.updates), sampler.update_weights)
 
-    fixed_sampler = fix_sampler(sampler.updates[sampler_id], state.adaptive_state.adaptive_states[sampler_id])
+    substate = update_state(
+        state; adaptive_state = state.adaptive_state.adaptive_states[sampler_id],
+        temperature_ladder = state.temperature_ladder
+    )
 
-    return step(rng, model_wrapper, fixed_sampler, state; kwargs...)
+    sample,
+        new_substate = step(
+        rng, model_wrapper, sampler.updates[sampler_id], substate;
+        update_memory = update_memory, kwargs...
+    )
+
+    return sample,
+        update_state(
+            state; new_state = new_substate,
+            update_memory = false,
+            memory = new_substate.memory,
+            temperature_ladder = new_substate.temperature_ladder
+        )
 end
 
 # also need to update the adaptive state
@@ -171,12 +187,21 @@ function initialize_adaptive_state(
         initialize_adaptive_state(s, model_wrapper, n_chains, T)
             for s in sampler.updates
     ]
+    return composite_adaptive_state(adaptive_states, T)
+end
 
+function initialize_nonadaptive_state(
+        sampler::DifferentialEvolutionCompositeSampler, ::Type{T}
+    ) where {T <: Real}
+    return composite_adaptive_state([initialize_nonadaptive_state(s, T) for s in sampler.updates], T)
+end
+
+function composite_adaptive_state(adaptive_states::Vector, ::Type{T}) where {T <: Real}
     if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
         return DifferentialEvolutionAdaptiveStatic{T}()
     else
         tuple_states = Tuple(adaptive_states)
-        return DifferentialEvolutionAdaptiveComposite{T, typeof(tuple_states)}(Tuple(adaptive_states))
+        return DifferentialEvolutionAdaptiveComposite{T, typeof(tuple_states)}(tuple_states)
     end
 end
 

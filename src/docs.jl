@@ -87,7 +87,7 @@ deMC_kwargs = """
 - `save_burnt`: Save burn-in samples in output. Defaults to `false`.
 - `γ₁`: Primary scaling factor. Defaults to `2.38 / sqrt(2 * dim)`.
 - `γ₂`: Secondary scaling factor for mode switching. Defaults to 1.0.
-- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.1.
+- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.1. If an integer `n` is given, `γ₂` is instead used once after every `n` uses of `γ₁` (see [`setup_fixed_order_scheme`](@ref)).
 """
 
 deMCzs_description = """
@@ -101,7 +101,7 @@ Proposed by ter Braak and Vrugt (2008), see doi.org/10.1007/s11222-008-9104-9.
 deMCzs_kwargs = """
 - `γ`: Scaling factor for DE updates. Defaults to `2.38 / sqrt(2 * dim)`.
 - `γₛ`: Scaling factor for snooker updates. Defaults to `2.38 / sqrt(2)`.
-- `p_snooker`: Probability of snooker moves. Defaults to 0.1.
+- `p_snooker`: Probability of snooker moves. Defaults to 0.1. If an integer `n` is given, a snooker move is instead made once after every `n` DE moves (see [`setup_fixed_order_scheme`](@ref)).
 - `β`: Noise distribution for DE updates. Defaults to `Normal(0.0, 1e-12)`.
 """
 
@@ -117,7 +117,7 @@ Based on Vrugt et al. (2009), see doi.org/10.1515/IJNSNS.2009.10.3.273.
 DREAMz_kwargs = """
 - `γ₁`: Primary scaling factor for subspace updates. Defaults to adaptive.
 - `γ₂`: Secondary scaling factor. Defaults to 1.0.
-- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.2.
+- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.2. If an integer `n` is given, `γ₂` is instead used once after every `n` uses of `γ₁` (see [`setup_fixed_order_scheme`](@ref)).
 - `n_cr`: Number of crossover probabilities for adaptation. Defaults to 3.
 - `cr₁`: Crossover probability for `γ₁`, a fixed value or a distribution to draw it from. Defaults to adaptive.
 - `cr₂`: Crossover probability for `γ₂`, a fixed value or a distribution to draw it from. Defaults to adaptive.

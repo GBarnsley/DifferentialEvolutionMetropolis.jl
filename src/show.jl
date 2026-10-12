@@ -87,6 +87,24 @@ function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionComposite
     return nothing
 end
 
+function Base.show(io::IO, s::DifferentialEvolutionFixedOrderSampler)
+    print(io, "Fixed order sampler(", s.n_main, " × ")
+    show(io, s.updates[1])
+    print(io, ", 1 × ")
+    show(io, s.updates[2])
+    return print(io, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionFixedOrderSampler)
+    print(io, "Fixed order sampler, cycle of ", s.n_main + 1, " iterations")
+    get(io, :compact, false) && return nothing
+    for (update, n) in zip(s.updates, (s.n_main, 1))
+        print(io, "\n  ", lpad(string(n), 6), " × ")
+        show(io, update)
+    end
+    return nothing
+end
+
 # Internal components, shown as single-line summaries
 
 Base.show(io::IO, ::DifferentialEvolutionAdaptiveStatic) = print(io, "static")
@@ -97,6 +115,12 @@ end
 
 function Base.show(io::IO, a::DifferentialEvolutionAdaptiveComposite)
     print(io, "composite(")
+    join(io, (sprint(show, s; context = io) for s in a.adaptive_states), ", ")
+    return print(io, ")")
+end
+
+function Base.show(io::IO, a::DifferentialEvolutionAdaptiveFixedOrder)
+    print(io, "fixed order(", a.iteration, " iterations; ")
     join(io, (sprint(show, s; context = io) for s in a.adaptive_states), ", ")
     return print(io, ")")
 end

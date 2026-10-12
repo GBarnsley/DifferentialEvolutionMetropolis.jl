@@ -377,6 +377,13 @@ function initialize_adaptive_state(
     return DifferentialEvolutionAdaptiveStatic{T}()
 end
 
+# State used when `adapt = false`, schemes that need to track progress (e.g. fixed order) override this
+function initialize_nonadaptive_state(
+        sampler::AbstractDifferentialEvolutionSampler, ::Type{T}
+    ) where {T <: Real}
+    return DifferentialEvolutionAdaptiveStatic{T}()
+end
+
 """
     resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
 
@@ -497,7 +504,7 @@ function step(
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
-        adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
+        adaptive_state = initialize_nonadaptive_state(sampler, T)
     end
 
     extra_memory = nothing
