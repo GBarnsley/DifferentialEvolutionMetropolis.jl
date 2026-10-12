@@ -20,6 +20,10 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test occursin(r"cr_uniform_weight:\s+0.05", plain(subspace))
         @test occursin(r"min_variance_count:\s+10", plain(subspace))
         @test !occursin("cr_uniform_weight", plain(subspace_fixed))
+        swap = setup_swap_update()
+        @test repr(swap) == "Differential evolution swap update for parallel tempering"
+        @test plain(swap) == repr(swap)
+        @test plain(setup_sampler_scheme(de, swap; w = [0.9, 0.1])) == "Composite sampler with 2 updates\n     0.9 × " * repr(de) * "\n     0.1 × " * repr(swap)
 
         composite = setup_sampler_scheme(de, snooker; w = [3.0, 1.0])
         @test repr(composite) == "Composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
