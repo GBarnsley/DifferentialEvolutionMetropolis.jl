@@ -3,7 +3,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # DE + Snooker composite
-        de_sampler = setup_composite_scheme(
+        de_sampler = setup_sampler_scheme(
             setup_de_update(),
             setup_de_update(n_dims = LogDensityProblems.dimension(model)),
             setup_snooker_update(deterministic_γ = false),
@@ -76,7 +76,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # DE + Snooker composite
-        de_sampler = setup_composite_scheme(
+        de_sampler = setup_sampler_scheme(
             setup_de_update(),
             setup_de_update(n_dims = LogDensityProblems.dimension(model)),
             setup_snooker_update(deterministic_γ = false),
@@ -134,7 +134,7 @@
         model = IsotropicNormalModel([-5.0, 5.0])
 
         # DE + Snooker composite
-        de_sampler = setup_composite_scheme(
+        de_sampler = setup_sampler_scheme(
             setup_de_update(),
             setup_de_update(n_dims = LogDensityProblems.dimension(model)),
             setup_snooker_update(deterministic_γ = false),

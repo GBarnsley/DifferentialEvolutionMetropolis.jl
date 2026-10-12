@@ -128,7 +128,7 @@ This time we will use `MCMCChains.jl` to the handle the output.
 using MCMCChains
 
 # Create a custom sampler scheme combining different update types
-custom_sampler = setup_composite_scheme(
+custom_sampler = setup_sampler_scheme(
     setup_subspace_sampling(), # a DREAM-like sampler that uses subspace sampling
     setup_snooker_update(deterministic_γ = false), # a snooker update for better exploration
     setup_de_update(); # standard DE update
@@ -174,7 +174,7 @@ using AbstractMCMC, DifferentialEvolutionMetropolis
 # One interacting ensemble, threaded chain updates:
 deMC(model, 1000; parallel = true)
 
-sampler = setup_composite_scheme(setup_de_update())
+sampler = setup_sampler_scheme(setup_de_update())
 # Four independent ensembles, each containing eight interacting chains:
 sample(model, sampler, MCMCSerial(), 1000, 4; n_chains = 8, parallel = true)
 sample(model, sampler, MCMCThreads(), 1000, 4; n_chains = 8, parallel = true)

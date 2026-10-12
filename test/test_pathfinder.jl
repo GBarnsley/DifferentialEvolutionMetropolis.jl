@@ -13,7 +13,7 @@ LogDensityProblems.capabilities(::Type{<:PathfinderBimodalModel}) = LogDensityPr
 @testset "Pathfinder initialisation" begin
     model = PathfinderBimodalModel(MixtureModel([MvNormal([-6.0, 0.0], I), MvNormal([6.0, 0.0], I)]))
     wrapped_model = AbstractMCMC.LogDensityModel(model)
-    spl = setup_composite_scheme(setup_de_update(), setup_snooker_update())
+    spl = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
     n_chains = 4
 
     pf_left = pathfinder(model; rng = backwards_compat_rng(1), init = [-5.0, 0.0])

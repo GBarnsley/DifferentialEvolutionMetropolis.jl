@@ -30,7 +30,7 @@ See doi.org/10.1007/s11222-006-8769-1 for more information.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
-- A `DifferentialEvolutionSampler` that can be used with [`setup_composite_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
+- A `DifferentialEvolutionSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
 
 # Example
 ```@example de_update
@@ -40,7 +40,7 @@ using DifferentialEvolutionMetropolis, Distributions
 de_update = setup_de_update(γ = 1.0, β = Normal(0.0, 0.01))
 ```
 
-See also [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref), [`setup_composite_scheme`](@ref).
+See also [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref), [`setup_sampler_scheme`](@ref).
 """
 function setup_de_update(;
         γ::Union{Nothing, UnivariateDistribution, Real} = nothing,

@@ -26,16 +26,15 @@
             max(DEM.chains_required(setup_de_update()), DEM.chains_required(setup_snooker_update()))
     end
 
-    @testset "setup_composite_scheme picks the scheme type from w" begin
+    @testset "setup_sampler_scheme picks the scheme type from w" begin
         de, snooker, subspace = setup_de_update(), setup_snooker_update(), setup_subspace_sampling()
-        @test setup_composite_scheme(de, snooker; w = 5) isa DEM.DifferentialEvolutionCompositeSamplerFixedOrder
-        @test setup_composite_scheme(de, snooker; w = 5).n == 5
-        @test setup_composite_scheme(de, snooker; w = [1, 2]) isa DEM.DifferentialEvolutionCompositeSamplerRandom
-        @test setup_composite_scheme(de, snooker, subspace) isa DEM.DifferentialEvolutionCompositeSamplerRandom
+        @test setup_sampler_scheme(de, snooker; w = 5) isa DEM.DifferentialEvolutionCompositeSamplerFixedOrder
+        @test setup_sampler_scheme(de, snooker; w = 5).n == 5
+        @test setup_sampler_scheme(de, snooker; w = [1, 2]) isa DEM.DifferentialEvolutionCompositeSamplerRandom
+        @test setup_sampler_scheme(de, snooker, subspace) isa DEM.DifferentialEvolutionCompositeSamplerRandom
         @test setup_random_order_composite(de, snooker; w = [1, 2]).update_weights == [1, 2]
-        @test_throws MethodError setup_composite_scheme(de, snooker, subspace; w = 5)
-        @test_throws TypeError setup_composite_scheme(de, snooker; w = 0.5)
-        @test (@test_deprecated setup_sampler_scheme(de, snooker; w = [1.0, 2.0])) isa DEM.DifferentialEvolutionCompositeSamplerRandom
+        @test_throws MethodError setup_sampler_scheme(de, snooker, subspace; w = 5)
+        @test_throws TypeError setup_sampler_scheme(de, snooker; w = 0.5)
     end
 
     @testset "Show" begin
@@ -45,7 +44,7 @@
         @test sprint(show, MIME"text/plain"(), scheme) ==
             "Fixed order composite sampler, cycle of 4 iterations\n       3 × " * repr(de) * "\n       1 × " * repr(snooker)
         _, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; memory = false)
-        @test occursin("adaptive state: composite(static, static)", sprint(show, MIME"text/plain"(), state))
+        @test occursin("adaptive state: composite(0 iterations; static, static)", sprint(show, MIME"text/plain"(), state))
     end
 
     @testset "Cycle order" begin
@@ -84,8 +83,8 @@
     @testset "Nested random schemes pick updates with the product of their weights (adapt = $adapt)" for adapt in (true, false)
         # The DE update is the only one that moves, picked with probability 1/2 × 1/2
         rng = backwards_compat_rng(1234)
-        inner = setup_composite_scheme(still_update, setup_de_update(), setup_subspace_sampling(); w = [1.0, 1.0, 0.0])
-        scheme = setup_composite_scheme(inner, still_update)
+        inner = setup_sampler_scheme(still_update, setup_de_update(), setup_subspace_sampling(); w = [1.0, 1.0, 0.0])
+        scheme = setup_sampler_scheme(inner, still_update)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
         @test state.adaptive_state isa (adapt ? DEM.DifferentialEvolutionAdaptiveComposite : DEM.DifferentialEvolutionAdaptiveStatic)
         moved, _ = record_moves!(rng, scheme, state, 2000; n_warmup = 1000)
@@ -94,8 +93,8 @@
 
     @testset "Adaptive updates inside nested random schemes adapt" begin
         rng = backwards_compat_rng(1234)
-        scheme = setup_composite_scheme(
-            setup_composite_scheme(still_update, setup_subspace_sampling(); w = [0.0, 1.0]),
+        scheme = setup_sampler_scheme(
+            setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [0.0, 1.0]),
             setup_snooker_update(); w = [1.0, 0.0]
         )
         _, state = AbstractMCMC.step(rng, model, scheme; memory = true)
@@ -110,14 +109,16 @@
 
     @testset "Random inside fixed order inside random (adapt = $adapt)" for adapt in (true, false)
         rng = backwards_compat_rng(1234)
-        inner_random = setup_composite_scheme(still_update, setup_subspace_sampling(); w = [1.0, 0.0])
+        inner_random = setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [1.0, 0.0])
         inner_fixed = setup_fixed_order_composite(inner_random, setup_de_update(); n = 1)
-        scheme = setup_composite_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
+        scheme = setup_sampler_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
         @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveComposite
         moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
         @test moved == [false, true, false, true, false, true]
         @test state.adaptive_state.adaptive_states[1].iteration == 6
+        @test state.adaptive_state.iteration == 6
+        @test occursin("composite(6 iterations; composite(6 iterations; ", repr(state.adaptive_state))
     end
 
     @testset "Nested fixed order schemes keep their own position" begin
@@ -133,7 +134,7 @@
 
         outer_fixed = setup_fixed_order_composite(
             setup_fixed_order_composite(setup_de_update(), setup_subspace_sampling(); n = 2),
-            setup_composite_scheme(setup_snooker_update(), setup_subspace_sampling());
+            setup_sampler_scheme(setup_snooker_update(), setup_subspace_sampling());
             n = 3
         )
         samples = sample(rng, model, outer_fixed, 50; num_warmup = 50, progress = false)
@@ -156,7 +157,7 @@
     @testset "fix_sampler_state fixes updates inside nested schemes" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_composite(
-            still_update, setup_composite_scheme(setup_subspace_sampling(), setup_snooker_update(); w = [1.0, 0.0])
+            still_update, setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update(); w = [1.0, 0.0])
         )
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = true)
         subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]
@@ -172,10 +173,10 @@
         rng = backwards_compat_rng(1234)
         schemes = (
             setup_fixed_order_composite(setup_de_update(), setup_subspace_sampling(); n = 2),
-            setup_composite_scheme(setup_de_update(), setup_subspace_sampling(), setup_snooker_update()),
+            setup_sampler_scheme(setup_de_update(), setup_subspace_sampling(), setup_snooker_update()),
             setup_fixed_order_composite(
                 setup_fixed_order_composite(setup_de_update(), setup_subspace_sampling()),
-                setup_composite_scheme(setup_snooker_update(), setup_subspace_sampling())
+                setup_sampler_scheme(setup_snooker_update(), setup_subspace_sampling())
             ),
         )
         for scheme in schemes

@@ -25,41 +25,35 @@ how nested schemes select their updates.
 using DifferentialEvolutionMetropolis
 
 # Only snooker updates
-sampler1 = setup_composite_scheme(setup_snooker_update())
+sampler1 = setup_sampler_scheme(setup_snooker_update())
 
 # DE and Snooker with equal probability
-sampler2 = setup_composite_scheme(setup_de_update(), setup_snooker_update())
+sampler2 = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
 
 # Snooker 10% of the time, DE 90% of the time
-sampler3 = setup_composite_scheme(setup_de_update(), setup_snooker_update(); w = [0.9, 0.1])
+sampler3 = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = [0.9, 0.1])
 
 # Snooker once after every 9 DE updates
-sampler4 = setup_composite_scheme(setup_de_update(), setup_snooker_update(); w = 9)
+sampler4 = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = 9)
 ```
 
 See also [`setup_random_order_composite`](@ref), [`setup_fixed_order_composite`](@ref).
 """
-function setup_composite_scheme(
+function setup_sampler_scheme(
         updates::AbstractDifferentialEvolutionSampler...;
         w::Union{Vector{<:Real}, Integer} = ones(length(updates))
     )
-    return setup_composite_scheme(w, updates...)
+    return setup_sampler_scheme(w, updates...)
 end
 
-function setup_composite_scheme(w::Vector{<:Real}, updates::AbstractDifferentialEvolutionSampler...)
+function setup_sampler_scheme(w::Vector{<:Real}, updates::AbstractDifferentialEvolutionSampler...)
     return setup_random_order_composite(updates...; w = w)
 end
 
-function setup_composite_scheme(
+function setup_sampler_scheme(
         n::Integer, main::AbstractDifferentialEvolutionSampler, secondary::AbstractDifferentialEvolutionSampler
     )
     return setup_fixed_order_composite(main, secondary; n = n)
-end
-
-# Deprecated, use `setup_composite_scheme` or `setup_random_order_composite`
-function setup_sampler_scheme(updates::AbstractDifferentialEvolutionSampler...; kwargs...)
-    Base.depwarn("`setup_sampler_scheme` is deprecated, use `setup_composite_scheme` instead.", :setup_sampler_scheme)
-    return setup_random_order_composite(updates...; kwargs...)
 end
 
 """
@@ -88,7 +82,7 @@ using DifferentialEvolutionMetropolis
 sampler = setup_random_order_composite(setup_de_update(), setup_snooker_update(); w = [0.9, 0.1])
 ```
 
-See also [`setup_composite_scheme`](@ref), [`setup_fixed_order_composite`](@ref).
+See also [`setup_sampler_scheme`](@ref), [`setup_fixed_order_composite`](@ref).
 """
 function setup_random_order_composite(
         updates::AbstractDifferentialEvolutionSampler...;
@@ -146,7 +140,7 @@ sampler2 = setup_fixed_order_composite(
 )
 ```
 
-See also [`setup_composite_scheme`](@ref), [`setup_random_order_composite`](@ref).
+See also [`setup_sampler_scheme`](@ref), [`setup_random_order_composite`](@ref).
 """
 function setup_fixed_order_composite(
         main::AbstractDifferentialEvolutionSampler,
@@ -215,7 +209,7 @@ mutable struct DifferentialEvolutionAdaptiveComposite{
         },
     } <: AbstractDifferentialEvolutionAdaptiveState{T}
     const adaptive_states::A
-    "number of completed iterations, used by fixed order schemes"
+    "number of completed iterations, used by fixed order schemes to find their position in the cycle"
     iteration::Int
 end
 
@@ -225,8 +219,9 @@ end
 
 function select_update!(
         rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom,
-        ::DifferentialEvolutionAdaptiveComposite
+        adaptive_state::DifferentialEvolutionAdaptiveComposite
     )
+    adaptive_state.iteration += 1
     return wsample(rng, sampler.update_weights)
 end
 
@@ -239,17 +234,24 @@ function select_update!(
     return update_id
 end
 
-# Steps `update` with its own adaptive state, as a function barrier so the step is compiled for the selected update's type
-function step_update(
-        step_function, rng::AbstractRNG, model_wrapper::LogDensityModel,
-        update::AbstractDifferentialEvolutionSampler, adaptive_state::AbstractDifferentialEvolutionAdaptiveState,
-        state::DifferentialEvolutionState; update_memory::Bool, kwargs...
+# Steps the `i`th update with its own adaptive state, recursing over the tuples so the update has a concrete type
+function apply_update(
+        step_function, i::Int, updates::Tuple, adaptive_states::Tuple,
+        rng::AbstractRNG, model_wrapper::LogDensityModel, state::DifferentialEvolutionState;
+        update_memory::Bool, kwargs...
     )
-    substate = update_state(state; adaptive_state = adaptive_state, temperature_ladder = state.temperature_ladder)
+    if i > 1
+        return apply_update(
+            step_function, i - 1, Base.tail(updates), Base.tail(adaptive_states),
+            rng, model_wrapper, state; update_memory = update_memory, kwargs...
+        )
+    end
+
+    substate = update_state(state; adaptive_state = first(adaptive_states), temperature_ladder = state.temperature_ladder)
 
     sample,
         new_substate = step_function(
-        rng, model_wrapper, update, substate;
+        rng, model_wrapper, first(updates), substate;
         update_memory = update_memory, kwargs...
     )
 
@@ -275,10 +277,9 @@ function step(
     ) where {T <: Real}
     sampler_id = select_update!(rng, sampler, state.adaptive_state)
 
-    return step_update(
-        step, rng, model_wrapper, sampler.updates[sampler_id],
-        state.adaptive_state.adaptive_states[sampler_id], state;
-        update_memory = update_memory, kwargs...
+    return apply_update(
+        step, sampler_id, sampler.updates, state.adaptive_state.adaptive_states,
+        rng, model_wrapper, state; update_memory = update_memory, kwargs...
     )
 end
 
@@ -306,7 +307,7 @@ that update, and adapts only that update's adaptive state.
 - `sample`: DifferentialEvolutionSample containing new positions and log-densities
 - `new_state`: Updated state with adapted parameters for the selected component
 
-See also [`step_warmup`](@ref), [`setup_composite_scheme`](@ref).
+See also [`step_warmup`](@ref), [`setup_sampler_scheme`](@ref).
 """
 function step_warmup(
         rng::AbstractRNG,
@@ -320,10 +321,9 @@ function step_warmup(
     ) where {T <: Real}
     sampler_id = select_update!(rng, sampler, state.adaptive_state)
 
-    return step_update(
-        step_warmup, rng, model_wrapper, sampler.updates[sampler_id],
-        state.adaptive_state.adaptive_states[sampler_id], state;
-        update_memory = update_memory, kwargs...
+    return apply_update(
+        step_warmup, sampler_id, sampler.updates, state.adaptive_state.adaptive_states,
+        rng, model_wrapper, state; update_memory = update_memory, kwargs...
     )
 end
 

@@ -25,7 +25,7 @@ See doi.org/10.1007/s11222-008-9104-9 for more information.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
-- A `DifferentialEvolutionSnookerSampler` that can be used with [`setup_composite_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
+- A `DifferentialEvolutionSnookerSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
 
 # Example
 ```@example snooker_update
@@ -35,7 +35,7 @@ using DifferentialEvolutionMetropolis, Distributions
 snooker_update = setup_snooker_update(γ = Uniform(0.1, 2.0))
 ```
 
-See also [`setup_de_update`](@ref), [`setup_subspace_sampling`](@ref), [`setup_composite_scheme`](@ref).
+See also [`setup_de_update`](@ref), [`setup_subspace_sampling`](@ref), [`setup_sampler_scheme`](@ref).
 """
 function setup_snooker_update(;
         γ::Union{Nothing, UnivariateDistribution, Real} = nothing,

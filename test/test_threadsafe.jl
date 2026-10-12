@@ -32,7 +32,7 @@
     dim = 4
     n_its = 200
     seed = 42
-    sampler = setup_composite_scheme(setup_de_update())
+    sampler = setup_sampler_scheme(setup_de_update())
 
     means = [10.0 1.0; 0.1 0.5]
 

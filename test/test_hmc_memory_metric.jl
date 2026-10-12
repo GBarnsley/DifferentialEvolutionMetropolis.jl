@@ -33,7 +33,7 @@ using LinearAlgebra: diag, Diagonal
     end
 
     @testset "recovers a unimodal correlated Gaussian (memory on)" begin
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
@@ -47,7 +47,7 @@ using LinearAlgebra: diag, Diagonal
 
     @testset "the frozen diagonal metric tracks the marginal variances" begin
         rng = backwards_compat_rng(99)
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 300, memory = true, silent = true
         )
@@ -67,7 +67,7 @@ using LinearAlgebra: diag, Diagonal
         # The metric is NOT frozen at the warmup→sampling boundary: it keeps recomputing from the
         # growing memory archive during sampling, on the same `every` cadence.
         rng = backwards_compat_rng(77)
-        scheme = setup_composite_scheme(mem_update(; every = 1))
+        scheme = setup_sampler_scheme(mem_update(; every = 1))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true, silent = true
         )
@@ -93,7 +93,7 @@ using LinearAlgebra: diag, Diagonal
         # memory_metric reads the memory archive, so a memoryless scheme has nothing to estimate
         # from. The check fires once, on the first warmup step, after a clean init.
         rng = backwards_compat_rng(7)
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = false, silent = true
         )
@@ -133,7 +133,7 @@ using LinearAlgebra: diag, Diagonal
         # off-diagonal correlations (which a diagonal metric discards) are recovered in sign and
         # magnitude.
         rng = backwards_compat_rng(99)
-        scheme = setup_composite_scheme(
+        scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(
                 NUTS(0.8; metric = :dense); n_dims = length(μ), metric_strategy = memory_metric()
             )
@@ -160,7 +160,7 @@ using LinearAlgebra: diag, Diagonal
         )
         runit(parallel) = reshape(
             sample(
-                backwards_compat_rng(13), model, setup_composite_scheme(dense_update()), 800;
+                backwards_compat_rng(13), model, setup_sampler_scheme(dense_update()), 800;
                 n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
                 progress = false, chain_type = DifferentialEvolutionOutput
             ).samples, :, length(μ)
@@ -174,7 +174,7 @@ using LinearAlgebra: diag, Diagonal
     end
 
     @testset "the recompute schedule (`every`) installs the metric and recovers the target" begin
-        scheme = setup_composite_scheme(mem_update(; every = 10))
+        scheme = setup_sampler_scheme(mem_update(; every = 10))
         out = sample(
             backwards_compat_rng(11), model, scheme, 800;
             n_chains = 6, num_warmup = 400, memory = true, progress = false,
@@ -192,7 +192,7 @@ using LinearAlgebra: diag, Diagonal
         # identity) AND recovers the marginals, rather than silently keeping the identity.
         rng = backwards_compat_rng(5)
         init = [rand(Xoshiro(100 + i), MvNormal(μ, Σ)) for i in 1:24]   # 8 chains + 16 memory, from target
-        scheme = setup_composite_scheme(mem_update(; every = 10_000))
+        scheme = setup_sampler_scheme(mem_update(; every = 10_000))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true,
             initial_position = init, N₀ = 16, silent = true
@@ -213,7 +213,7 @@ using LinearAlgebra: diag, Diagonal
         ill_model = AbstractMCMC.LogDensityModel(
             ADgradient(:ForwardDiff, CorrelatedGaussianModel(MvNormal(zeros(3), Matrix(Σ_ill))))
         )
-        scheme = setup_composite_scheme(
+        scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(
                 NUTS(0.8); n_dims = 3, metric_strategy = memory_metric(; shrinkage = 0.5)
             )
@@ -234,7 +234,7 @@ using LinearAlgebra: diag, Diagonal
         # covariance would mix temperatures. memory_metric refuses on the first warmup step.
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
             num_warmup = 50, memory = true, silent = true,
@@ -252,7 +252,7 @@ using LinearAlgebra: diag, Diagonal
         # `cold_chains`, so the rejection keys off the cold/total count, not the ladder type.
         rng = backwards_compat_rng(124)
         ncold, nhot = 6, 4
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = ncold, n_hot_chains = nhot, annealing_steps = 5,
             num_warmup = 50, memory = true, silent = true,
@@ -269,7 +269,7 @@ using LinearAlgebra: diag, Diagonal
     @testset "pure annealing (every chain cools) is accepted" begin
         rng = backwards_compat_rng(125)
         init = [rand(Xoshiro(200 + i), MvNormal(μ, Σ)) for i in 1:24]
-        scheme = setup_composite_scheme(mem_update())
+        scheme = setup_sampler_scheme(mem_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, annealing_steps = 5,
             num_warmup = 50, memory = true, silent = true, initial_position = init
@@ -293,7 +293,7 @@ using LinearAlgebra: diag, Diagonal
         # support tempering. We check the hot chains are bit-for-bit unchanged and the cold move.
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
-        scheme = setup_composite_scheme(
+        scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
         )
         _, state = AbstractMCMC.step(
@@ -320,7 +320,7 @@ using LinearAlgebra: diag, Diagonal
         # need private scratch — gets its own equivalence check above.
         runit(parallel) = reshape(
             sample(
-                backwards_compat_rng(13), model, setup_composite_scheme(mem_update()), 800;
+                backwards_compat_rng(13), model, setup_sampler_scheme(mem_update()), 800;
                 n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
                 progress = false, chain_type = DifferentialEvolutionOutput
             ).samples, :, length(μ)

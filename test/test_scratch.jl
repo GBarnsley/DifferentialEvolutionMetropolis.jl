@@ -111,7 +111,7 @@
 
     @testset "composite sampler needs no proposal buffers of its own" begin
         update = setup_de_update(n_dims = n_dims)
-        composite = setup_composite_scheme(update)
+        composite = setup_sampler_scheme(update)
         state = initial_state(update)
         @test DEM.prepare_scratch!(composite, state) === nothing
         @test isempty(update.scratch.buffers)

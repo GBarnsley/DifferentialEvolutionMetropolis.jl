@@ -8,7 +8,7 @@
     n_chains = 4
     rng = backwards_compat_rng(1234)
     initial_state = randn(rng, n_chains, n_pars)
-    sampler_scheme = setup_composite_scheme(
+    sampler_scheme = setup_sampler_scheme(
         setup_subspace_sampling()
     )
 

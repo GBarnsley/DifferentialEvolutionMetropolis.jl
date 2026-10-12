@@ -112,7 +112,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
     end
 
     @testset "recovers a unimodal correlated Gaussian (gate stays closed)" begin
-        scheme = setup_composite_scheme(cluster_update())
+        scheme = setup_sampler_scheme(cluster_update())
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
@@ -126,7 +126,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
 
     @testset "the frozen diagonal metric tracks the marginal variances when unimodal" begin
         rng = backwards_compat_rng(99)
-        scheme = setup_composite_scheme(cluster_update())
+        scheme = setup_sampler_scheme(cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 300, memory = true, silent = true
         )
@@ -141,7 +141,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
 
     @testset "the metric keeps tracking the archive during sampling" begin
         rng = backwards_compat_rng(77)
-        scheme = setup_composite_scheme(cluster_update(; every = 1))
+        scheme = setup_sampler_scheme(cluster_update(; every = 1))
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = true, silent = true
         )
@@ -162,7 +162,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
 
     @testset "running memoryless is rejected on the first warmup step" begin
         rng = backwards_compat_rng(7)
-        scheme = setup_composite_scheme(cluster_update())
+        scheme = setup_sampler_scheme(cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, num_warmup = 50, memory = false, silent = true
         )
@@ -174,7 +174,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
     @testset "static parallel tempering is rejected on the first warmup step" begin
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
-        scheme = setup_composite_scheme(cluster_update())
+        scheme = setup_sampler_scheme(cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
             num_warmup = 50, memory = true, silent = true,
@@ -190,7 +190,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
     @testset "pure annealing (every chain cools) is accepted" begin
         rng = backwards_compat_rng(125)
         init = [rand(Xoshiro(200 + i), MvNormal(μ, Σ)) for i in 1:24]
-        scheme = setup_composite_scheme(cluster_update())
+        scheme = setup_sampler_scheme(cluster_update())
         _, state = AbstractMCMC.step(
             rng, model, scheme; n_chains = 8, annealing_steps = 5,
             num_warmup = 50, memory = true, silent = true, initial_position = init
@@ -214,7 +214,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         )
         runit(parallel) = reshape(
             sample(
-                backwards_compat_rng(13), model, setup_composite_scheme(dense_update()), 800;
+                backwards_compat_rng(13), model, setup_sampler_scheme(dense_update()), 800;
                 n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
                 progress = false, chain_type = DifferentialEvolutionOutput
             ).samples, :, length(μ)

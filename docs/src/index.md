@@ -71,7 +71,7 @@ DREAMz
 ### Setup Functions
 
 ```@docs
-setup_composite_scheme
+setup_sampler_scheme
 setup_random_order_composite
 setup_fixed_order_composite
 setup_de_update

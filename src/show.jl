@@ -114,7 +114,7 @@ function Base.show(io::IO, a::DifferentialEvolutionAdaptiveSubspace)
 end
 
 function Base.show(io::IO, a::DifferentialEvolutionAdaptiveComposite)
-    print(io, "composite(")
+    print(io, "composite(", a.iteration, a.iteration == 1 ? " iteration; " : " iterations; ")
     join(io, (sprint(show, s; context = io) for s in a.adaptive_states), ", ")
     return print(io, ")")
 end
