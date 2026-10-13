@@ -107,12 +107,6 @@ SUITE["MemoryLess"]["hmc_update"] = @benchmarkable(
     setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
 )
 
-multi_try_update = setup_multi_try_update(de_update; n_tries = 4)
-SUITE["MemoryLess"]["multi_try_de_update"] = @benchmarkable(
-    AbstractMCMC.step(rng, $am_model, $multi_try_update, state),
-    setup = (rng = copy($rng); state = deepcopy($initial_state))
-)
-
 SUITE["Memory"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
     SUITE["Memory"][name] = @benchmarkable(
@@ -174,6 +168,52 @@ SUITE["annealing"]["swap_update"] = @benchmarkable(
     AbstractMCMC.step_warmup(rng, $am_model, $swap_update, state),
     setup = (rng = copy($rng); state = deepcopy($initial_state_mid_annealing))
 )
+
+# Multiple-try versions of the symmetric updates, for every memory option, adaptation, parallel tempering and annealing
+n_tries = 4
+multi_try_updates = (de_update, subspace_update)
+multi_try_names = ("de_update", "subspace_update")
+multi_try_step(update; kwargs...) = last(
+    AbstractMCMC.step(
+        rng, am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
+    )
+)
+multi_try_states = Dict(
+    "MemoryLess" => multi_try_step(de_update; memory = false, initial_position = initial_position),
+    "Memory" => multi_try_step(de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀),
+    "MemoryRefill" => multi_try_step(
+        de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
+        memory_refill = true, memory_size = 4
+    ),
+    "MemoryThinned" => multi_try_step(
+        de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
+        memory_thin_interval = 2
+    ),
+    "pt" => multi_try_step(de_update; memory = false, initial_position = initial_position, n_hot_chains = 10),
+    "annealing" => multi_try_step(
+        de_update; memory = false, initial_position = initial_position, n_hot_chains = 10, annealing_steps = 5
+    ),
+)
+multi_try_adaptive_states = Dict(
+    "MemoryLess" => multi_try_step(subspace_update; memory = false, initial_position = initial_position, adapt = true),
+    "Memory" => multi_try_step(
+        subspace_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀, adapt = true
+    ),
+)
+
+SUITE["MultiTry"] = BenchmarkGroup(["string"])
+for (state_name, multi_try_state) in multi_try_states, (update, name) in zip(multi_try_updates, multi_try_names)
+    SUITE["MultiTry"]["$(state_name)/$(name)"] = @benchmarkable(
+        AbstractMCMC.step_warmup(rng, $am_model, $update, state),
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+    )
+end
+for (state_name, multi_try_state) in multi_try_adaptive_states
+    SUITE["MultiTry"]["Adaptive/$(state_name)/subspace_update"] = @benchmarkable(
+        AbstractMCMC.step_warmup(rng, $am_model, $subspace_update, state),
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+    )
+end
 
 tune!(SUITE)
 results = run(SUITE, verbose = true, seconds = 10)

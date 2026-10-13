@@ -79,19 +79,22 @@ The method signature for the proposal is:
 
 ```julia
 function proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::YourSampler,
     current_state::Int
-)
+) where {V <: AbstractVector}
 ```
 
+- `xₚ`: The vector to write the proposed position into
+- `x`: The position to propose from
 - `state`: The current state containing all chain positions, log-densities, and chain specific rngs
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
-The function should modify `state.xₚ[current_state] = proposed_position` and return a named tuple with at least `(offset = hastings_correction)` where:
+The function should write the proposed position into `xₚ` (proposing from `x`, not `state.x[current_state]`) and return a named tuple with at least `(offset = hastings_correction)` where:
 
-- `proposed_position`: The proposed new position (vector)
 - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 
 ### Chains Required for Memoryless Sampling
@@ -118,15 +121,14 @@ end
 
 # Implement the proposal function
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::MetropolisHastingsUpdate,
     current_state::Int
-)
-    # Get the current position of this chain
-    x_current = state.x[current_state]
-
-    # Propose a new point (stored in state) using a random walk
-    state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
+) where {V <: AbstractVector}
+    # Propose a new point using a random walk
+    xₚ .= x .+ rand(state.rngs[current_state], sampler.proposal_distribution)
 
     # The proposal is symmetric, so no Hastings correction needed
     return (offset = 0.0)
@@ -160,47 +162,23 @@ function DifferentialEvolutionMetropolis.prepare_scratch!(sampler::ScratchMetrop
 end
 
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::ScratchMetropolisHastingsUpdate,
     current_state::Int
-)
+) where {V <: AbstractVector}
     # Draw the random walk step into this chain's buffer rather than a new vector
     # We pass the type of the state (here Float64) to make `chain_buffers` type stable
     # `scratch` itself if a mutable struct that can hold vectors of any type, allowing seem-less reuse of buffers
     # across logdensities of different dimensions and types
-    T = eltype(state.x[current_state])
-    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, T, current_state)
-    rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
-    state.xₚ[current_state] .= state.x[current_state] .+ jump
-    return (offset = 0.0)
-end
-
-DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
-```
-
-### Multiple-try support
-
-A symmetric proposal can be wrapped by [`setup_multi_try_update`](@ref) if it can propose from any position, not just the chain's current one.
-Implement `proposal!(xₚ, x, state, sampler, current_state)`, which writes a proposal from `x` into `xₚ`, and opt in with [`DifferentialEvolutionMetropolis.supports_multi_try`](@ref).
-
-```@example MHSampler
-function DifferentialEvolutionMetropolis.proposal!(
-    xₚ::AbstractVector, x::AbstractVector,
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
-    sampler::ScratchMetropolisHastingsUpdate,
-    current_state::Int
-)
     (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, eltype(x), current_state)
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
     xₚ .= x .+ jump
     return (offset = 0.0)
 end
 
-DifferentialEvolutionMetropolis.supports_multi_try(::ScratchMetropolisHastingsUpdate) = true
-
-multi_try_update = setup_multi_try_update(
-    ScratchMetropolisHastingsUpdate(MvNormal(zeros(2), [0.5 0.0; 0.0 0.5])); n_tries = 3
-)
+DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
 ```
 
 ### Adaptive Proposals with step_warmup
@@ -261,13 +239,14 @@ end
 
 # Proposal method (same as non-adaptive)
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::AdaptiveMetropolisUpdate,
     current_state::Int
-)
-    x_current = state.x[current_state]
+) where {V <: AbstractVector}
     # Use current proposal covariance from adaptive state
-    state.xₚ[current_state] .= rand(state.rngs[current_state], MvNormal(x_current, state.adaptive_state.proposal_cov))
+    xₚ .= rand(state.rngs[current_state], MvNormal(x, state.adaptive_state.proposal_cov))
     return (offset = 0.0)
 end
 

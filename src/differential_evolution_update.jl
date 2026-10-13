@@ -79,17 +79,9 @@ function noise_checks(dist, name)
 end
 
 function proposal!(
-        state::DifferentialEvolutionState,
+        xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::DifferentialEvolutionSampler, current_state::Int
-    )
-    return proposal!(state.xₚ[current_state], state.x[current_state], state, sampler, current_state)
-end
-
-# Propose from `x` into `xₚ` for chain `current_state`, so multi-try updates can propose from any position
-function proposal!(
-        xₚ::AbstractVector, x::AbstractVector, state::DifferentialEvolutionState,
-        sampler::DifferentialEvolutionSampler, current_state::Int
-    )
+    ) where {V <: AbstractVector}
     x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂
         xₚ .= x₁

@@ -19,11 +19,11 @@ using Distributed
         @testset "$scheme" for scheme in (:de, :de_snooker, :adaptive_subspace, :multi_try)
             sampler = scheme === :de ? setup_sampler_scheme(setup_de_update()) :
                 scheme === :de_snooker ? setup_sampler_scheme(setup_de_update(), setup_snooker_update()) :
-                scheme === :adaptive_subspace ? setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update()) :
-                setup_sampler_scheme(setup_multi_try_update(setup_subspace_sampling(); n_tries = 3), setup_snooker_update())
+                setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update())
+            n_tries = scheme === :multi_try ? 3 : 1
             run(ensemble, parallel; kwargs...) = sample(
                 backwards_compat_rng(5), ld, sampler, ensemble, 100, 2;
-                parallel = parallel, n_chains = 8, num_warmup = 50, progress = false, silent = true, kwargs...
+                parallel = parallel, n_chains = 8, num_warmup = 50, n_tries = n_tries, progress = false, silent = true, kwargs...
             )
             reference = flat(run(MCMCSerial(), false))
             @testset "$(nameof(typeof(ensemble))) × parallel=$parallel" for ensemble in ensembles, parallel in (false, true)

@@ -63,7 +63,7 @@
             @test length(update.scratch.buffers) == length(state.x)
             @test update.scratch.buffers isa Vector{<:NTuple{<:Any, Vector{T}}}
             if check_allocations
-                proposal_bytes(s, u) = @allocated DifferentialEvolutionMetropolis.proposal!(s, u, 1)
+                proposal_bytes(s, u) = @allocated DifferentialEvolutionMetropolis.proposal!(s.xₚ[1], s.x[1], s, u, 1)
                 proposal_bytes(state, update)
                 @test proposal_bytes(state, update) == 0
             end
@@ -90,7 +90,7 @@
             state = initial_state(update)
             DEM.prepare_scratch!(update, state)
             for _ in 1:20, i in eachindex(state.x)
-                DEM.proposal!(state, update, i)
+                DEM.proposal!(state.xₚ[i], state.x[i], state, update, i)
                 @test count(state.xₚ[i] .!= state.x[i]) == expected
             end
         end

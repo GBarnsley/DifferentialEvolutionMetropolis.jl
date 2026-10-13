@@ -96,12 +96,12 @@ function _update_state(
     if is_enabled(swap_positions)
         #swap over x and xₚ for the next update
         return DifferentialEvolutionState(
-            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view
+            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view
         )
     else
         #already swapped elsewhere
         return DifferentialEvolutionState(
-            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view
+            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view
         )
     end
 end
@@ -241,14 +241,16 @@ function step(
 
     prepare_scratch!(sampler, state)
     # loop through chains running the update
-    if parallel
+    if uses_multi_try(sampler, state)
+        multi_try_update!(model, state, sampler, parallel)
+    elseif parallel
         Threads.@threads for i in eachindex(x)
-            offset, = proposal!(state, sampler, i)
+            offset, = proposal!(state.xₚ[i], x[i], state, sampler, i)
             update_chain!(state.chain_models[i], state, offset, i)
         end
     else
         for i in eachindex(x)
-            offset, = proposal!(state, sampler, i)
+            offset, = proposal!(state.xₚ[i], x[i], state, sampler, i)
             update_chain!(model, state, offset, i)
         end
     end
@@ -470,9 +472,11 @@ function step(
         silent::Bool = false,
         temperature_ladder = nothing,
         n_preallocated_indices::Int = 3,
+        n_tries::Int = 1,
         kwargs...
     )
     model = model_wrapper.logdensity
+    n_tries = check_n_tries(sampler, n_tries)
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
         memory ? something(N₀, n_chains + n_hot_chains) : 0;
@@ -556,7 +560,7 @@ function step(
         @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
 
-    chain_models = [deepcopy(model) for _ in eachindex(x)]
+    chain_models = [deepcopy(model) for _ in 1:(length(x) * n_tries)]
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
@@ -641,7 +645,7 @@ function step(
     end
 
     state = DifferentialEvolutionState(
-        reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models
+        reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models, n_tries
     )
 
     return create_sample(state), state

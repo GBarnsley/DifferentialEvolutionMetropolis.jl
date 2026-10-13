@@ -71,18 +71,6 @@ end
 
 Base.show(io::IO, ::DifferentialEvolutionSwapSampler) = print(io, "Differential evolution swap update for parallel tempering")
 
-function Base.show(io::IO, s::DifferentialEvolutionMultiTrySampler)
-    print(io, "Multi-try(")
-    show(io, s.update)
-    return print(io, ", n_tries = ", s.n_tries, ")")
-end
-
-function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionMultiTrySampler)
-    return show_multiline(
-        io, "Multi-try update", ["update" => sprint(show, s.update; context = io), "n_tries" => string(s.n_tries)]
-    )
-end
-
 function Base.show(io::IO, s::DifferentialEvolutionCompositeSampler)
     print(io, "Composite sampler(")
     join(io, (sprint(show, u; context = io) for u in s.updates), ", ")
@@ -165,6 +153,9 @@ function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionState{T})
         "memory" => sprint(show, s.memory; context = io),
         "log density" => "max $(round(maximum(s.ld_smpl_view); sigdigits = 5))",
     ]
+    if n_tries(s.multi_try) > 1
+        push!(fields, "tries" => string(n_tries(s.multi_try)))
+    end
     return show_multiline(io, "DifferentialEvolutionState{$T}", fields)
 end
 

@@ -186,13 +186,13 @@ With the same seeded RNG and a deterministic log-density, all six combinations p
 For cheap log-densities, in-step multi-threading is usually slower.
 The sampler is thread-safe by using per-chain copies of shared resources, including the `LogDensity` but it is the users job to ensure that their `LogDensity` function supports concurrent evaluation.
 
-When there are more threads than chains, [`setup_multi_try_update`](@ref) gives each chain several candidate proposals per step.
+When there are more threads than chains, `n_tries` gives each chain several candidate proposals per step (multiple-try Metropolis).
 With `parallel = true` all candidates across all chains are evaluated in one threaded loop.
 This increases the number of log-density evaluations per step to up to `n_chains * (2 * n_tries - 1)`, so it is only worthwhile when evaluations are expensive and threads would otherwise be idle.
+Only the differential evolution and subspace updates use multiple tries, other updates in a scheme take a single proposal.
 
 ```julia
-sampler = setup_sampler_scheme(setup_multi_try_update(setup_de_update(); n_tries = 4))
-sample(model, sampler, 1000; n_chains = 8, parallel = true)
+sample(model, setup_sampler_scheme(setup_de_update()), 1000; n_chains = 8, n_tries = 4, parallel = true)
 ```
 
 ## Interpreting Results

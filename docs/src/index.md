@@ -75,8 +75,6 @@ setup_de_update
 setup_snooker_update
 setup_subspace_sampling
 setup_swap_update
-setup_multi_try_update
-DifferentialEvolutionMetropolis.supports_multi_try
 ```
 
 ### HMC Setup Functions

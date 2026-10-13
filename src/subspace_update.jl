@@ -186,17 +186,9 @@ Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support &&
 prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 function proposal!(
-        state::DifferentialEvolutionState,
+        xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
-    )
-    return proposal!(state.xₚ[current_state], state.x[current_state], state, sampler, current_state)
-end
-
-# Propose from `x` into `xₚ` for chain `current_state`, so multi-try updates can propose from any position
-function proposal!(
-        xₚ::AbstractVector, x::AbstractVector, state::DifferentialEvolutionState,
-        sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
-    )
+    ) where {V <: AbstractVector}
     rng = state.rngs[current_state]
     u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
 
