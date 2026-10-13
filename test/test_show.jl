@@ -23,12 +23,12 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         swap = setup_swap_update()
         @test repr(swap) == "Differential evolution swap update for parallel tempering"
         @test plain(swap) == repr(swap)
-        @test plain(setup_sampler_scheme(de, swap; w = [0.9, 0.1])) == "Composite sampler with 2 updates\n     0.9 × " * repr(de) * "\n     0.1 × " * repr(swap)
+        @test plain(setup_sampler_scheme(de, swap; w = [0.9, 0.1])) == "Random order composite sampler with 2 updates\n     0.9 × " * repr(de) * "\n     0.1 × " * repr(swap)
 
         composite = setup_sampler_scheme(de, snooker; w = [3.0, 1.0])
-        @test repr(composite) == "Composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
-        @test plain(composite) == "Composite sampler with 2 updates\n    0.75 × " * repr(de) * "\n    0.25 × " * repr(snooker)
-        @test sprint(show, MIME"text/plain"(), composite; context = :compact => true) == "Composite sampler with 2 updates"
+        @test repr(composite) == "Random order composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
+        @test plain(composite) == "Random order composite sampler with 2 updates\n    0.75 × " * repr(de) * "\n    0.25 × " * repr(snooker)
+        @test sprint(show, MIME"text/plain"(), composite; context = :compact => true) == "Random order composite sampler with 2 updates"
     end
 
     @testset "state" begin

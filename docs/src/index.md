@@ -71,6 +71,8 @@ DREAMz
 
 ```@docs
 setup_sampler_scheme
+setup_random_order_scheme
+setup_fixed_order_scheme
 setup_de_update
 setup_snooker_update
 setup_subspace_sampling

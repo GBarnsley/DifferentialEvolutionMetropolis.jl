@@ -51,6 +51,7 @@ end
     include("test_subspace_adaptive_update.jl")
     include("test_scratch.jl")
     include("test_composite.jl")
+    include("test_fixed_order.jl")
     include("test_rng.jl")
     include("test_threadsafe.jl")
     include("test_parallel.jl")

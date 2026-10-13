@@ -173,6 +173,12 @@
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, 1.0)
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, -0.1)
 
+        fixed_scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 3)
+        fixed_with_swaps = DEM.add_swap_update(fixed_scheme, 2, true, 0.2)
+        @test fixed_with_swaps.updates[1] === fixed_scheme
+        @test fixed_with_swaps.updates[2] isa DEM.DifferentialEvolutionSwapSampler
+        @test fixed_with_swaps.update_weights ≈ [0.8, 0.2]
+
         kw = (n_chains = 3, n_burnin = 10, memory = false, silent = true, progress = false)
         @test_logs deMC(model, 10; n_hot_chains = 2, kw...)
         @test_logs (:warn, r"Parallel tempering without a swap update") deMC(

@@ -187,10 +187,10 @@ function step_warmup(
             accepted = update_chain!(model, state, prop.offset, i)
 
             if variance_ready && i in cold_chains
-                cr_update = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_update] += 1
+                cr_index = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_index] += 1
                 if accepted
-                    adaptive_state.Δ[cr_update] += sum(
+                    adaptive_state.Δ[cr_index] += sum(
                         (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
                             adaptive_state.variance
                     )

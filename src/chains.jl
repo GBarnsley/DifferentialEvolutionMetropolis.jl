@@ -326,10 +326,11 @@ function fix_sampler_state(
         sampler::AbstractDifferentialEvolutionSampler,
         state::DifferentialEvolutionState{T}
     ) where {T <: Real}
-    return fix_sampler(sampler, state.adaptive_state),
+    fixed_sampler = fix_sampler(sampler, state.adaptive_state)
+    return fixed_sampler,
         update_state(
             state; update_memory = false,
-            adaptive_state = DifferentialEvolutionAdaptiveStatic{T}(),
+            adaptive_state = initialize_nonadaptive_state(fixed_sampler, T),
             temperature_ladder = state.temperature_ladder
         )
 end
@@ -373,6 +374,13 @@ end
 function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+    ) where {T <: Real}
+    return DifferentialEvolutionAdaptiveStatic{T}()
+end
+
+# State used when `adapt = false`, schemes that need to track progress (e.g. fixed order) override this
+function initialize_nonadaptive_state(
+        sampler::AbstractDifferentialEvolutionSampler, ::Type{T}
     ) where {T <: Real}
     return DifferentialEvolutionAdaptiveStatic{T}()
 end
@@ -497,7 +505,7 @@ function step(
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
-        adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
+        adaptive_state = initialize_nonadaptive_state(sampler, T)
     end
 
     extra_memory = nothing
