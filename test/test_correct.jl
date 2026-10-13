@@ -181,6 +181,8 @@
         setup_snooker_update(),
         setup_subspace_sampling()
     )
+    multi_try_de = setup_multi_try_update(setup_de_update(n_dims = LogDensityProblems.dimension(base_model)); n_tries = 3)
+    multi_try_subspace = setup_multi_try_update(setup_subspace_sampling(); n_tries = 3)
 
     @testset "Without memory" begin
         thinning = 4
@@ -188,6 +190,8 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, multi_try_de, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, multi_try_subspace, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
     end
     @testset "With memory" begin
         thinning = 4
@@ -195,6 +199,8 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, multi_try_de, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, multi_try_subspace, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
     end
     @testset "With pt" begin
         thinning = 2
@@ -204,5 +210,7 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, multi_try_de, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, multi_try_subspace, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
     end
 end

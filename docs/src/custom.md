@@ -178,6 +178,31 @@ end
 DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
 ```
 
+### Multiple-try support
+
+A symmetric proposal can be wrapped by [`setup_multi_try_update`](@ref) if it can propose from any position, not just the chain's current one.
+Implement `proposal!(xₚ, x, state, sampler, current_state)`, which writes a proposal from `x` into `xₚ`, and opt in with [`DifferentialEvolutionMetropolis.supports_multi_try`](@ref).
+
+```@example MHSampler
+function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::AbstractVector, x::AbstractVector,
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    sampler::ScratchMetropolisHastingsUpdate,
+    current_state::Int
+)
+    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, eltype(x), current_state)
+    rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
+    xₚ .= x .+ jump
+    return (offset = 0.0)
+end
+
+DifferentialEvolutionMetropolis.supports_multi_try(::ScratchMetropolisHastingsUpdate) = true
+
+multi_try_update = setup_multi_try_update(
+    ScratchMetropolisHastingsUpdate(MvNormal(zeros(2), [0.5 0.0; 0.0 0.5])); n_tries = 3
+)
+```
+
 ### Adaptive Proposals with step_warmup
 
 For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well.

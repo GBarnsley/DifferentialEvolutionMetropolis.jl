@@ -107,6 +107,12 @@ SUITE["MemoryLess"]["hmc_update"] = @benchmarkable(
     setup = (rng = copy($rng); state = deepcopy($hmc_initial_state))
 )
 
+multi_try_update = setup_multi_try_update(de_update; n_tries = 4)
+SUITE["MemoryLess"]["multi_try_de_update"] = @benchmarkable(
+    AbstractMCMC.step(rng, $am_model, $multi_try_update, state),
+    setup = (rng = copy($rng); state = deepcopy($initial_state))
+)
+
 SUITE["Memory"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
     SUITE["Memory"][name] = @benchmarkable(

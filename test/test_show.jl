@@ -29,6 +29,10 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test repr(composite) == "Composite sampler(" * repr(de) * ", " * repr(snooker) * ")"
         @test plain(composite) == "Composite sampler with 2 updates\n    0.75 × " * repr(de) * "\n    0.25 × " * repr(snooker)
         @test sprint(show, MIME"text/plain"(), composite; context = :compact => true) == "Composite sampler with 2 updates"
+
+        multi_try = setup_multi_try_update(de; n_tries = 3)
+        @test repr(multi_try) == "Multi-try(" * repr(de) * ", n_tries = 3)"
+        @test plain(multi_try) == "Multi-try update\n  update:  " * repr(de) * "\n  n_tries: 3"
     end
 
     @testset "state" begin

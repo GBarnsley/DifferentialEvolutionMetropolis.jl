@@ -189,9 +189,15 @@ function proposal!(
         state::DifferentialEvolutionState,
         sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
     )
+    return proposal!(state.xₚ[current_state], state.x[current_state], state, sampler, current_state)
+end
+
+# Propose from `x` into `xₚ` for chain `current_state`, so multi-try updates can propose from any position
+function proposal!(
+        xₚ::AbstractVector, x::AbstractVector, state::DifferentialEvolutionState,
+        sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
+    )
     rng = state.rngs[current_state]
-    x = state.x[current_state]
-    xₚ = state.xₚ[current_state]
     u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
 
     #determine how many dimensions to update, those with u < cr
