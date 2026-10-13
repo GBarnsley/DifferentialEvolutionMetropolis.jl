@@ -14,6 +14,7 @@ The algorithm runs for a fixed number of iterations with optional burn-in.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(deMC_kwargs)
 $(template_chains_kwargs)
+$(template_swap_kwargs)
 $(generic_de_kwargs_no_mem)
 $(abstract_mcmc_kwargs)
 
@@ -64,6 +65,9 @@ function _deMC(
         p_γ₂::Real = 0.1,
         β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         chain_type = DifferentialEvolutionOutput,
+        n_hot_chains::Int = 0,
+        use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
+        parallel_tempering_swap_probability::Real = 0.1,
         memory = false,
         kwargs...
     ) where {T <: Real}
@@ -87,11 +91,16 @@ function _deMC(
         )
     end
 
+    sampler_scheme = add_swap_update(
+        sampler_scheme, n_hot_chains, use_parallel_tempering_swaps, parallel_tempering_swap_probability
+    )
+
     return sample(
         rng,
         model_wrapper,
         sampler_scheme,
         N_or_is_done;
+        n_hot_chains = n_hot_chains,
         num_warmup = num_warmup,
         discard_initial = save_burnt ? 0 : num_warmup,
         chain_type = chain_type,
@@ -116,6 +125,7 @@ The algorithm runs for a fixed number of iterations with optional burn-in.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(deMCzs_kwargs)
 $(template_chains_kwargs)
+$(template_swap_kwargs)
 $(generic_de_kwargs)
 $(abstract_mcmc_kwargs)
 
@@ -165,6 +175,9 @@ function _deMCzs(
         p_snooker::Union{Nothing, Real} = 0.1,
         β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         chain_type = DifferentialEvolutionOutput,
+        n_hot_chains::Int = 0,
+        use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
+        parallel_tempering_swap_probability::Real = 0.1,
         kwargs...
     )
 
@@ -187,11 +200,16 @@ function _deMCzs(
         )
     end
 
+    sampler_scheme = add_swap_update(
+        sampler_scheme, n_hot_chains, use_parallel_tempering_swaps, parallel_tempering_swap_probability
+    )
+
     return sample(
         rng,
         model_wrapper,
         sampler_scheme,
         N_or_is_done;
+        n_hot_chains = n_hot_chains,
         num_warmup = num_warmup,
         discard_initial = save_burnt ? 0 : num_warmup,
         chain_type = chain_type,
@@ -215,6 +233,7 @@ The algorithm runs for a fixed number of iterations with optional burn-in.
 - `n_burnin`: Number of burn-in iterations. Defaults to `n_its * 5`.
 $(DREAMz_kwargs)
 $(template_chains_kwargs)
+$(template_swap_kwargs)
 $(generic_de_kwargs)
 $(abstract_mcmc_kwargs)
 
@@ -271,6 +290,9 @@ function _DREAMz(
         cr_uniform_weight::Real = 0.05,
         min_variance_count::Int = 10,
         chain_type = DifferentialEvolutionOutput,
+        n_hot_chains::Int = 0,
+        use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
+        parallel_tempering_swap_probability::Real = 0.1,
         kwargs...
     )
 
@@ -308,11 +330,16 @@ function _DREAMz(
         )
     end
 
+    sampler_scheme = add_swap_update(
+        sampler_scheme, n_hot_chains, use_parallel_tempering_swaps, parallel_tempering_swap_probability
+    )
+
     return sample(
         rng,
         model_wrapper,
         sampler_scheme,
         N_or_is_done;
+        n_hot_chains = n_hot_chains,
         num_warmup = num_warmup,
         discard_initial = save_burnt ? 0 : num_warmup,
         chain_type = chain_type,

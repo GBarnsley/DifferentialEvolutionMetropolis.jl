@@ -1,5 +1,5 @@
 module DifferentialEvolutionMetropolis
-export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_composite, setup_fixed_order_composite, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
+export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_composite, setup_fixed_order_composite, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
@@ -22,7 +22,7 @@ import AbstractMCMC
 
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
 
-chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback
+chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
 abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
 
@@ -150,6 +150,7 @@ include("snooker_update.jl")
 include("subspace_update.jl")
 include("subspace_adaptive_update.jl")
 include("composite_sampler.jl")
+include("swap_update.jl")
 include("utilities.jl")
 include("convergence.jl")
 include("templates.jl")

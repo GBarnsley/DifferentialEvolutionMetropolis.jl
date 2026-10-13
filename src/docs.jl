@@ -67,6 +67,11 @@ generic_notes = """
   aren't necessary when using memory
 """
 
+template_swap_kwargs = """
+- `use_parallel_tempering_swaps`: Whether to add a [`setup_swap_update`](@ref) to the sampler scheme. Defaults to `n_hot_chains > 0`.
+- `parallel_tempering_swap_probability`: Probability of a swap update each iteration, the other updates are downweighted to sum to `1 - parallel_tempering_swap_probability`. Defaults to 0.1.
+"""
+
 template_chains_kwargs = """
 - `chain_type`: Type of chain to return (e.g., `Any`, `DifferentialEvolutionOutput`, `MCMCChains.Chains`, or `FlexiChains.VNChain`). Defaults to `DifferentialEvolutionOutput`.
 - `save_final_state`: Whether to return the final state along with samples, if true the output will be (samples::chain_type, final_state). Defaults to `false`.

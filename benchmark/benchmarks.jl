@@ -29,6 +29,7 @@ N₀ = size(initial_position_with_memory, 1) - n_chains
 de_update = setup_de_update()
 snooker_update = setup_snooker_update()
 subspace_update = setup_subspace_sampling()
+swap_update = setup_swap_update()
 updates = (de_update, snooker_update, subspace_update)
 names = ("de_update", "snooker_update", "subspace_update")
 
@@ -54,6 +55,16 @@ __,
     initial_state_pt_and_annealing = AbstractMCMC.step(
     rng, am_model, de_update; memory = false, initial_position = initial_position,
     n_chains = n_chains, n_hot_chains = 10, annealing_steps = 5
+)
+# All chains share the first annealing temperature, so swaps are benchmarked one step in.
+__,
+    initial_state_mid_annealing = AbstractMCMC.step_warmup(
+    rng, am_model, de_update, initial_state_pt_and_annealing
+)
+__,
+    initial_state_pt = AbstractMCMC.step(
+    rng, am_model, de_update; memory = false, initial_position = initial_position,
+    n_chains = n_chains, n_hot_chains = 10
 )
 
 hmc_model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, IsotropicNormalModel(zeros(5))))
@@ -138,9 +149,13 @@ SUITE["pt"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
     SUITE["pt"][name] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $update, state),
-        setup = (rng = copy($rng); state = deepcopy($initial_state_pt_and_annealing))
+        setup = (rng = copy($rng); state = deepcopy($initial_state_pt))
     )
 end
+SUITE["pt"]["swap_update"] = @benchmarkable(
+    AbstractMCMC.step_warmup(rng, $am_model, $swap_update, state),
+    setup = (rng = copy($rng); state = deepcopy($initial_state_pt))
+)
 
 SUITE["annealing"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates, names)
@@ -149,6 +164,10 @@ for (update, name) in zip(updates, names)
         setup = (rng = copy($rng); state = deepcopy($initial_state_pt_and_annealing))
     )
 end
+SUITE["annealing"]["swap_update"] = @benchmarkable(
+    AbstractMCMC.step_warmup(rng, $am_model, $swap_update, state),
+    setup = (rng = copy($rng); state = deepcopy($initial_state_mid_annealing))
+)
 
 tune!(SUITE)
 results = run(SUITE, verbose = true, seconds = 10)
