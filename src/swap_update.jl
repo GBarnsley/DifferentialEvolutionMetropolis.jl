@@ -180,14 +180,14 @@ end
 
 function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerRandom, p::Float64)
     w = sampler_scheme.update_weights
-    return setup_random_order_composite(
+    return setup_random_order_scheme(
         sampler_scheme.updates..., setup_swap_update();
         w = [Float64.(w) .* ((1 - p) / sum(w)); p]
     )
 end
 
 function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerFixedOrder, p::Float64)
-    return setup_random_order_composite(sampler_scheme, setup_swap_update(); w = [1 - p, p])
+    return setup_random_order_scheme(sampler_scheme, setup_swap_update(); w = [1 - p, p])
 end
 
 function check_swap_setup(sampler::AbstractDifferentialEvolutionSampler, ladder)

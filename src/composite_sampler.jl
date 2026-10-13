@@ -2,11 +2,11 @@
 Create a composite sampler scheme from multiple differential evolution update steps.
 
 The type of scheme depends on `w`:
-- A vector of weights gives a random order scheme, see [`setup_random_order_composite`](@ref).
-- An integer `n` with two updates gives a fixed order scheme that runs the first update `n` times
-  and then the second update once, see [`setup_fixed_order_composite`](@ref).
+A vector of weights gives a random order scheme, see [`setup_random_order_scheme`](@ref).
+An integer `n` with two updates gives a fixed order scheme that runs the first update `n` times
+  and then the second update once, see [`setup_fixed_order_scheme`](@ref).
 
-Schemes can be passed as updates to other schemes, see [`setup_fixed_order_composite`](@ref) for
+Schemes can be passed as updates to other schemes, see [`setup_fixed_order_scheme`](@ref) for
 how nested schemes select their updates.
 
 # Arguments
@@ -14,14 +14,14 @@ how nested schemes select their updates.
   like [`setup_de_update`](@ref), [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref).
 
 # Keyword Arguments
-- `w`: Vector of weights for each update step, or an integer number of first update iterations for
-  each second update iteration. Defaults to equal weights.
+- `w`: Vector of weights for each update step, or an integer representing the number of first updates: a single second update (requires two updates).
+  Defaults to equal weights.
 
 # Returns
 - A `DifferentialEvolutionCompositeSampler` that can be used with `AbstractMCMC.sample`.
 
 # Examples
-```@example composite_scheme
+```@example sampler_scheme
 using DifferentialEvolutionMetropolis
 
 # Only snooker updates
@@ -37,7 +37,7 @@ sampler3 = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = [
 sampler4 = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = 9)
 ```
 
-See also [`setup_random_order_composite`](@ref), [`setup_fixed_order_composite`](@ref).
+See also [`setup_random_order_scheme`](@ref), [`setup_fixed_order_scheme`](@ref).
 """
 function setup_sampler_scheme(
         updates::AbstractDifferentialEvolutionSampler...;
@@ -47,17 +47,21 @@ function setup_sampler_scheme(
 end
 
 function setup_sampler_scheme(w::Vector{<:Real}, updates::AbstractDifferentialEvolutionSampler...)
-    return setup_random_order_composite(updates...; w = w)
+    return setup_random_order_scheme(updates...; w = w)
 end
 
 function setup_sampler_scheme(
         n::Integer, main::AbstractDifferentialEvolutionSampler, secondary::AbstractDifferentialEvolutionSampler
     )
-    return setup_fixed_order_composite(main, secondary; n = n)
+    return setup_fixed_order_scheme(main, secondary; n = n)
+end
+
+function setup_sampler_scheme(::Integer, updates::AbstractDifferentialEvolutionSampler...)
+    return error("An integer `w` requires exactly two updates, got $(length(updates)). Use a vector of weights for a random order scheme.")
 end
 
 """
-Create a composite sampler scheme that picks its update at random.
+Create a composite sampler scheme that picks updates at random.
 
 The update method used in each iteration for each chain is randomly selected from the
 provided update steps according to their weights. This allows combining different
@@ -75,16 +79,16 @@ sampling strategies (e.g., DE updates with snooker updates) in a single sampler.
 - A `DifferentialEvolutionCompositeSamplerRandom` that can be used with `AbstractMCMC.sample`.
 
 # Examples
-```@example random_order_composite
+```@example random_order_scheme
 using DifferentialEvolutionMetropolis
 
 # Snooker 10% of the time, DE 90% of the time
-sampler = setup_random_order_composite(setup_de_update(), setup_snooker_update(); w = [0.9, 0.1])
+sampler = setup_random_order_scheme(setup_de_update(), setup_snooker_update(); w = [0.9, 0.1])
 ```
 
-See also [`setup_sampler_scheme`](@ref), [`setup_fixed_order_composite`](@ref).
+See also [`setup_sampler_scheme`](@ref), [`setup_fixed_order_scheme`](@ref).
 """
-function setup_random_order_composite(
+function setup_random_order_scheme(
         updates::AbstractDifferentialEvolutionSampler...;
         w::Vector{<:Real} = ones(length(updates))
     )
@@ -98,21 +102,17 @@ Each cycle runs the `main` update for `n` iterations and then the `secondary` up
 for one iteration. Either update can itself be a composite scheme, so fixed and random order
 schemes can be nested to build more complex mixes.
 
-The position in the cycle is stored in the sampler state, so it continues from warm-up into
-sampling and is unaffected by `adapt = false`. [`fix_sampler_state`](@ref) restarts the cycle.
-
 # Nesting
 Each iteration, the outermost scheme picks one of its updates. If that update is a scheme, it
 then picks one of its own updates, and so on. A nested fixed order scheme moves to the next
 position in its cycle only on the iterations where it is picked, so its position counts how
 often it has been picked, not the total number of iterations. For updates `A`, `B` and `C`:
 
-| Scheme | Updates run |
-|:--|:--|
-| `setup_fixed_order_composite(setup_fixed_order_composite(A, B), C)` | `A, C, B, C, A, C, B, C, ...` |
-| `setup_fixed_order_composite(setup_fixed_order_composite(A, B), C; n = 2)` | `A, B, C, A, B, C, ...` |
-| `setup_fixed_order_composite(setup_random_order_composite(A, B), C)` | `A or B, C, A or B, C, ...` |
-| `setup_random_order_composite(setup_fixed_order_composite(A, B), C)` | `A` and `B` alternate on the iterations where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...` |
+- `setup_fixed_order_scheme(setup_fixed_order_scheme(A, B), C)` runs `A, C, B, C, A, C, B, C, ...`
+- `setup_fixed_order_scheme(setup_fixed_order_scheme(A, B), C; n = 2)` runs `A, B, C, A, B, C, ...`
+- `setup_fixed_order_scheme(setup_random_order_scheme(A, B), C)` runs `A or B, C, A or B, C, ...`
+- `setup_random_order_scheme(setup_fixed_order_scheme(A, B), C)` alternates `A` and `B` on the iterations
+  where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
@@ -120,29 +120,29 @@ often it has been picked, not the total number of iterations. For updates `A`, `
 
 # Keyword Arguments
 - `n`: Number of `main` iterations for each `secondary` iteration. Must be at least 1.
-  Defaults to 1, i.e. the updates alternate.
+  Defaults to 1, alternating updates.
 
 # Returns
 - A `DifferentialEvolutionCompositeSamplerFixedOrder` that can be used with `AbstractMCMC.sample`.
 
 # Examples
-```@example fixed_order_composite
+```@example fixed_order_scheme
 using DifferentialEvolutionMetropolis
 
 # Snooker update once for every 10 DE updates
-sampler1 = setup_fixed_order_composite(setup_de_update(), setup_snooker_update(); n = 10)
+sampler1 = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 10)
 
 # Every 5th iteration, randomly pick between a snooker update and a subspace update
-sampler2 = setup_fixed_order_composite(
+sampler2 = setup_fixed_order_scheme(
     setup_de_update(),
-    setup_random_order_composite(setup_snooker_update(), setup_subspace_sampling());
+    setup_random_order_scheme(setup_snooker_update(), setup_subspace_sampling());
     n = 4
 )
 ```
 
-See also [`setup_sampler_scheme`](@ref), [`setup_random_order_composite`](@ref).
+See also [`setup_sampler_scheme`](@ref), [`setup_random_order_scheme`](@ref).
 """
-function setup_fixed_order_composite(
+function setup_fixed_order_scheme(
         main::AbstractDifferentialEvolutionSampler,
         secondary::AbstractDifferentialEvolutionSampler;
         n::Integer = 1
@@ -185,6 +185,13 @@ const DifferentialEvolutionCompositeSampler = Union{
     DifferentialEvolutionCompositeSamplerRandom, DifferentialEvolutionCompositeSamplerFixedOrder,
 }
 
+function select_update!(
+        rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom,
+        ::AbstractDifferentialEvolutionAdaptiveState
+    )
+    return wsample(rng, sampler.update_weights)
+end
+
 # if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,
@@ -195,7 +202,7 @@ function step(
         };
         kwargs...
     ) where {T <: Real}
-    sampler_id = wsample(rng, sampler.update_weights)
+    sampler_id = select_update!(rng, sampler, state.adaptive_state)
 
     return step(rng, model_wrapper, sampler.updates[sampler_id], state; kwargs...)
 end
@@ -216,13 +223,6 @@ end
 
 function DifferentialEvolutionAdaptiveComposite{T}(adaptive_states::A, iteration::I) where {T <: Real, A, I}
     return DifferentialEvolutionAdaptiveComposite{T, A, I}(adaptive_states, iteration)
-end
-
-function select_update!(
-        rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom,
-        ::DifferentialEvolutionAdaptiveComposite
-    )
-    return wsample(rng, sampler.update_weights)
 end
 
 function select_update!(
@@ -288,15 +288,15 @@ end
 
 Perform a single MCMC step during warm-up for composite samplers.
 
-The scheme selects one of its updates (at random for [`setup_random_order_composite`](@ref), by its
-position in the cycle for [`setup_fixed_order_composite`](@ref)), performs a warm-up step with
+The scheme selects one of its updates (at random for [`setup_random_order_scheme`](@ref), by its
+position in the cycle for [`setup_fixed_order_scheme`](@ref)), performs a warm-up step with
 that update, and adapts only that update's adaptive state.
 
 # Arguments
 - `rng`: Random number generator
 - `model_wrapper`: LogDensityModel containing the target log-density function
 - `sampler`: Composite differential evolution sampler
-- `state`: Current state with the composite adaptive state
+- `state`: Current state with the composite adaptive parameters
 
 # Keyword Arguments
 - `update_memory`: Whether to update the memory with new positions. Defaults to `true`.

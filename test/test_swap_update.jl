@@ -173,7 +173,7 @@
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, 1.0)
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, -0.1)
 
-        fixed_scheme = setup_fixed_order_composite(setup_de_update(), setup_snooker_update(); n = 3)
+        fixed_scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 3)
         fixed_with_swaps = DEM.add_swap_update(fixed_scheme, 2, true, 0.2)
         @test fixed_with_swaps.updates[1] === fixed_scheme
         @test fixed_with_swaps.updates[2] isa DEM.DifferentialEvolutionSwapSampler
