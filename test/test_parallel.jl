@@ -16,13 +16,14 @@ using Distributed
         ld = AbstractMCMC.LogDensityModel(EnsembleNormalModel([-5.0, 5.0, 1.0]))
         flat(chains) = [(s.x, s.ld) for chain in chains for s in chain]
         ensembles = (MCMCSerial(), MCMCThreads(), MCMCDistributed())
-        @testset "$scheme" for scheme in (:de, :de_snooker, :adaptive_subspace)
+        @testset "$scheme" for scheme in (:de, :de_snooker, :adaptive_subspace, :multi_try)
             sampler = scheme === :de ? setup_sampler_scheme(setup_de_update()) :
                 scheme === :de_snooker ? setup_sampler_scheme(setup_de_update(), setup_snooker_update()) :
                 setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update())
+            n_tries = scheme === :multi_try ? 3 : 1
             run(ensemble, parallel; kwargs...) = sample(
                 backwards_compat_rng(5), ld, sampler, ensemble, 100, 2;
-                parallel = parallel, n_chains = 8, num_warmup = 50, progress = false, silent = true, kwargs...
+                parallel = parallel, n_chains = 8, num_warmup = 50, n_tries = n_tries, progress = false, silent = true, kwargs...
             )
             reference = flat(run(MCMCSerial(), false))
             @testset "$(nameof(typeof(ensemble))) × parallel=$parallel" for ensemble in ensembles, parallel in (false, true)

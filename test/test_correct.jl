@@ -101,12 +101,14 @@
             d = LogDensityProblems.dimension(base_model),
             n_chains = memory ? 5 : d * 3,
             n_hot_chains = 0,
-            N₀ = memory ? max(10 * d - n_chains, n_chains + n_hot_chains) : 0
+            N₀ = memory ? max(10 * d - n_chains, n_chains + n_hot_chains) : 0,
+            n_tries = 1
         )
         #setup for model
         sample_kwargs = (
             memory = memory, N₀ = N₀, n_chains = n_chains, progress = false, adapt = false,
             chain_type = DifferentialEvolutionOutput, silent = true, n_hot_chains = n_hot_chains,
+            n_tries = n_tries,
         )
 
         #setup for checks
@@ -188,6 +190,8 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_tries = 3)
     end
     @testset "With memory" begin
         thinning = 4
@@ -195,6 +199,8 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, true; n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true; n_tries = 3)
     end
     @testset "With pt" begin
         thinning = 2
@@ -204,5 +210,7 @@
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains, n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains, n_tries = 3)
     end
 end

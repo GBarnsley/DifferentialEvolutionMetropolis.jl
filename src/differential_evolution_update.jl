@@ -79,20 +79,19 @@ function noise_checks(dist, name)
 end
 
 function proposal!(
-        state::DifferentialEvolutionState,
+        xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::DifferentialEvolutionSampler, current_state::Int
-    )
-    # Propose a new position.
+    ) where {V <: AbstractVector}
     x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂
-        state.xₚ[current_state] .= x₁
+        xₚ .= x₁
         return (offset = -Inf)
     else
         rng = state.rngs[current_state]
         (β,) = chain_buffers(sampler.scratch, eltype(x₁), current_state)
         γ = rand(rng, sampler.γ_spl)
         rand!(rng, sampler.β_spl, β)
-        state.xₚ[current_state] .= state.x[current_state] .+ (γ .* (x₁ .- x₂)) .+ β
+        xₚ .= x .+ (γ .* (x₁ .- x₂)) .+ β
         return (offset = zero(eltype(x₁)))
     end
 end
