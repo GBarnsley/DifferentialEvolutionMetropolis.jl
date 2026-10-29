@@ -35,7 +35,7 @@ function DME.convert(
     param_names = vcat(
         Parameter.(
             Symbol.(DME.generate_names(length(samples[1].x[1]))),
-        ), Extra("ld")
+        ), Extra(:ld)
     )
     sample_dicts = Array{Dict{Any, T}, 2}(undef, n_its, n_chains)
 

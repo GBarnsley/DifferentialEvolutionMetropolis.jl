@@ -45,9 +45,11 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test occursin("temperature:    none", text)
         @test occursin("memory:         8 stored positions (filled every iteration, grows when full)", text)
 
-        _, state = AbstractMCMC.step(
-            backwards_compat_rng(1), model, de; n_chains = 4, n_hot_chains = 2, memory = false
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING) do
+            AbstractMCMC.step(
+                backwards_compat_rng(1), model, de; n_chains = 4, n_hot_chains = 2, memory = false
+            )
+        end
         text = plain(state)
         @test occursin("chains:         6 (4 cold)", text)
         @test occursin("temperature:    parallel tempering (2 hot chains)", text)

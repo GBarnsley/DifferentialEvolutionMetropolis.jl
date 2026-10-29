@@ -38,11 +38,13 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
                 setup_hmc_update(NUTS(0.8); n_dims = length(μ)), setup_swap_update(); w = [0.5, 0.5]
             )
             rng = backwards_compat_rng(44)
-            _, state = AbstractMCMC.step(
-                rng, model, scheme;
-                n_chains = 3, n_hot_chains = 2, memory = true,
-                num_warmup = 20, silent = true
-            )
+            _, state = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+                AbstractMCMC.step(
+                    rng, model, scheme;
+                    n_chains = 3, n_hot_chains = 2, memory = true,
+                    num_warmup = 20, silent = true
+                )
+            end
             for _ in 1:10
                 p0 = state.memory.fill.position
                 draw, state = AbstractMCMC.step_warmup(

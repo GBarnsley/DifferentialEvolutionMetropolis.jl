@@ -12,10 +12,12 @@ LogDensityProblems.capabilities(::SwapCheckNormal) = LogDensityProblems.LogDensi
     function check_swap(sampler; n_chains = 6, n_hot_chains = 0, warmups = 4, posts = 4, seed = 1)
         rng = Xoshiro(seed)
         init = [randn(Xoshiro(i), 3) for i in 1:(n_chains + n_hot_chains)]
-        _, st = AbstractMCMC.step(
-            rng, model, sampler; n_chains, n_hot_chains,
-            num_warmup = warmups, memory = false, silent = true, initial_position = init
-        )
+        _, st = suppress_warnings(NO_SWAP_WARNING) do
+            AbstractMCMC.step(
+                rng, model, sampler; n_chains, n_hot_chains,
+                num_warmup = warmups, memory = false, silent = true, initial_position = init
+            )
+        end
         seen = Vector{Vector{Float64}}()
         for (stepfn, nsteps) in ((AbstractMCMC.step_warmup, warmups), (AbstractMCMC.step, posts))
             for _ in 1:nsteps
