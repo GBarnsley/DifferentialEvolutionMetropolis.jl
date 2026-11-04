@@ -19,15 +19,17 @@
             end
 
             if M < L
-                res = sample(
-                    rng,
-                    AbstractMCMC.LogDensityModel(base_model),
-                    update,
-                    L - M + 1;
-                    initial_position = initial_positions,
-                    thinning = thinning,
-                    sample_kwargs...
-                )
+                res = suppress_warnings(NO_SWAP_WARNING) do
+                    sample(
+                        rng,
+                        AbstractMCMC.LogDensityModel(base_model),
+                        update,
+                        L - M + 1;
+                        initial_position = initial_positions,
+                        thinning = thinning,
+                        sample_kwargs...
+                    )
+                end
                 complete_chain[M:L, :, 1:(end - 1)] .= res.samples
                 complete_chain[M:L, :, end] .= res.ld
             else
@@ -36,15 +38,17 @@
             end
 
             if M > 1
-                res = sample(
-                    rng,
-                    AbstractMCMC.LogDensityModel(base_model),
-                    update,
-                    M;
-                    initial_position = initial_positions,
-                    thinning = thinning,
-                    sample_kwargs...
-                )
+                res = suppress_warnings(NO_SWAP_WARNING) do
+                    sample(
+                        rng,
+                        AbstractMCMC.LogDensityModel(base_model),
+                        update,
+                        M;
+                        initial_position = initial_positions,
+                        thinning = thinning,
+                        sample_kwargs...
+                    )
+                end
                 #append but ignore the value at M, its already on there
                 if res.samples[1, :, :] != complete_chain[M, :, 1:(end - 1)]
                     error("Something went wrong with chaining the results together")

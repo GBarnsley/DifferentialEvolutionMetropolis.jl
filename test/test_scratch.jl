@@ -73,7 +73,9 @@
     @testset "a reused update resizes its buffers for more chains and dimensions" begin
         update = setup_subspace_sampling()
         rng = backwards_compat_rng(2)
-        _, state = AbstractMCMC.step(rng, model, update; n_chains = 4, memory = false)
+        _, state = suppress_warnings(r"In a memoryless model the number of chains") do
+            AbstractMCMC.step(rng, model, update; n_chains = 4, memory = false)
+        end
         _, state = AbstractMCMC.step(rng, model, update, state)
         @test all(length(buffer) == n_dims for buffers in update.scratch.buffers for buffer in buffers)
         larger = AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(8)))
@@ -87,7 +89,7 @@
     @testset "subspace proposals only change the selected dimensions" begin
         for (cr, expected) in ((1.0e-9, 1), (1.0, n_dims))
             update = setup_subspace_sampling(cr = cr)
-            state = initial_state(update)
+            state = suppress_warnings(() -> initial_state(update), FIXED_CROSSOVER_WARNING)
             DEM.prepare_scratch!(update, state)
             for _ in 1:20, i in eachindex(state.x)
                 DEM.proposal!(state.xₚ[i], state.x[i], state, update, i)

@@ -6,6 +6,8 @@ using Logging
 
 # Disable all @info messages globally
 disable_logging(Logging.Info)
+# Progress bars print one line per update in non-terminal logs such as CI
+AbstractMCMC.setprogress!(false; silent = true)
 
 function backwards_compat_rng(seed)
     if VERSION < v"1.7"
@@ -15,6 +17,32 @@ function backwards_compat_rng(seed)
     end
     return rng
 end
+
+const NO_SWAP_WARNING = r"Parallel tempering without a swap update"
+const MEMORY_HOT_CHAINS_WARNING = r"Memory-based samplers do not typically require hot chains"
+const SINGLE_WORKER_WARNING = r"Only a single (thread|process) available"
+const FIXED_CROSSOVER_WARNING = r"sampler already has a fixed crossover probability"
+
+struct WarningFilter{L <: AbstractLogger} <: AbstractLogger
+    logger::L
+    patterns::Vector{Regex}
+end
+Logging.min_enabled_level(f::WarningFilter) = Logging.min_enabled_level(f.logger)
+Logging.shouldlog(f::WarningFilter, args...) = Logging.shouldlog(f.logger, args...)
+Logging.catch_exceptions(f::WarningFilter) = Logging.catch_exceptions(f.logger)
+function Logging.handle_message(f::WarningFilter, level, message, args...; kwargs...)
+    level == Logging.Warn && any(p -> occursin(p, string(message)), f.patterns) && return nothing
+    return Logging.handle_message(f.logger, level, message, args...; kwargs...)
+end
+
+"""
+    suppress_warnings(f, patterns::Regex...)
+
+Run `f()` dropping only the warnings whose message matches one of `patterns`, for tests whose
+setup deliberately triggers a warning that is not under test. Other log messages pass through.
+"""
+suppress_warnings(f, patterns::Regex...) =
+    with_logger(f, WarningFilter(current_logger(), collect(patterns)))
 
 @testset "DifferentialEvolutionMetropolis.jl" begin
     @testset "Aqua" begin

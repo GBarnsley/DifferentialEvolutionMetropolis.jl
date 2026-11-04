@@ -3,12 +3,14 @@
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0]))
     swap = setup_swap_update()
     function swap_state(ladder; memory = false, sampler = setup_de_update(n_dims = 1))
-        _, state = AbstractMCMC.step(
-            backwards_compat_rng(1), model, sampler;
-            n_chains = 3, n_hot_chains = 2, temperature_ladder = ladder,
-            initial_position = [[10.0], [1.0], [2.0], [0.0], [3.0]],
-            memory = memory, adapt = false, silent = true
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                backwards_compat_rng(1), model, sampler;
+                n_chains = 3, n_hot_chains = 2, temperature_ladder = ladder,
+                initial_position = [[10.0], [1.0], [2.0], [0.0], [3.0]],
+                memory = memory, adapt = false, silent = true
+            )
+        end
         return state
     end
     # Which original chain's position each chain holds after a pass, compared by identity.
@@ -77,10 +79,12 @@
             _, s = AbstractMCMC.step(backwards_compat_rng(2), model, swap, s)
             @test s.x == x0
         end
-        _, s = AbstractMCMC.step(
-            backwards_compat_rng(1), model, swap;
-            n_chains = 3, memory = false, adapt = false, silent = true
-        )
+        _, s = suppress_warnings(r"no hot chains") do
+            AbstractMCMC.step(
+                backwards_compat_rng(1), model, swap;
+                n_chains = 3, memory = false, adapt = false, silent = true
+            )
+        end
         x0 = copy.(s.x)
         _, s = AbstractMCMC.step(backwards_compat_rng(2), model, swap, s)
         @test s.x == x0
@@ -123,11 +127,13 @@
     @testset "adaptive composite warmup advances annealing once" begin
         spl = setup_sampler_scheme(setup_subspace_sampling(), swap; w = [0.5, 0.5])
         schedule = [[3.0, 3.0, 3.0, 4.0, 5.0], [2.0, 2.0, 2.0, 3.0, 4.5], [1.0, 1.0, 1.0, 2.0, 4.0]]
-        _, s = AbstractMCMC.step(
-            backwards_compat_rng(3), model, spl;
-            n_chains = 3, n_hot_chains = 2, memory = true,
-            temperature_ladder = schedule, num_warmup = 5, silent = true
-        )
+        _, s = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                backwards_compat_rng(3), model, spl;
+                n_chains = 3, n_hot_chains = 2, memory = true,
+                temperature_ladder = schedule, num_warmup = 5, silent = true
+            )
+        end
         for k in 2:3
             p0 = s.memory.fill.position
             draw, s = AbstractMCMC.step_warmup(backwards_compat_rng(k), model, spl, s)

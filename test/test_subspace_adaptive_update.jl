@@ -211,10 +211,12 @@
         its = 100
         de_sampler = setup_subspace_sampling()
 
-        _, state = AbstractMCMC.step(
-            rng, AbstractMCMC.LogDensityModel(model), de_sampler;
-            adapt = true, n_chains = n_chains, n_hot_chains = n_hot_chains
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                rng, AbstractMCMC.LogDensityModel(model), de_sampler;
+                adapt = true, n_chains = n_chains, n_hot_chains = n_hot_chains
+            )
+        end
         for _ in 1:its
             _, state = AbstractMCMC.step_warmup(
                 rng, AbstractMCMC.LogDensityModel(model), de_sampler, state

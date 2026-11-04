@@ -91,29 +91,33 @@
         n_chains = 3
         n_warmup = 1000
         seed = 112
-        output1 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCThreads(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = false,
-            progress = false
-        )
+        output1 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCThreads(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = false,
+                progress = false
+            )
+        end
 
-        output2 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCThreads(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = true,
-            progress = false
-        )
+        output2 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCThreads(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = true,
+                progress = false
+            )
+        end
 
         equality_x = vcat(
             [
@@ -149,29 +153,33 @@
         n_chains = 3
         n_warmup = 1000
         seed = 112
-        output1 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCDistributed(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = false,
-            progress = false
-        )
+        output1 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCDistributed(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = false,
+                progress = false
+            )
+        end
 
-        output2 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCDistributed(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = true,
-            progress = false
-        )
+        output2 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCDistributed(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = true,
+                progress = false
+            )
+        end
 
         equality_x = vcat(
             [

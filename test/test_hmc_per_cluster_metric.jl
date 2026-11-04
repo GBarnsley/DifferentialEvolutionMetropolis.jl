@@ -262,11 +262,13 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
         scheme = setup_sampler_scheme(per_cluster_update())
-        _, state = AbstractMCMC.step(
-            rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
-            num_warmup = 50, memory = true, silent = true,
-            initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
+                num_warmup = 50, memory = true, silent = true,
+                initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
+            )
+        end
         @test state.temperature_ladder isa
             DifferentialEvolutionMetropolis.DifferentialEvolutionStaticTemperatureLadder
         @test_throws ErrorException AbstractMCMC.step_warmup(

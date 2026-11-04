@@ -11,7 +11,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
 **Run individual test files:** use the Julia MCP server (`mcp__julia__julia_eval`) with `env_path` set to `./test` (no `Project.toml` needed; deps resolve from the stacked global env).
-Mirror the `test/runtests.jl` preamble (`using` lines, `disable_logging(Logging.Info)`, `backwards_compat_rng`, the shared model structs), then `include` the file.
+Mirror the `test/runtests.jl` preamble (`using` lines, `disable_logging(Logging.Info)`, `setprogress!(false)`, `backwards_compat_rng`, the warning patterns and `suppress_warnings`, the shared model structs), then `include` the file.
 Include `test_hmc.jl` before other `test_hmc_*.jl` files, since it defines `CorrelatedGaussianModel` and `hmc_adaptive_state`.
 Do not create temp environments or runner scripts.
 
@@ -78,6 +78,7 @@ Default output is `DifferentialEvolutionOutput` (`samples[iter, chain, param]`, 
 ### Testing conventions
 
 - `test/runtests.jl` defines shared `IsotropicNormalModel` and `BendyBananaModel`; do not redefine them in individual files.
+- Keep the test log free of warnings: wrap setups that deliberately trigger a warning not under test in `suppress_warnings(f, patterns...)`, passing only the expected message patterns (e.g. `NO_SWAP_WARNING`).
 - `test_correct.jl` is a slow simulation-based rank-uniformity correctness test.
 - `Aqua.test_all` runs ambiguity/piracy checks.
 - Template/convergence tests run after `using MCMCDiagnosticTools, MCMCChains, FlexiChains`; earlier tests check behaviour without those extensions loaded.

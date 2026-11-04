@@ -172,8 +172,10 @@
         deMCzs(ld, 100; memory = false, β = Uniform(-1.0e-4, 1.0e-4))
     end
     @testset "DREAMz crossover and γ₂ weight types" begin
-        DREAMz(ld, 100; memory = false, γ₂ = 1, cr₁ = 0.5, cr₂ = Beta(2, 2))
-        DREAMz(ld, 100; memory = false, cr₁ = Uniform(0.1, 0.9), p_γ₂ = 1 // 5)
+        suppress_warnings(FIXED_CROSSOVER_WARNING) do
+            DREAMz(ld, 100; memory = false, γ₂ = 1, cr₁ = 0.5, cr₂ = Beta(2, 2))
+            DREAMz(ld, 100; memory = false, cr₁ = Uniform(0.1, 0.9), p_γ₂ = 1 // 5)
+        end
         @test_throws TypeError DREAMz(ld, 100; memory = false, p_γ₂ = nothing)
     end
     @testset "parallel" begin
