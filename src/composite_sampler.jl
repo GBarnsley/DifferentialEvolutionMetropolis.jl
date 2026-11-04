@@ -114,6 +114,8 @@ often it has been picked, not the total number of iterations. For updates `A`, `
 - `setup_random_order_scheme(setup_fixed_order_scheme(A, B), C)` alternates `A` and `B` on the iterations
   where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
+The cycle carries over from warm-up into sampling. [`fix_sampler_state`](@ref) restarts it from `main`.
+
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
 - `secondary`: The update run once at the end of each cycle.

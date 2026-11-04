@@ -302,7 +302,9 @@ Fix adaptive sampler parameters and return a corresponding non-adaptive state.
 
 Takes an adaptive sampler and state, fixes the sampler's adaptive parameters to their
 current values, and returns both the fixed sampler and a simplified state without
-adaptive components.
+adaptive components. Adaptive updates inside sampler schemes are fixed as well. A fixed order
+scheme ([`setup_fixed_order_scheme`](@ref)) keeps its cycle in the returned state, restarted
+from its first update.
 
 # Arguments
 - `sampler`: The differential evolution sampler (potentially adaptive)
@@ -310,7 +312,7 @@ adaptive components.
 
 # Returns
 - `fixed_sampler`: Sampler with adaptive parameters fixed to current values
-- `fixed_state`: State without adaptive components
+- `fixed_state`: State without adaptive components, apart from the cycle of any fixed order scheme
 
 # Example
 ```@example fix_sampler_state
