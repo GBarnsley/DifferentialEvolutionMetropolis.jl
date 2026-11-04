@@ -853,7 +853,7 @@ validate_metric_strategy(::DifferentialEvolutionPerClusterMetric, metric::Abstra
 validate_metric_state(::DifferentialEvolutionPerClusterMetric, state) =
     require_memory_untempered(state, "per_cluster_metric")
 
-# A cluster with fewer points than this falls back to the whole-archive (pooled) covariance: a
+# A cluster with fewer distinct points than this falls back to the whole-archive (pooled) covariance: a
 # diagonal estimate needs a couple of points, a dense one needs more than D so the D×D sample
 # covariance is full-rank rather than ridge-dominated.
 min_cluster_points(::AdvancedHMC.DiagEuclideanMetric) = 2
@@ -876,7 +876,7 @@ function per_cluster_inverse_metrics(ms::DifferentialEvolutionPerClusterMetric, 
     floor_pts = min_cluster_points(astate.metric)
     metrics = map(1:size(centers, 2)) do k
         pts = [positions[i] for i in eachindex(positions) if labels[i] == k]
-        src = length(pts) ≥ floor_pts ? pts : positions
+        src = length(unique(pts)) ≥ floor_pts ? pts : positions
         AdvancedHMC.renew(astate.metric, memory_inverse_metric(astate.metric, src, ms.shrinkage))
     end
     return metrics, centers
