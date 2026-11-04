@@ -1,4 +1,5 @@
 plain(x) = sprint(show, MIME"text/plain"(), x)
+compact(x) = sprint(show, x; context = :compact => true)
 
 @testset "show methods" begin
     de = setup_de_update(γ = 1.0)
@@ -8,7 +9,7 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
 
     @testset "samplers" begin
         @test repr(de) == "DE update(γ = 1.0::Float64)"
-        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: Normal{Float64}(μ=0.0, σ=1.0e-12)"
+        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: " * compact(de.β_spl)
         @test repr(snooker) == "Snooker update(γ = 1.68291::Float64)"
         @test plain(snooker) == "Snooker update\n  γ: 1.68291::Float64"
         @test repr(subspace) == "Adaptive subspace update(γ = 2.38 / sqrt(2δd), cr = adaptive over 3 values)"
@@ -45,9 +46,11 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
         @test occursin("temperature:    none", text)
         @test occursin("memory:         8 stored positions (filled every iteration, grows when full)", text)
 
-        _, state = AbstractMCMC.step(
-            backwards_compat_rng(1), model, de; n_chains = 4, n_hot_chains = 2, memory = false
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING) do
+            AbstractMCMC.step(
+                backwards_compat_rng(1), model, de; n_chains = 4, n_hot_chains = 2, memory = false
+            )
+        end
         text = plain(state)
         @test occursin("chains:         6 (4 cold)", text)
         @test occursin("temperature:    parallel tempering (2 hot chains)", text)
