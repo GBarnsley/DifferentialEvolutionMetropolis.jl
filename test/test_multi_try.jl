@@ -88,14 +88,17 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
     end
 
     @testset "weights" begin
-        lds = [0.0 -Inf; log(3.0) -Inf]
-        @test DEM.tempered_log_sum(lds, 1, 1.0) ≈ log(4.0)
-        @test DEM.tempered_log_sum(lds, 1, 2.0) ≈ log(1 + sqrt(3.0))
-        @test DEM.tempered_log_sum(lds, 2, 1.0) == -Inf
+        lds = [0.0, log(3.0)]
+        @test DEM.tempered_log_sum(lds, 1.0) ≈ log(4.0)
+        @test DEM.tempered_log_sum(lds, 2.0) ≈ log(1 + sqrt(3.0))
+        @test DEM.tempered_log_sum([-Inf, -Inf], 1.0) == -Inf
         @test DEM.log_add_exp(log(2.0), log(3.0)) ≈ log(5.0)
         @test DEM.log_add_exp(-Inf, -Inf) == -Inf
-        # weights that sum below one fall back to the last trial with a positive weight
-        @test DEM.select_trial(backwards_compat_rng(1), reshape([0.0, -Inf], 2, 1), 1, 1.0, 10.0) == 1
+        weights = zeros(3)
+        rng = backwards_compat_rng(1)
+        selected = [DEM.select_trial!(weights, rng, [0.0, -Inf, log(3.0)], 1.0, log(4.0)) for _ in 1:10_000]
+        @test !any(==(2), selected)
+        @test isapprox(mean(==(3), selected), 0.75; atol = 0.02)
     end
 
     @testset "Gaussian moments" begin

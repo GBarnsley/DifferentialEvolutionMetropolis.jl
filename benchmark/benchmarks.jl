@@ -202,16 +202,19 @@ multi_try_adaptive_states = Dict(
 )
 
 SUITE["MultiTry"] = BenchmarkGroup(["string"])
+# One evaluation per setup, as repeated steps from the same refill memory state are invalid
 for (state_name, multi_try_state) in multi_try_states, (update, name) in zip(multi_try_updates, multi_try_names)
     SUITE["MultiTry"]["$(state_name)/$(name)"] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $update, state),
-        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state)),
+        evals = 1
     )
 end
 for (state_name, multi_try_state) in multi_try_adaptive_states
     SUITE["MultiTry"]["Adaptive/$(state_name)/subspace_update"] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $subspace_update, state),
-        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state)),
+        evals = 1
     )
 end
 

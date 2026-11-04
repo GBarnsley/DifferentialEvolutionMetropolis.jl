@@ -1,27 +1,48 @@
-struct DifferentialEvolutionMetropolisMultiTryBuffers{T <: Real, V <: AbstractVector{T}}
+struct DifferentialEvolutionMetropolisMultiTryBuffers{
+        T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, WV <: SubArray{V, 1},
+    }
     forward::Array{V, 2}
     forward_ld::Array{T, 2}
     "crossover probability of each forward trial, for adaptive subspace warm-up"
     forward_cr::Array{T, 2}
+    "cumulative selection weights of the forward trials"
+    forward_weight::Array{T, 2}
     forward_log_weight::Vector{T}
     reference::Array{V, 2}
     reference_ld::Array{T, 2}
     "selected forward trial, 0 if every forward trial has zero weight"
     selected::Vector{Int}
+    "per-chain columns of the arrays above"
+    forward_view::Vector{WV}
+    forward_ld_view::Vector{W}
+    forward_weight_view::Vector{W}
+    reference_view::Vector{WV}
+    reference_ld_view::Vector{W}
 end
 
 function DifferentialEvolutionMetropolisMultiTryBuffers(
         x::AbstractVector{V}, n_tries::Int
     ) where {T <: Real, V <: AbstractVector{T}}
     n_chains = length(x)
+    forward = [similar(first(x)) for _ in 1:n_tries, _ in 1:n_chains]
+    forward_ld = Array{T, 2}(undef, n_tries, n_chains)
+    forward_weight = Array{T, 2}(undef, n_tries, n_chains)
+    reference = [similar(first(x)) for _ in 1:(n_tries - 1), _ in 1:n_chains]
+    reference_ld = Array{T, 2}(undef, n_tries - 1, n_chains)
     return DifferentialEvolutionMetropolisMultiTryBuffers(
-        [similar(first(x)) for _ in 1:n_tries, _ in 1:n_chains],
+        forward,
+        forward_ld,
         Array{T, 2}(undef, n_tries, n_chains),
-        Array{T, 2}(undef, n_tries, n_chains),
+        forward_weight,
         Vector{T}(undef, n_chains),
-        [similar(first(x)) for _ in 1:(n_tries - 1), _ in 1:n_chains],
-        Array{T, 2}(undef, n_tries - 1, n_chains),
-        zeros(Int, n_chains)
+        reference,
+        reference_ld,
+        zeros(Int, n_chains),
+        collect(eachcol(forward)),
+        collect(eachcol(forward_ld)),
+        collect(eachcol(forward_weight)),
+        collect(eachcol(reference)),
+        collect(eachcol(reference_ld))
     )
 end
 
@@ -48,18 +69,11 @@ end
 trial_cr(proposal) = NaN
 trial_cr(proposal::NamedTuple{(:offset, :cr)}) = proposal.cr
 
-# log Σⱼ exp(lds[j, i] / t)
-function tempered_log_sum(lds::Array{T, 2}, i::Int, t::Real) where {T <: Real}
-    m = lds[1, i]
-    for j in 2:size(lds, 1)
-        m = max(m, lds[j, i])
-    end
+# log Σ exp(lds / t)
+function tempered_log_sum(lds::AbstractVector{T}, t::Real) where {T <: Real}
+    m = maximum(lds)
     isfinite(m) || return m
-    s = zero(T)
-    for j in axes(lds, 1)
-        s += exp((lds[j, i] - m) / t)
-    end
-    return m / t + log(s)
+    return m / t + log(sum(ld -> exp((ld - m) / t), lds))
 end
 
 function log_add_exp(a::Real, b::Real)
@@ -68,17 +82,11 @@ function log_add_exp(a::Real, b::Real)
     return m + log(exp(a - m) + exp(b - m))
 end
 
-function select_trial(rng::AbstractRNG, lds::Array{T, 2}, i::Int, t::Real, log_weight::Real) where {T <: Real}
-    u = rand(rng)
-    for j in axes(lds, 1)
-        u -= exp(lds[j, i] / t - log_weight)
-        u < 0 && return j
-    end
-    j = size(lds, 1)
-    while lds[j, i] == -Inf
-        j -= 1
-    end
-    return j
+# Trials with zero weight cannot be selected as the cumulative weight does not increase at them
+function select_trial!(weights::AbstractVector{T}, rng::AbstractRNG, lds::AbstractVector{T}, t::Real, log_weight::Real) where {T <: Real}
+    weights .= exp.(lds ./ t .- log_weight)
+    cumsum!(weights, weights)
+    return findfirst(>(rand(rng) * last(weights)), weights)
 end
 
 function foreach_chain(f, n_chains::Int, parallel::Bool)
@@ -94,29 +102,25 @@ function foreach_chain(f, n_chains::Int, parallel::Bool)
     return nothing
 end
 
+trial_logdensity(model, x, ld) = ld > -Inf ? logdensity(model, x) : ld
+
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
 function evaluate_trials!(lds::Array{T, 2}, xs, model, chain_models, parallel::Bool) where {T <: Real}
     if parallel
         Threads.@threads for m in eachindex(xs)
-            if lds[m] > -Inf
-                lds[m] = logdensity(chain_models[m], xs[m])
-            end
+            lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
         end
     else
-        for m in eachindex(xs)
-            if lds[m] > -Inf
-                lds[m] = logdensity(model, xs[m])
-            end
-        end
+        lds .= trial_logdensity.(Ref(model), xs, lds)
     end
     return nothing
 end
 
 function propose_forward!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, state, sampler, i::Int)
-    for j in axes(buffers.forward, 1)
-        proposal = proposal!(buffers.forward[j, i], state.x[i], state, sampler, i)
-        offset, = proposal
-        buffers.forward_ld[j, i] = offset
+    forward_ld = buffers.forward_ld_view[i]
+    for (j, xₜ) in enumerate(buffers.forward_view[i])
+        proposal = proposal!(xₜ, state.x[i], state, sampler, i)
+        forward_ld[j], = proposal
         buffers.forward_cr[j, i] = trial_cr(proposal)
     end
     return nothing
@@ -124,21 +128,18 @@ end
 
 function propose_reference!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, state, sampler, i::Int)
     t = get_temperature(state.temperature_ladder, i)
-    log_weight = tempered_log_sum(buffers.forward_ld, i, t)
+    forward_ld = buffers.forward_ld_view[i]
+    log_weight = tempered_log_sum(forward_ld, t)
     buffers.forward_log_weight[i] = log_weight
     if log_weight == -Inf
         buffers.selected[i] = 0
-        for r in axes(buffers.reference, 1)
-            buffers.reference_ld[r, i] = -Inf
-        end
+        fill!(buffers.reference_ld_view[i], -Inf)
         return nothing
     end
-    j = select_trial(state.rngs[i], buffers.forward_ld, i, t, log_weight)
+    j = select_trial!(buffers.forward_weight_view[i], state.rngs[i], forward_ld, t, log_weight)
     buffers.selected[i] = j
-    for r in axes(buffers.reference, 1)
-        offset, = proposal!(buffers.reference[r, i], buffers.forward[j, i], state, sampler, i)
-        buffers.reference_ld[r, i] = offset
-    end
+    xⱼ = buffers.forward[j, i]
+    map!(xₜ -> first(proposal!(xₜ, xⱼ, state, sampler, i)), buffers.reference_ld_view[i], buffers.reference_view[i])
     return nothing
 end
 
@@ -146,7 +147,7 @@ function accept_trial!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, 
     j = buffers.selected[i]
     if j > 0
         t = get_temperature(state.temperature_ladder, i)
-        reference_log_weight = log_add_exp(tempered_log_sum(buffers.reference_ld, i, t), state.ld[i] / t)
+        reference_log_weight = log_add_exp(tempered_log_sum(buffers.reference_ld_view[i], t), state.ld[i] / t)
         if !(log(rand(state.rngs[i])) > buffers.forward_log_weight[i] - reference_log_weight)
             copyto!(state.xₚ[i], buffers.forward[j, i])
             state.ldₚ[i] = buffers.forward_ld[j, i]
