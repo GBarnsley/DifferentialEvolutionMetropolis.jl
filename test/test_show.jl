@@ -1,4 +1,5 @@
 plain(x) = sprint(show, MIME"text/plain"(), x)
+compact(x) = sprint(show, x; context = :compact => true)
 
 @testset "show methods" begin
     de = setup_de_update(γ = 1.0)
@@ -8,7 +9,7 @@ plain(x) = sprint(show, MIME"text/plain"(), x)
 
     @testset "samplers" begin
         @test repr(de) == "DE update(γ = 1.0::Float64)"
-        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: Normal{Float64}(μ=0.0, σ=1.0e-12)"
+        @test plain(de) == "Differential evolution update\n  γ: 1.0::Float64\n  β: " * compact(de.β_spl)
         @test repr(snooker) == "Snooker update(γ = 1.68291::Float64)"
         @test plain(snooker) == "Snooker update\n  γ: 1.68291::Float64"
         @test repr(subspace) == "Adaptive subspace update(γ = 2.38 / sqrt(2δd), cr = adaptive over 3 values)"
