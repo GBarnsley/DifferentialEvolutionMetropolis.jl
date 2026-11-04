@@ -177,7 +177,7 @@
         crs = [state.adaptive_state.cr_spl for state in states_noadapt]
         @test crs[1] == crs[end]
 
-        new_sampler, initial_state2 = fix_sampler_state(de_sampler, states[end])
+        new_sampler, initial_state2 = DifferentialEvolutionMetropolis.fix_sampler_state(de_sampler, states[end])
         states_noadapt = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
         states_noadapt[1] = initial_state2
         for i in 2:(its + 1)
