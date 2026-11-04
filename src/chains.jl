@@ -317,7 +317,7 @@ adaptive components.
 using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
-# fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
+# fixed_sampler, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(sampler, state)
 ```
 
 See also [`fix_sampler`](@ref).
