@@ -1,29 +1,29 @@
 @testset "Differential Evolution Update" begin
     @testset "deMC setup" begin
-        double_dist = setup_de_update(
-            γ = truncated(Normal(0.8, 1.2), lower = 0.0),
+        double_dist = setup_de_update(;
+            γ = truncated(Normal(0.8, 1.2); lower = 0.0),
             β = Uniform(-1.0e-4, 1.0e-4)
         )
         @test isa(double_dist.γ_spl, Truncated{Normal{Float64}})
         @test isa(double_dist.β_spl, Uniform)
-        @test double_dist == setup_de_update(
-            γ = truncated(Normal(0.8, 1.2), lower = 0.0),
+        @test double_dist == setup_de_update(;
+            γ = truncated(Normal(0.8, 1.2); lower = 0.0),
             β = Uniform(-1.0e-4, 1.0e-4),
             n_dims = 10
         )
 
-        single_dist = setup_de_update(
+        single_dist = setup_de_update(;
             γ = 0.5,
             β = Normal(0.0, 1.0e-4)
         )
         @test isa(single_dist.γ_spl, Dirac)
         @test isa(single_dist.β_spl, Distributions.Normal)
-        @test single_dist == setup_de_update(
+        @test single_dist == setup_de_update(;
             γ = 0.5,
             β = Normal(0.0, 1.0e-4),
             n_dims = 10
         )
-        det = setup_de_update(
+        det = setup_de_update(;
             n_dims = 10
         )
         @test isa(det.γ_spl, Dirac)
@@ -35,23 +35,23 @@
 
     @testset "deMC validation errors" begin
         # Test γ validation
-        @test_throws ErrorException setup_de_update(γ = -1.0)
-        @test_throws ErrorException setup_de_update(γ = 0.0)
-        @test_throws ErrorException setup_de_update(γ = Uniform(-1.0, 0.5))
-        @test_throws ErrorException setup_de_update(γ = truncated(Normal(0.0, 1.0), upper = 0.0))
+        @test_throws ErrorException setup_de_update(; γ = -1.0)
+        @test_throws ErrorException setup_de_update(; γ = 0.0)
+        @test_throws ErrorException setup_de_update(; γ = Uniform(-1.0, 0.5))
+        @test_throws ErrorException setup_de_update(; γ = truncated(Normal(0.0, 1.0); upper = 0.0))
 
         # Test β validation (noise should be centered around 0)
-        @test_throws ErrorException setup_de_update(β = Normal(1.0, 0.01))  # not centered at 0
-        @test_throws ErrorException setup_de_update(β = Uniform(0.0, 1.0))  # not centered at 0
-        @test_throws ErrorException setup_de_update(β = Gumbel(0, 1.0))  # not symmetric
+        @test_throws ErrorException setup_de_update(; β = Normal(1.0, 0.01))  # not centered at 0
+        @test_throws ErrorException setup_de_update(; β = Uniform(0.0, 1.0))  # not centered at 0
+        @test_throws ErrorException setup_de_update(; β = Gumbel(0, 1.0))  # not symmetric
 
         # Valid cases should not error
-        @test_nowarn setup_de_update(γ = 1.0, β = Normal(0.0, 0.01))
-        @test_nowarn setup_de_update(γ = Uniform(0.1, 2.0), β = Uniform(-0.01, 0.01))
+        @test_nowarn setup_de_update(; γ = 1.0, β = Normal(0.0, 0.01))
+        @test_nowarn setup_de_update(; γ = Uniform(0.1, 2.0), β = Uniform(-0.01, 0.01))
 
         # Disable checks should allow invalid distributions
-        @test_nowarn setup_de_update(γ = -1.0, check_args = false)
-        @test_nowarn setup_de_update(β = Normal(1.0, 0.01), check_args = false)
+        @test_nowarn setup_de_update(; γ = -1.0, check_args = false)
+        @test_nowarn setup_de_update(; β = Normal(1.0, 0.01), check_args = false)
     end
 
     @testset "Sample using regular deMC" begin
@@ -101,7 +101,7 @@
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])
 
-        de_sampler = setup_de_update(
+        de_sampler = setup_de_update(;
             n_dims = LogDensityProblems.dimension(model)
         )
 

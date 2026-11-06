@@ -4,7 +4,7 @@
 # inflation that defeats `memory_metric()` on separated modes. It gates on a cheap
 # multimodality test so it degrades to `memory_metric()` when the target is unimodal, and it
 # carries the same memory/no-tempering requirements. `CorrelatedGaussianModel`,
-# `hmc_adaptive_state`, and `backwards_compat_rng` come from test_hmc.jl / runtests.jl.
+# `hmc_adaptive_state`, and `backwards_compat_rng` come from hmc_setup.jl / setup.jl.
 
 using AdvancedHMC
 using ForwardDiff

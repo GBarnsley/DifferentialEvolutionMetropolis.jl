@@ -526,7 +526,7 @@ function step(
                 [
                     randn(rng, eltype(initial_position[1]), current_pars)
                         for _ in 1:(n_true_chains - current_N)
-                ],
+                ];
                 dims = 1
             )
         elseif memory

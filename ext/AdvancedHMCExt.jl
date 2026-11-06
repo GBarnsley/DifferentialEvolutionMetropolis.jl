@@ -447,10 +447,10 @@ function diagonal_inverse_metric(positions, shrinkage::Real)
     v̄ = sum(v) / D
     λ = T(shrinkage)
     if λ > 0
-        @. v = (1 - λ) * v + λ * v̄
+        v .= (1 .- λ) .* v .+ λ .* v̄
     end
     var_floor = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)
-    @. v = max(v, var_floor)
+    v = max.(v, var_floor)
     return v
 end
 
@@ -482,8 +482,8 @@ function dense_inverse_metric(positions, shrinkage::Real)
     v̄ /= D
     λ = T(shrinkage)
     if λ > 0
-        @. Σ *= (1 - λ)
-        @inbounds for i in 1:D
+        Σ .*= (1 .- λ)
+        for i in 1:D
             Σ[i, i] += λ * v̄
         end
     end

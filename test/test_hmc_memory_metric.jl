@@ -2,7 +2,7 @@
 # `memory_metric()` estimates the HMC mass matrix from the sampler's memory archive instead of
 # AdvancedHMC's windowed adaptor. It requires memory and is rejected under parallel tempering
 # (annealing is fine). `CorrelatedGaussianModel`, `hmc_adaptive_state`, and `backwards_compat_rng`
-# come from test_hmc.jl / runtests.jl.
+# come from hmc_setup.jl / setup.jl.
 
 using AdvancedHMC
 using ForwardDiff
