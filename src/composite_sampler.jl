@@ -114,8 +114,9 @@ often it has been picked, not the total number of iterations. For updates `A`, `
 - `setup_random_order_scheme(setup_fixed_order_scheme(A, B), C)` alternates `A` and `B` on the iterations
   where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
-The position in the cycle is stored in the scheme, so it carries over from warm-up into sampling,
-through [`fix_sampler_state`](@ref), and between calls to `sample` with the same scheme.
+The position in the cycle is stored in the scheme, so it carries over from warm-up into sampling
+and through [`fix_sampler_state`](@ref). Each call to `sample` restarts the cycle, unless it
+resumes from an `initial_state`.
 
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
@@ -201,6 +202,15 @@ function select_update!(::AbstractRNG, sampler::DifferentialEvolutionCompositeSa
     return update_id
 end
 
+# restart every fixed order cycle in a scheme, called when `sample` initialises
+reset_cycle!(::AbstractDifferentialEvolutionSampler) = nothing
+reset_cycle!(sampler::DifferentialEvolutionCompositeSamplerRandom) = foreach(reset_cycle!, sampler.updates)
+
+function reset_cycle!(sampler::DifferentialEvolutionCompositeSamplerFixedOrder)
+    sampler.iteration[] = 0
+    return foreach(reset_cycle!, sampler.updates)
+end
+
 # if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,
@@ -213,7 +223,31 @@ function step(
     ) where {T <: Real}
     sampler_id = select_update!(rng, sampler)
 
-    return step(rng, model_wrapper, sampler.updates[sampler_id], state; kwargs...)
+    return step_selected(sampler_id, sampler.updates, rng, model_wrapper, state; kwargs...)
+end
+
+# walk the tuple instead of indexing it, so each call sees a concrete update type
+function step_selected(
+        i::Int, updates::Tuple, rng::AbstractRNG, model_wrapper::LogDensityModel,
+        state::DifferentialEvolutionState; kwargs...
+    )
+    i == 1 && return step(rng, model_wrapper, first(updates), state; kwargs...)
+    return step_selected(i - 1, Base.tail(updates), rng, model_wrapper, state; kwargs...)
+end
+
+function step_warmup_selected(
+        i::Int, updates::Tuple, adaptive_states::Tuple, rng::AbstractRNG,
+        model_wrapper::LogDensityModel, state::DifferentialEvolutionState; kwargs...
+    )
+    if i == 1
+        substate = update_state(
+            state; adaptive_state = first(adaptive_states), temperature_ladder = state.temperature_ladder
+        )
+        return step_warmup(rng, model_wrapper, first(updates), substate; kwargs...)
+    end
+    return step_warmup_selected(
+        i - 1, Base.tail(updates), Base.tail(adaptive_states), rng, model_wrapper, state; kwargs...
+    )
 end
 
 #if there are adaptive states, we need to keep track of them
@@ -268,13 +302,8 @@ function step_warmup(
     ) where {T <: Real}
     sampler_id = select_update!(rng, sampler)
 
-    substate = update_state(
-        state; adaptive_state = state.adaptive_state.adaptive_states[sampler_id],
-        temperature_ladder = state.temperature_ladder
-    )
-
-    sample, new_substate = step_warmup(
-        rng, model_wrapper, sampler.updates[sampler_id], substate;
+    sample, new_substate = step_warmup_selected(
+        sampler_id, sampler.updates, state.adaptive_state.adaptive_states, rng, model_wrapper, state;
         update_memory = update_memory, kwargs...
     )
 

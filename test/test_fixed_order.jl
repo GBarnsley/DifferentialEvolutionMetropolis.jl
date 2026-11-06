@@ -136,6 +136,26 @@
         @test all(s -> all(x -> all(isfinite, x), s.x), samples)
     end
 
+    @testset "sample restarts the cycle" begin
+        inner = setup_fixed_order_scheme(still_update, setup_de_update(); n = 2)
+        scheme = setup_sampler_scheme(setup_fixed_order_scheme(inner, still_update), setup_snooker_update(); w = [1.0, 0.0])
+        draws(seed) = sample(backwards_compat_rng(seed), model, scheme, 7; num_warmup = 5, progress = false)
+        first_run = draws(42)
+        @test inner.iteration[] > 0
+        second_run = draws(42)
+        @test [s.x for s in first_run] == [s.x for s in second_run]
+
+        _, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; n_chains = 20, memory = false)
+        @test scheme.updates[1].iteration[] == 0
+        @test inner.iteration[] == 0
+
+        # resuming from a state keeps the position in the cycle
+        _, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme, state)
+        position = scheme.updates[1].iteration[] + inner.iteration[]
+        sample(backwards_compat_rng(1), model, scheme, 3; initial_state = state, progress = false)
+        @test scheme.updates[1].iteration[] + inner.iteration[] > position
+    end
+
     @testset "fix_sampler_state keeps the position in the cycle" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 2)
@@ -164,19 +184,22 @@
 
     @testset "Type stability (adapt = $adapt)" for adapt in (true, false)
         rng = backwards_compat_rng(1234)
+        de, snooker, subspace = setup_de_update, setup_snooker_update, setup_subspace_sampling
         schemes = [
-            setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling(); n = 2),
-            setup_sampler_scheme(setup_de_update(), setup_subspace_sampling(), setup_snooker_update()),
+            setup_fixed_order_scheme(de(), subspace(); n = 2),
+            setup_sampler_scheme(de(), subspace(), snooker()),
+            setup_fixed_order_scheme(
+                setup_fixed_order_scheme(de(), subspace()), setup_sampler_scheme(snooker(), subspace())
+            ),
+            setup_fixed_order_scheme(de(), setup_sampler_scheme(snooker(), subspace())),
+            setup_fixed_order_scheme(setup_fixed_order_scheme(de(), subspace()), snooker()),
+            setup_sampler_scheme(setup_fixed_order_scheme(de(), subspace()), snooker()),
+            setup_fixed_order_scheme(setup_fixed_order_scheme(de(), de()), de()),
+            setup_sampler_scheme(setup_sampler_scheme(de(), subspace()), snooker()),
+            setup_sampler_scheme(setup_sampler_scheme(de(), subspace()), setup_sampler_scheme(snooker(), subspace())),
+            setup_sampler_scheme(setup_sampler_scheme(de(), snooker()), setup_sampler_scheme(snooker(), de())),
+            setup_sampler_scheme(setup_sampler_scheme(de(), de()), de()),
         ]
-        # nested schemes are only inferred on Julia >= 1.12
-        if VERSION >= v"1.12"
-            push!(
-                schemes, setup_fixed_order_scheme(
-                    setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling()),
-                    setup_sampler_scheme(setup_snooker_update(), setup_subspace_sampling())
-                )
-            )
-        end
         for scheme in schemes
             _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 10, memory = false, adapt = adapt)
             @inferred AbstractMCMC.step(rng, model, scheme, state)

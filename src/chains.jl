@@ -472,6 +472,7 @@ function step(
         n_preallocated_indices::Int = 3,
         kwargs...
     )
+    reset_cycle!(sampler)
     model = model_wrapper.logdensity
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
