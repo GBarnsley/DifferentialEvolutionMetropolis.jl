@@ -1,23 +1,24 @@
-struct DifferentialEvolutionMetropolisMultiTryBuffers{
+# Mutable so the state holds a pointer to the buffers rather than storing their fields inline
+mutable struct DifferentialEvolutionMetropolisMultiTryBuffers{
         T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, WV <: SubArray{V, 1},
     }
-    forward::Array{V, 2}
-    forward_ld::Array{T, 2}
+    const forward::Array{V, 2}
+    const forward_ld::Array{T, 2}
     "crossover probability of each forward trial, for adaptive subspace warm-up"
-    forward_cr::Array{T, 2}
+    const forward_cr::Array{T, 2}
     "cumulative selection weights of the forward trials"
-    forward_weight::Array{T, 2}
-    forward_log_weight::Vector{T}
-    reference::Array{V, 2}
-    reference_ld::Array{T, 2}
+    const forward_weight::Array{T, 2}
+    const forward_log_weight::Vector{T}
+    const reference::Array{V, 2}
+    const reference_ld::Array{T, 2}
     "selected forward trial, 0 if every forward trial has zero weight"
-    selected::Vector{Int}
+    const selected::Vector{Int}
     "per-chain columns of the arrays above"
-    forward_view::Vector{WV}
-    forward_ld_view::Vector{W}
-    forward_weight_view::Vector{W}
-    reference_view::Vector{WV}
-    reference_ld_view::Vector{W}
+    const forward_view::Vector{WV}
+    const forward_ld_view::Vector{W}
+    const forward_weight_view::Vector{W}
+    const reference_view::Vector{WV}
+    const reference_ld_view::Vector{W}
 end
 
 function DifferentialEvolutionMetropolisMultiTryBuffers(

@@ -173,9 +173,10 @@ SUITE["annealing"]["swap_update"] = @benchmarkable(
 n_tries = 4
 multi_try_updates = (de_update, subspace_update)
 multi_try_names = ("de_update", "subspace_update")
+# A copy of rng so the other groups' benchmarks see the same random stream as on main
 multi_try_step(update; kwargs...) = last(
     AbstractMCMC.step(
-        rng, am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
+        copy(rng), am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
     )
 )
 multi_try_states = Dict(

@@ -66,5 +66,16 @@ function LogDensityProblems.logdensity(model::BendyBananaModel, x::AbstractVecto
 end
 LogDensityProblems.capabilities(model::BendyBananaModel) = LogDensityProblems.LogDensityOrder{0}()
 
+mutable struct CountingNormalModel
+    mean::Vector{Float64}
+    count::Int
+end
+LogDensityProblems.dimension(model::CountingNormalModel) = length(model.mean)
+function LogDensityProblems.logdensity(model::CountingNormalModel, x::AbstractVector{<:Real})
+    model.count += 1
+    return -sum(abs2, x .- model.mean) / 2
+end
+LogDensityProblems.capabilities(::CountingNormalModel) = LogDensityProblems.LogDensityOrder{0}()
+
 plain(x) = sprint(show, MIME"text/plain"(), x)
 compact(x) = sprint(show, x; context = :compact => true)

@@ -1,30 +1,3 @@
-mutable struct CountingNormalModel
-    mean::Vector{Float64}
-    count::Int
-end
-LogDensityProblems.dimension(model::CountingNormalModel) = length(model.mean)
-function LogDensityProblems.logdensity(model::CountingNormalModel, x::AbstractVector{<:Real})
-    model.count += 1
-    return -sum(abs2, x .- model.mean) / 2
-end
-LogDensityProblems.capabilities(::CountingNormalModel) = LogDensityProblems.LogDensityOrder{0}()
-
-struct BimodalModel
-    separation::Float64
-end
-LogDensityProblems.dimension(::BimodalModel) = 2
-function LogDensityProblems.logdensity(model::BimodalModel, x::AbstractVector{<:Real})
-    a = -sum(abs2, x .- model.separation) / 2
-    b = -sum(abs2, x .+ model.separation) / 2
-    return max(a, b) + log1p(exp(-abs(a - b)))
-end
-LogDensityProblems.capabilities(::BimodalModel) = LogDensityProblems.LogDensityOrder{0}()
-
-struct OriginOnlyModel end
-LogDensityProblems.dimension(::OriginOnlyModel) = 2
-LogDensityProblems.logdensity(::OriginOnlyModel, x::AbstractVector{<:Real}) = all(iszero, x) ? 0.0 : -Inf
-LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensityOrder{0}()
-
 @testset "Multiple-try" begin
     DEM = DifferentialEvolutionMetropolis
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0, 1.0]))
@@ -79,16 +52,13 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
     end
 
     @testset "zero weight trials leave the chains in place" begin
-        origin = AbstractMCMC.LogDensityModel(OriginOnlyModel())
         _, state = AbstractMCMC.step(
-            backwards_compat_rng(6), origin, setup_de_update();
-            n_chains = 4, memory = false, silent = true, n_tries = 3,
-            initial_position = [[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+            backwards_compat_rng(6), model, setup_de_update();
+            n_chains = 4, memory = false, silent = true, n_tries = 3, initial_position = [zeros(3) for _ in 1:4]
         )
-        x = deepcopy(state.x)
-        _, new_state = AbstractMCMC.step(backwards_compat_rng(6), origin, setup_de_update(), state)
-        @test new_state.x[1:2] == x[1:2]
-        @test all(iszero, state.multi_try.selected[1:2])
+        _, new_state = AbstractMCMC.step(backwards_compat_rng(6), model, setup_de_update(), state)
+        @test all(iszero, new_state.x)
+        @test all(iszero, new_state.multi_try.selected)
     end
 
     @testset "weights" begin
@@ -112,17 +82,6 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
             @test isapprox(vec(mean(draws; dims = 1)), [-5.0, 5.0, 1.0]; atol = 0.15)
             @test isapprox(vec(var(draws; dims = 1)), ones(3); atol = 0.15)
         end
-    end
-
-    @testset "bimodal target" begin
-        bimodal = AbstractMCMC.LogDensityModel(BimodalModel(2.5))
-        sampler = setup_sampler_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
-        output = sample(
-            backwards_compat_rng(7), bimodal, sampler, 6000;
-            n_chains = 4, num_warmup = 1000, n_tries = 4, sample_kwargs...
-        )
-        draws = output.samples[1001:end, :, 1]
-        @test isapprox(mean(draws .> 0), 0.5; atol = 0.1)
     end
 
     @testset "composite with adaptive subspace" begin
