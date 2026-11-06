@@ -47,12 +47,15 @@ function DifferentialEvolutionMetropolisMultiTryBuffers(
     )
 end
 
+multi_try_buffers(x, n_tries::Int) = n_tries > 1 ? DifferentialEvolutionMetropolisMultiTryBuffers(x, n_tries) : nothing
+
 n_tries(buffers::DifferentialEvolutionMetropolisMultiTryBuffers) = size(buffers.forward, 1)
+n_tries(::Nothing) = 1
 
 # Multiple-try weights are the target density, which is only valid for symmetric proposals
 supports_multi_try(::AbstractDifferentialEvolutionSampler) = false
 
-uses_multi_try(sampler, state) = supports_multi_try(sampler) && n_tries(state.multi_try) > 1
+uses_multi_try(sampler, state) = supports_multi_try(sampler) && !isnothing(state.multi_try)
 
 function check_n_tries(sampler::AbstractDifferentialEvolutionSampler, n_tries::Int)
     if n_tries < 1

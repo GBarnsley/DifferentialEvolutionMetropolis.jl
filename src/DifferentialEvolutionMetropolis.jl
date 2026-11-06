@@ -52,7 +52,7 @@ struct DifferentialEvolutionState{
     memory::M
     "per-chain model copies for thread-safe parallel logdensity evaluation"
     chain_models::Vector{Model}
-    "preallocated multiple-try trials, n_tries = 1 if multiple-try is disabled"
+    "preallocated multiple-try trials, `nothing` if multiple-try is disabled"
     multi_try::B
     "preallocated next position"
     xₚ::VV
@@ -101,7 +101,7 @@ function DifferentialEvolutionState(
         temperature_ladder,
         memory,
         chain_models,
-        DifferentialEvolutionMetropolisMultiTryBuffers(x, n_tries),
+        multi_try_buffers(x, n_tries),
         xₚ,
         ldₚ,
         x_smpl_view,

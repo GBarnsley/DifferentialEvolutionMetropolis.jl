@@ -7,7 +7,7 @@
     )
 
     @testset "setup" begin
-        @test DEM.n_tries(initial_state(setup_de_update()).multi_try) == 1
+        @test isnothing(initial_state(setup_de_update()).multi_try)
         state = suppress_warnings(NO_SWAP_WARNING) do
             initial_state(setup_subspace_sampling(); n_chains = 4, n_hot_chains = 2, memory = false, n_tries = 3)
         end
@@ -16,7 +16,7 @@
         @test size(state.multi_try.reference) == (2, 6)
         @test_throws ErrorException initial_state(setup_de_update(); n_tries = 0)
         state = @test_logs (:warn, r"n_tries > 1") initial_state(setup_snooker_update(); n_tries = 3)
-        @test DEM.n_tries(state.multi_try) == 1
+        @test isnothing(state.multi_try)
         @test length(state.chain_models) == length(state.x)
         scheme = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
         @test DEM.n_tries(initial_state(scheme; n_tries = 3).multi_try) == 3
