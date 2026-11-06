@@ -35,7 +35,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, O,
     }
     "current position"
     x::VV
@@ -60,6 +60,8 @@ struct DifferentialEvolutionState{
     ld_smpl_view::V2
     xₚ_smpl_view::V1
     ldₚ_smpl_view::V2
+    "position of each fixed order scheme in its cycle, `nothing` if the sampler has no fixed order scheme"
+    order_state::O
 end
 
 # Reseed a chain rng from `rng`, Xoshiro states are set directly as `seed!` allocates while hashing the seed
@@ -75,7 +77,8 @@ function DifferentialEvolutionState(
         adaptive_state::A,
         temperature_ladder::L,
         memory::M,
-        chain_models::Vector{Model}
+        chain_models::Vector{Model},
+        order_state
     ) where {
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
@@ -102,7 +105,8 @@ function DifferentialEvolutionState(
         x_smpl_view,
         ld_smpl_view,
         xₚ_smpl_view,
-        ldₚ_smpl_view
+        ldₚ_smpl_view,
+        order_state
     )
 end
 

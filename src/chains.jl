@@ -82,6 +82,7 @@ function _update_state(
         new_state::DifferentialEvolutionState{
             T, A2, L2, M2, V, VV, R, Model, V1, V2,
         },
+        order_state,
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
         A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
@@ -96,12 +97,12 @@ function _update_state(
     if is_enabled(swap_positions)
         #swap over x and xₚ for the next update
         return DifferentialEvolutionState(
-            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view
+            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view, order_state
         )
     else
         #already swapped elsewhere
         return DifferentialEvolutionState(
-            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view
+            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, order_state
         )
     end
 end
@@ -115,6 +116,7 @@ function update_state(
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
+        order_state = state.order_state,
         new_state::DifferentialEvolutionState{
             T, A2, L2, M2, V, VV, R, Model, V1, V2,
         } = state,
@@ -130,7 +132,7 @@ function update_state(
         V1 <: SubArray, V2 <: SubArray,
         R <: AbstractRNG, Model,
     }
-    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state)
+    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
 function update_state(
@@ -142,6 +144,7 @@ function update_state(
         adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
+        order_state = state.order_state,
         new_state::DifferentialEvolutionState{
             T, A2, L2, M2, V, VV, R, Model, V1, V2,
         } = state,
@@ -165,7 +168,7 @@ function update_state(
             memory = update_memory!!(memory, new_state.x)
         end
     end
-    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state)
+    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
 function update_chain!(model, state, offset, i)
@@ -472,7 +475,6 @@ function step(
         n_preallocated_indices::Int = 3,
         kwargs...
     )
-    reset_cycle!(sampler)
     model = model_wrapper.logdensity
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
@@ -642,7 +644,8 @@ function step(
     end
 
     state = DifferentialEvolutionState(
-        reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models
+        reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models,
+        initialize_order_state(sampler)
     )
 
     return create_sample(state), state

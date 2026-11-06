@@ -48,8 +48,9 @@
 
     @testset "Cycle order" begin
         scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 3)
-        @test [DEM.select_update!(backwards_compat_rng(1), scheme) for _ in 1:8] == [1, 1, 1, 2, 1, 1, 1, 2]
-        @test scheme.iteration[] == 8
+        order_state = DEM.initialize_order_state(scheme)
+        @test [DEM.select_update!(backwards_compat_rng(1), scheme, order_state) for _ in 1:8] == [1, 1, 1, 2, 1, 1, 1, 2]
+        @test order_state.iteration == 8
     end
 
     @testset "Chains only move on secondary iterations (adapt = $adapt)" for adapt in (true, false)
@@ -59,7 +60,7 @@
         @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveStatic
         moved, state = record_moves!(rng, scheme, state, 12; n_warmup = 6)
         @test moved == repeat([false, false, false, true], 3)
-        @test scheme.iteration[] == 12
+        @test state.order_state.iteration == 12
     end
 
     @testset "Adaptive updates only adapt when used" begin
@@ -112,7 +113,7 @@
         @test state.adaptive_state isa (adapt ? DEM.DifferentialEvolutionAdaptiveComposite : DEM.DifferentialEvolutionAdaptiveStatic)
         moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
         @test moved == [false, true, false, true, false, true]
-        @test inner_fixed.iteration[] == 6
+        @test state.order_state.order_states[1].iteration == 6
     end
 
     @testset "Nested fixed order schemes keep their own position" begin
@@ -123,8 +124,8 @@
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
         moved, state = record_moves!(rng, scheme, state, 9; n_warmup = 4)
         @test moved == repeat([false, true, false], 3)
-        @test scheme.iteration[] == 9
-        @test inner.iteration[] == 6
+        @test state.order_state.iteration == 9
+        @test state.order_state.order_states[1].iteration == 6
 
         outer_fixed = setup_fixed_order_scheme(
             setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling(); n = 2),
@@ -136,24 +137,21 @@
         @test all(s -> all(x -> all(isfinite, x), s.x), samples)
     end
 
-    @testset "sample restarts the cycle" begin
+    @testset "Each sample call starts a new cycle" begin
         inner = setup_fixed_order_scheme(still_update, setup_de_update(); n = 2)
         scheme = setup_sampler_scheme(setup_fixed_order_scheme(inner, still_update), setup_snooker_update(); w = [1.0, 0.0])
         draws(seed) = sample(backwards_compat_rng(seed), model, scheme, 7; num_warmup = 5, progress = false)
-        first_run = draws(42)
-        @test inner.iteration[] > 0
-        second_run = draws(42)
-        @test [s.x for s in first_run] == [s.x for s in second_run]
+        @test [s.x for s in draws(42)] == [s.x for s in draws(42)]
 
         _, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; n_chains = 20, memory = false)
-        @test scheme.updates[1].iteration[] == 0
-        @test inner.iteration[] == 0
+        fixed_order_state = state.order_state.order_states[1]
+        @test fixed_order_state.iteration == 0
+        @test fixed_order_state.order_states[1].iteration == 0
 
         # resuming from a state keeps the position in the cycle
         _, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme, state)
-        position = scheme.updates[1].iteration[] + inner.iteration[]
         sample(backwards_compat_rng(1), model, scheme, 3; initial_state = state, progress = false)
-        @test scheme.updates[1].iteration[] + inner.iteration[] > position
+        @test fixed_order_state.iteration == 4
     end
 
     @testset "fix_sampler_state keeps the position in the cycle" begin
@@ -162,7 +160,7 @@
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
         _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
-        @test fixed_scheme.iteration === scheme.iteration
+        @test fixed_state.order_state === state.order_state
         @test fixed_state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveStatic
         moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 3)
         @test moved == [false, true, false]

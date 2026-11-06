@@ -114,9 +114,9 @@ often it has been picked, not the total number of iterations. For updates `A`, `
 - `setup_random_order_scheme(setup_fixed_order_scheme(A, B), C)` alternates `A` and `B` on the iterations
   where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
-The position in the cycle is stored in the scheme, so it carries over from warm-up into sampling
-and through [`fix_sampler_state`](@ref). Each call to `sample` restarts the cycle, unless it
-resumes from an `initial_state`.
+The position in the cycle is stored in the sampler state, so it carries over from warm-up into
+sampling and through [`fix_sampler_state`](@ref). Each call to `sample` starts a new cycle, unless
+it resumes from an `initial_state`.
 
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
@@ -151,7 +151,7 @@ function setup_fixed_order_scheme(
         secondary::AbstractDifferentialEvolutionSampler;
         n::Integer = 1
     )
-    return DifferentialEvolutionCompositeSamplerFixedOrder((main, secondary), Int(n), Ref(0))
+    return DifferentialEvolutionCompositeSamplerFixedOrder((main, secondary), Int(n))
 end
 
 struct DifferentialEvolutionCompositeSamplerRandom{
@@ -177,15 +177,11 @@ struct DifferentialEvolutionCompositeSamplerFixedOrder{
     } <: AbstractDifferentialEvolutionSampler
     updates::S
     n::Int
-    "number of times this scheme has been stepped, shared with its fixed copies"
-    iteration::Base.RefValue{Int}
-    function DifferentialEvolutionCompositeSamplerFixedOrder(
-            updates::S, n::Int, iteration::Base.RefValue{Int}
-        ) where {S}
+    function DifferentialEvolutionCompositeSamplerFixedOrder(updates::S, n::Int) where {S}
         if n < 1
             error("n must be at least 1")
         end
-        return new{S}(updates, n, iteration)
+        return new{S}(updates, n)
     end
 end
 
@@ -193,22 +189,45 @@ const DifferentialEvolutionCompositeSampler = Union{
     DifferentialEvolutionCompositeSamplerRandom, DifferentialEvolutionCompositeSamplerFixedOrder,
 }
 
-select_update!(rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom) =
-    wsample(rng, sampler.update_weights)
-
-function select_update!(::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerFixedOrder)
-    update_id = rem(sampler.iteration[], sampler.n + 1) < sampler.n ? 1 : 2
-    sampler.iteration[] += 1
-    return update_id
+mutable struct DifferentialEvolutionOrderState{S <: Tuple}
+    "number of times a fixed order scheme has been stepped, unused by random order schemes"
+    iteration::Int
+    "order states of the scheme's updates"
+    order_states::S
 end
 
-# restart every fixed order cycle in a scheme, called when `sample` initialises
-reset_cycle!(::AbstractDifferentialEvolutionSampler) = nothing
-reset_cycle!(sampler::DifferentialEvolutionCompositeSamplerRandom) = foreach(reset_cycle!, sampler.updates)
+# `nothing` unless the sampler contains a fixed order scheme
+initialize_order_state(::AbstractDifferentialEvolutionSampler) = nothing
+initialize_order_state(sampler::DifferentialEvolutionCompositeSamplerFixedOrder) =
+    DifferentialEvolutionOrderState(0, map(initialize_order_state, sampler.updates))
 
-function reset_cycle!(sampler::DifferentialEvolutionCompositeSamplerFixedOrder)
-    sampler.iteration[] = 0
-    return foreach(reset_cycle!, sampler.updates)
+function initialize_order_state(sampler::DifferentialEvolutionCompositeSamplerRandom)
+    order_states = map(initialize_order_state, sampler.updates)
+    return all(isnothing, order_states) ? nothing : DifferentialEvolutionOrderState(0, order_states)
+end
+
+inner_order_states(::Nothing, sampler::DifferentialEvolutionCompositeSampler) = map(_ -> nothing, sampler.updates)
+inner_order_states(order_state::DifferentialEvolutionOrderState, ::DifferentialEvolutionCompositeSampler) =
+    order_state.order_states
+
+# the same state with its order state replaced, used to pass a nested scheme its own position
+function with_order_state(state::DifferentialEvolutionState, order_state)
+    return DifferentialEvolutionState(
+        state.x, state.ld, state.rngs, state.adaptive_state, state.temperature_ladder, state.memory,
+        state.chain_models, state.xₚ, state.ldₚ, state.x_smpl_view, state.ld_smpl_view,
+        state.xₚ_smpl_view, state.ldₚ_smpl_view, order_state
+    )
+end
+
+select_update!(rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom, order_state) =
+    wsample(rng, sampler.update_weights)
+
+function select_update!(
+        ::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerFixedOrder, order_state::DifferentialEvolutionOrderState
+    )
+    update_id = rem(order_state.iteration, sampler.n + 1) < sampler.n ? 1 : 2
+    order_state.iteration += 1
+    return update_id
 end
 
 # if there are no actually adaptive states, we can just use the static one
@@ -221,32 +240,42 @@ function step(
         };
         kwargs...
     ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler)
+    order_state = state.order_state
+    sampler_id = select_update!(rng, sampler, order_state)
 
-    return step_selected(sampler_id, sampler.updates, rng, model_wrapper, state; kwargs...)
+    sample, new_substate = step_selected(
+        sampler_id, sampler.updates, inner_order_states(order_state, sampler), rng, model_wrapper, state; kwargs...
+    )
+    return sample, with_order_state(new_substate, order_state)
 end
 
-# walk the tuple instead of indexing it, so each call sees a concrete update type
+# walk the tuples instead of indexing them, so each call sees a concrete update type
 function step_selected(
-        i::Int, updates::Tuple, rng::AbstractRNG, model_wrapper::LogDensityModel,
+        i::Int, updates::Tuple, order_states::Tuple, rng::AbstractRNG, model_wrapper::LogDensityModel,
         state::DifferentialEvolutionState; kwargs...
     )
-    i == 1 && return step(rng, model_wrapper, first(updates), state; kwargs...)
-    return step_selected(i - 1, Base.tail(updates), rng, model_wrapper, state; kwargs...)
+    if i == 1
+        return step(rng, model_wrapper, first(updates), with_order_state(state, first(order_states)); kwargs...)
+    end
+    return step_selected(
+        i - 1, Base.tail(updates), Base.tail(order_states), rng, model_wrapper, state; kwargs...
+    )
 end
 
 function step_warmup_selected(
-        i::Int, updates::Tuple, adaptive_states::Tuple, rng::AbstractRNG,
+        i::Int, updates::Tuple, adaptive_states::Tuple, order_states::Tuple, rng::AbstractRNG,
         model_wrapper::LogDensityModel, state::DifferentialEvolutionState; kwargs...
     )
     if i == 1
         substate = update_state(
-            state; adaptive_state = first(adaptive_states), temperature_ladder = state.temperature_ladder
+            state; adaptive_state = first(adaptive_states), order_state = first(order_states),
+            temperature_ladder = state.temperature_ladder
         )
         return step_warmup(rng, model_wrapper, first(updates), substate; kwargs...)
     end
     return step_warmup_selected(
-        i - 1, Base.tail(updates), Base.tail(adaptive_states), rng, model_wrapper, state; kwargs...
+        i - 1, Base.tail(updates), Base.tail(adaptive_states), Base.tail(order_states),
+        rng, model_wrapper, state; kwargs...
     )
 end
 
@@ -300,11 +329,11 @@ function step_warmup(
         update_memory::Bool = true,
         kwargs...
     ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler)
+    sampler_id = select_update!(rng, sampler, state.order_state)
 
     sample, new_substate = step_warmup_selected(
-        sampler_id, sampler.updates, state.adaptive_state.adaptive_states, rng, model_wrapper, state;
-        update_memory = update_memory, kwargs...
+        sampler_id, sampler.updates, state.adaptive_state.adaptive_states, inner_order_states(state.order_state, sampler),
+        rng, model_wrapper, state; update_memory = update_memory, kwargs...
     )
 
     return sample,
@@ -330,7 +359,7 @@ function fix_sampler(
         adaptive_state::DifferentialEvolutionAdaptiveComposite
     )
     return DifferentialEvolutionCompositeSamplerFixedOrder(
-        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n, sampler.iteration
+        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n
     )
 end
 
