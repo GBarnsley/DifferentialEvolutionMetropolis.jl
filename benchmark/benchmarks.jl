@@ -178,7 +178,7 @@ multi_try_step(update; kwargs...) = last(
         rng, am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
     )
 )
-# Steps until the memory refills, as stepping a filling-memory state more than once is invalid
+# Steps into refill mode, as evaluations that discard a fill-to-refill switch leave the setup state at position 0
 function refill_mode(state)
     while !(state.memory isa DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryRefill)
         state = last(AbstractMCMC.step_warmup(rng, am_model, de_update, state))

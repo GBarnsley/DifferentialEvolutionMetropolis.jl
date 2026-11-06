@@ -50,9 +50,6 @@ n_tries(buffers::DifferentialEvolutionMetropolisMultiTryBuffers) = size(buffers.
 
 # Multiple-try weights are the target density, which is only valid for symmetric proposals
 supports_multi_try(::AbstractDifferentialEvolutionSampler) = false
-supports_multi_try(::DifferentialEvolutionSampler) = true
-supports_multi_try(::AbstractDifferentialEvolutionSubspaceSampler) = true
-supports_multi_try(s::DifferentialEvolutionCompositeSampler) = any(supports_multi_try, s.updates)
 
 uses_multi_try(sampler, state) = supports_multi_try(sampler) && n_tries(state.multi_try) > 1
 

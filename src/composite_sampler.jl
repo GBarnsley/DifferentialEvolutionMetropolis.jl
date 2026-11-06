@@ -58,6 +58,8 @@ struct DifferentialEvolutionCompositeSampler{
     end
 end
 
+supports_multi_try(s::DifferentialEvolutionCompositeSampler) = any(supports_multi_try, s.updates)
+
 # if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,

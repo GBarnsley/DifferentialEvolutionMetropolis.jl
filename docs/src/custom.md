@@ -93,7 +93,7 @@ function proposal!(
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
-The function should write the proposed position into `xₚ` (proposing from `x`, not `state.x[current_state]`) and return a named tuple with at least `(offset = hastings_correction)` where:
+The function should write the proposed position into `xₚ` (proposing from `x`) and return a named tuple with at least `(offset = hastings_correction)` where:
 
 - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 

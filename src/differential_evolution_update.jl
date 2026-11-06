@@ -9,6 +9,8 @@ end
 
 prepare_scratch!(sampler::DifferentialEvolutionSampler, state) = prepare_scratch!(sampler.scratch, state)
 
+supports_multi_try(::DifferentialEvolutionSampler) = true
+
 """
 Set up a Differential Evolution (DE) update step for MCMC sampling.
 

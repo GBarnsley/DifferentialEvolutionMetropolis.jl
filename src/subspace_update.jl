@@ -185,6 +185,8 @@ Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support &&
 
 prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
 
+supports_multi_try(::AbstractDifferentialEvolutionSubspaceSampler) = true
+
 function proposal!(
         xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
