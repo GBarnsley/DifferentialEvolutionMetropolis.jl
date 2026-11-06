@@ -175,18 +175,18 @@ function add_swap_update(
         @warn "use_parallel_tempering_swaps = true but parallel_tempering_swap_probability = 0, disabling swaps."
         return sampler_scheme
     end
-    return append_swap_update(sampler_scheme, Float64(parallel_tempering_swap_probability))
+    return append_swap_update(sampler_scheme, parallel_tempering_swap_probability)
 end
 
-function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerRandom, p::Float64)
+function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerRandom, p::Real)
     w = sampler_scheme.update_weights
     return setup_random_order_scheme(
         sampler_scheme.updates..., setup_swap_update();
-        w = [Float64.(w) .* ((1 - p) / sum(w)); p]
+        w = [w .* ((1 - p) / sum(w)); p]
     )
 end
 
-function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerFixedOrder, p::Float64)
+function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerFixedOrder, p::Real)
     return setup_random_order_scheme(sampler_scheme, setup_swap_update(); w = [1 - p, p])
 end
 

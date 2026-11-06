@@ -14,8 +14,8 @@ how nested schemes select their updates.
   like [`setup_de_update`](@ref), [`setup_snooker_update`](@ref), [`setup_subspace_sampling`](@ref).
 
 # Keyword Arguments
-- `w`: Vector of weights for each update step, or an integer representing the number of first updates: a single second update (requires two updates).
-  Defaults to equal weights.
+- `w`: Vector of weights for each update step, or an integer representing the number of first updates for each update using the second update.
+  Defaults to equal weights for random updates.
 
 # Returns
 - A `DifferentialEvolutionCompositeSampler` that can be used with `AbstractMCMC.sample`.
@@ -114,8 +114,8 @@ often it has been picked, not the total number of iterations. For updates `A`, `
 - `setup_random_order_scheme(setup_fixed_order_scheme(A, B), C)` alternates `A` and `B` on the iterations
   where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
-The cycle carries over from warm-up into sampling. [`fix_sampler_state`](@ref) resets it to the
-start of a new cycle, so the next update is the first of the `n` iterations of the `main` argument.
+The position in the cycle is stored in the scheme, so it carries over from warm-up into sampling,
+through [`fix_sampler_state`](@ref), and between calls to `sample` with the same scheme.
 
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
@@ -150,7 +150,7 @@ function setup_fixed_order_scheme(
         secondary::AbstractDifferentialEvolutionSampler;
         n::Integer = 1
     )
-    return DifferentialEvolutionCompositeSamplerFixedOrder((main, secondary), Int(n))
+    return DifferentialEvolutionCompositeSamplerFixedOrder((main, secondary), Int(n), Ref(0))
 end
 
 struct DifferentialEvolutionCompositeSamplerRandom{
@@ -176,11 +176,15 @@ struct DifferentialEvolutionCompositeSamplerFixedOrder{
     } <: AbstractDifferentialEvolutionSampler
     updates::S
     n::Int
-    function DifferentialEvolutionCompositeSamplerFixedOrder(updates::S, n::Int) where {S}
+    "number of times this scheme has been stepped, shared with its fixed copies"
+    iteration::Base.RefValue{Int}
+    function DifferentialEvolutionCompositeSamplerFixedOrder(
+            updates::S, n::Int, iteration::Base.RefValue{Int}
+        ) where {S}
         if n < 1
             error("n must be at least 1")
         end
-        return new{S}(updates, n)
+        return new{S}(updates, n, iteration)
     end
 end
 
@@ -188,104 +192,44 @@ const DifferentialEvolutionCompositeSampler = Union{
     DifferentialEvolutionCompositeSamplerRandom, DifferentialEvolutionCompositeSamplerFixedOrder,
 }
 
-function select_update!(
-        rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom,
-        ::AbstractDifferentialEvolutionAdaptiveState
-    )
-    return wsample(rng, sampler.update_weights)
+select_update!(rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom) =
+    wsample(rng, sampler.update_weights)
+
+function select_update!(::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerFixedOrder)
+    update_id = rem(sampler.iteration[], sampler.n + 1) < sampler.n ? 1 : 2
+    sampler.iteration[] += 1
+    return update_id
 end
 
 # if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::DifferentialEvolutionCompositeSamplerRandom,
+        sampler::DifferentialEvolutionCompositeSampler,
         state::DifferentialEvolutionState{
             T, DifferentialEvolutionAdaptiveStatic{T},
         };
         kwargs...
     ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler, state.adaptive_state)
+    sampler_id = select_update!(rng, sampler)
 
     return step(rng, model_wrapper, sampler.updates[sampler_id], state; kwargs...)
 end
 
-#if there are adaptive states (or a fixed order), we need to keep track of them
-mutable struct DifferentialEvolutionAdaptiveComposite{
+#if there are adaptive states, we need to keep track of them
+struct DifferentialEvolutionAdaptiveComposite{
         T <: Real,
-        A <: Tuple{ #compat for <1.12
+        # at least one state, otherwise `T` is unbound on Julia < 1.12 (Aqua unbound_args)
+        A <: Tuple{
             AbstractDifferentialEvolutionAdaptiveState{T},
             Vararg{AbstractDifferentialEvolutionAdaptiveState{T}},
         },
-        I <: Union{Int, Nothing},
     } <: AbstractDifferentialEvolutionAdaptiveState{T}
-    const adaptive_states::A
-    "number of completed iterations, used by fixed order schemes to find their position in the cycle, `nothing` for random order schemes"
-    iteration::I
+
+    adaptive_states::A
 end
 
-function DifferentialEvolutionAdaptiveComposite{T}(adaptive_states::A, iteration::I) where {T <: Real, A, I}
-    return DifferentialEvolutionAdaptiveComposite{T, A, I}(adaptive_states, iteration)
-end
-
-function select_update!(
-        ::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerFixedOrder,
-        adaptive_state::DifferentialEvolutionAdaptiveComposite
-    )
-    update_id = rem(adaptive_state.iteration, sampler.n + 1) < sampler.n ? 1 : 2
-    adaptive_state.iteration += 1
-    return update_id
-end
-
-# Steps the `i`th update with its own adaptive state, recursing over the tuples so the update has a concrete type
-function apply_update(
-        step_function, i::Int, updates::Tuple, adaptive_states::Tuple,
-        rng::AbstractRNG, model_wrapper::LogDensityModel, state::DifferentialEvolutionState;
-        update_memory::Bool, kwargs...
-    )
-    if i > 1
-        return apply_update(
-            step_function, i - 1, Base.tail(updates), Base.tail(adaptive_states),
-            rng, model_wrapper, state; update_memory = update_memory, kwargs...
-        )
-    end
-
-    substate = update_state(state; adaptive_state = first(adaptive_states), temperature_ladder = state.temperature_ladder)
-
-    sample,
-        new_substate = step_function(
-        rng, model_wrapper, first(updates), substate;
-        update_memory = update_memory, kwargs...
-    )
-
-    return sample,
-        update_state(
-            state; new_state = new_substate,
-            update_memory = false,
-            memory = new_substate.memory,
-            temperature_ladder = new_substate.temperature_ladder
-        )
-end
-
-# the selected update is given its own adaptive state, so nested schemes and adaptive updates keep their progress
-function step(
-        rng::AbstractRNG,
-        model_wrapper::LogDensityModel,
-        sampler::DifferentialEvolutionCompositeSampler,
-        state::DifferentialEvolutionState{
-            T, <:DifferentialEvolutionAdaptiveComposite{T},
-        };
-        update_memory::Bool = true,
-        kwargs...
-    ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler, state.adaptive_state)
-
-    return apply_update(
-        step, sampler_id, sampler.updates, state.adaptive_state.adaptive_states,
-        rng, model_wrapper, state; update_memory = update_memory, kwargs...
-    )
-end
-
+# also need to update the adaptive state
 """
     step_warmup(rng, model_wrapper, sampler, state; kwargs...)
 
@@ -322,12 +266,25 @@ function step_warmup(
         update_memory::Bool = true,
         kwargs...
     ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler, state.adaptive_state)
+    sampler_id = select_update!(rng, sampler)
 
-    return apply_update(
-        step_warmup, sampler_id, sampler.updates, state.adaptive_state.adaptive_states,
-        rng, model_wrapper, state; update_memory = update_memory, kwargs...
+    substate = update_state(
+        state; adaptive_state = state.adaptive_state.adaptive_states[sampler_id],
+        temperature_ladder = state.temperature_ladder
     )
+
+    sample, new_substate = step_warmup(
+        rng, model_wrapper, sampler.updates[sampler_id], substate;
+        update_memory = update_memory, kwargs...
+    )
+
+    return sample,
+        update_state(
+            state; new_state = new_substate,
+            update_memory = false,
+            memory = new_substate.memory,
+            temperature_ladder = new_substate.temperature_ladder
+        )
 end
 
 function fix_sampler(
@@ -344,7 +301,7 @@ function fix_sampler(
         adaptive_state::DifferentialEvolutionAdaptiveComposite
     )
     return DifferentialEvolutionCompositeSamplerFixedOrder(
-        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n
+        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n, sampler.iteration
     )
 end
 
@@ -353,30 +310,12 @@ function initialize_adaptive_state(
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
     ) where {T <: Real}
     adaptive_states = map(s -> initialize_adaptive_state(s, model_wrapper, n_chains, T), sampler.updates)
-    return composite_adaptive_state(sampler, adaptive_states, T)
-end
 
-function initialize_nonadaptive_state(
-        sampler::DifferentialEvolutionCompositeSampler, ::Type{T}
-    ) where {T <: Real}
-    return composite_adaptive_state(sampler, map(s -> initialize_nonadaptive_state(s, T), sampler.updates), T)
-end
-
-# A random order scheme only needs to track its updates' states if any of them are not static
-function composite_adaptive_state(
-        ::DifferentialEvolutionCompositeSamplerRandom, adaptive_states::Tuple, ::Type{T}
-    ) where {T <: Real}
     if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
         return DifferentialEvolutionAdaptiveStatic{T}()
     else
-        return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states, nothing)
+        return DifferentialEvolutionAdaptiveComposite{T, typeof(adaptive_states)}(adaptive_states)
     end
-end
-
-function composite_adaptive_state(
-        ::DifferentialEvolutionCompositeSamplerFixedOrder, adaptive_states::Tuple, ::Type{T}
-    ) where {T <: Real}
-    return DifferentialEvolutionAdaptiveComposite{T}(adaptive_states, 0)
 end
 
 chains_required(s::DifferentialEvolutionCompositeSampler) = maximum(chains_required, s.updates)

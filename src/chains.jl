@@ -302,9 +302,7 @@ Fix adaptive sampler parameters and return a corresponding non-adaptive state.
 
 Takes an adaptive sampler and state, fixes the sampler's adaptive parameters to their
 current values, and returns both the fixed sampler and a simplified state without
-adaptive components. Adaptive updates inside sampler schemes are fixed as well. A fixed order
-scheme ([`setup_fixed_order_scheme`](@ref)) keeps its cycle in the returned state, restarted
-from its first update.
+adaptive components. Adaptive updates inside sampler schemes are fixed as well.
 
 # Arguments
 - `sampler`: The differential evolution sampler (potentially adaptive)
@@ -312,7 +310,7 @@ from its first update.
 
 # Returns
 - `fixed_sampler`: Sampler with adaptive parameters fixed to current values
-- `fixed_state`: State without adaptive components, apart from the cycle of any fixed order scheme
+- `fixed_state`: State without adaptive components
 
 # Example
 ```@example fix_sampler_state
@@ -328,11 +326,10 @@ function fix_sampler_state(
         sampler::AbstractDifferentialEvolutionSampler,
         state::DifferentialEvolutionState{T}
     ) where {T <: Real}
-    fixed_sampler = fix_sampler(sampler, state.adaptive_state)
-    return fixed_sampler,
+    return fix_sampler(sampler, state.adaptive_state),
         update_state(
             state; update_memory = false,
-            adaptive_state = initialize_nonadaptive_state(fixed_sampler, T),
+            adaptive_state = DifferentialEvolutionAdaptiveStatic{T}(),
             temperature_ladder = state.temperature_ladder
         )
 end
@@ -376,13 +373,6 @@ end
 function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
-    ) where {T <: Real}
-    return DifferentialEvolutionAdaptiveStatic{T}()
-end
-
-# State used when `adapt = false`, schemes that need to track progress (e.g. fixed order) override this
-function initialize_nonadaptive_state(
-        sampler::AbstractDifferentialEvolutionSampler, ::Type{T}
     ) where {T <: Real}
     return DifferentialEvolutionAdaptiveStatic{T}()
 end
@@ -507,7 +497,7 @@ function step(
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
-        adaptive_state = initialize_nonadaptive_state(sampler, T)
+        adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
     end
 
     extra_memory = nothing
