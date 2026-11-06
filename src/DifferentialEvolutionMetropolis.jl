@@ -13,6 +13,7 @@ import Distributions
 import AliasTables: AliasTable, set_weights!
 
 import LogDensityProblems: logdensity, dimension
+import LogExpFunctions: logsumexp, logaddexp
 import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot

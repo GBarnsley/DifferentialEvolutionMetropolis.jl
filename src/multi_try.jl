@@ -69,19 +69,6 @@ end
 trial_cr(proposal) = NaN
 trial_cr(proposal::NamedTuple{(:offset, :cr)}) = proposal.cr
 
-# log Σ exp(lds / t)
-function tempered_log_sum(lds::AbstractVector{T}, t::Real) where {T <: Real}
-    m = maximum(lds)
-    isfinite(m) || return m
-    return m / t + log(sum(ld -> exp((ld - m) / t), lds))
-end
-
-function log_add_exp(a::Real, b::Real)
-    m = max(a, b)
-    isfinite(m) || return m
-    return m + log(exp(a - m) + exp(b - m))
-end
-
 # Trials with zero weight cannot be selected as the cumulative weight does not increase at them
 function select_trial!(weights::AbstractVector{T}, rng::AbstractRNG, lds::AbstractVector{T}, t::Real, log_weight::Real) where {T <: Real}
     weights .= exp.(lds ./ t .- log_weight)
@@ -129,7 +116,7 @@ end
 function propose_reference!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, state, sampler, i::Int)
     t = get_temperature(state.temperature_ladder, i)
     forward_ld = buffers.forward_ld_view[i]
-    log_weight = tempered_log_sum(forward_ld, t)
+    log_weight = logsumexp(ld / t for ld in forward_ld)
     buffers.forward_log_weight[i] = log_weight
     if log_weight == -Inf
         buffers.selected[i] = 0
@@ -147,7 +134,7 @@ function accept_trial!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, 
     j = buffers.selected[i]
     if j > 0
         t = get_temperature(state.temperature_ladder, i)
-        reference_log_weight = log_add_exp(tempered_log_sum(buffers.reference_ld_view[i], t), state.ld[i] / t)
+        reference_log_weight = logaddexp(logsumexp(ld / t for ld in buffers.reference_ld_view[i]), state.ld[i] / t)
         if !(log(rand(state.rngs[i])) > buffers.forward_log_weight[i] - reference_log_weight)
             copyto!(state.xₚ[i], buffers.forward[j, i])
             state.ldₚ[i] = buffers.forward_ld[j, i]

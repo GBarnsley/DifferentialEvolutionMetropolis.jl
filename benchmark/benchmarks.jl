@@ -178,12 +178,21 @@ multi_try_step(update; kwargs...) = last(
         rng, am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
     )
 )
+# Steps until the memory refills, as stepping a filling-memory state more than once is invalid
+function refill_mode(state)
+    while !(state.memory isa DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryRefill)
+        state = last(AbstractMCMC.step_warmup(rng, am_model, de_update, state))
+    end
+    return state
+end
 multi_try_states = Dict(
     "MemoryLess" => multi_try_step(de_update; memory = false, initial_position = initial_position),
     "Memory" => multi_try_step(de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀),
-    "MemoryRefill" => multi_try_step(
-        de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
-        memory_refill = true, memory_size = 4
+    "MemoryRefill" => refill_mode(
+        multi_try_step(
+            de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
+            memory_refill = true, memory_size = 4
+        )
     ),
     "MemoryThinned" => multi_try_step(
         de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
@@ -202,19 +211,16 @@ multi_try_adaptive_states = Dict(
 )
 
 SUITE["MultiTry"] = BenchmarkGroup(["string"])
-# One evaluation per setup, as repeated steps from the same refill memory state are invalid
 for (state_name, multi_try_state) in multi_try_states, (update, name) in zip(multi_try_updates, multi_try_names)
     SUITE["MultiTry"]["$(state_name)/$(name)"] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $update, state),
-        setup = (rng = copy($rng); state = deepcopy($multi_try_state)),
-        evals = 1
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
     )
 end
 for (state_name, multi_try_state) in multi_try_adaptive_states
     SUITE["MultiTry"]["Adaptive/$(state_name)/subspace_update"] = @benchmarkable(
         AbstractMCMC.step_warmup(rng, $am_model, $subspace_update, state),
-        setup = (rng = copy($rng); state = deepcopy($multi_try_state)),
-        evals = 1
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
     )
 end
 

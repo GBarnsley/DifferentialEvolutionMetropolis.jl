@@ -88,12 +88,6 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
     end
 
     @testset "weights" begin
-        lds = [0.0, log(3.0)]
-        @test DEM.tempered_log_sum(lds, 1.0) ≈ log(4.0)
-        @test DEM.tempered_log_sum(lds, 2.0) ≈ log(1 + sqrt(3.0))
-        @test DEM.tempered_log_sum([-Inf, -Inf], 1.0) == -Inf
-        @test DEM.log_add_exp(log(2.0), log(3.0)) ≈ log(5.0)
-        @test DEM.log_add_exp(-Inf, -Inf) == -Inf
         weights = zeros(3)
         rng = backwards_compat_rng(1)
         selected = [DEM.select_trial!(weights, rng, [0.0, -Inf, log(3.0)], 1.0, log(4.0)) for _ in 1:10_000]
