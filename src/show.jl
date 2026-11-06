@@ -153,6 +153,9 @@ function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionState{T})
         "memory" => sprint(show, s.memory; context = io),
         "log density" => "max $(round(maximum(s.ld_smpl_view); sigdigits = 5))",
     ]
+    if n_tries(s.multi_try) > 1
+        push!(fields, "tries" => string(n_tries(s.multi_try)))
+    end
     return show_multiline(io, "DifferentialEvolutionState{$T}", fields)
 end
 

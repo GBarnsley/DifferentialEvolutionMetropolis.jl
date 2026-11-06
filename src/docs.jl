@@ -17,6 +17,10 @@ _generic_de_kwargs_1 = """
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
   Defaults to `false`.
+- `n_tries`: Number of multiple-try proposals per chain each step.
+  Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering), then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
+  This needs `n_chains * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
+  Only symmetric updates use multiple tries ([`setup_de_update`](@ref) and [`setup_subspace_sampling`](@ref)), other updates in a scheme take a single proposal. Defaults to 1 (no multiple tries).
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.

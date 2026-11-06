@@ -169,6 +169,49 @@ SUITE["annealing"]["swap_update"] = @benchmarkable(
     setup = (rng = copy($rng); state = deepcopy($initial_state_mid_annealing))
 )
 
+# Multiple-try versions of the symmetric updates, with and without memory, adaptation, parallel tempering and annealing
+n_tries = 4
+multi_try_updates = (de_update, subspace_update)
+multi_try_names = ("de_update", "subspace_update")
+# A copy of rng so the other groups' benchmarks see the same random stream as on main
+multi_try_step(update; kwargs...) = last(
+    AbstractMCMC.step(
+        copy(rng), am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
+    )
+)
+multi_try_states = Dict(
+    "MemoryLess" => multi_try_step(de_update; memory = false, initial_position = initial_position),
+    "Memory" => multi_try_step(de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀),
+    "MemoryThinned" => multi_try_step(
+        de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
+        memory_thin_interval = 2
+    ),
+    "pt" => multi_try_step(de_update; memory = false, initial_position = initial_position, n_hot_chains = 10),
+    "annealing" => multi_try_step(
+        de_update; memory = false, initial_position = initial_position, n_hot_chains = 10, annealing_steps = 5
+    ),
+)
+multi_try_adaptive_states = Dict(
+    "MemoryLess" => multi_try_step(subspace_update; memory = false, initial_position = initial_position, adapt = true),
+    "Memory" => multi_try_step(
+        subspace_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀, adapt = true
+    ),
+)
+
+SUITE["MultiTry"] = BenchmarkGroup(["string"])
+for (state_name, multi_try_state) in multi_try_states, (update, name) in zip(multi_try_updates, multi_try_names)
+    SUITE["MultiTry"]["$(state_name)/$(name)"] = @benchmarkable(
+        AbstractMCMC.step_warmup(rng, $am_model, $update, state),
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+    )
+end
+for (state_name, multi_try_state) in multi_try_adaptive_states
+    SUITE["MultiTry"]["Adaptive/$(state_name)/subspace_update"] = @benchmarkable(
+        AbstractMCMC.step_warmup(rng, $am_model, $subspace_update, state),
+        setup = (rng = copy($rng); state = deepcopy($multi_try_state))
+    )
+end
+
 tune!(SUITE)
 results = run(SUITE; verbose = true, seconds = 10)
 

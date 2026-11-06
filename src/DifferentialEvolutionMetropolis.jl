@@ -13,6 +13,7 @@ import Distributions
 import AliasTables: AliasTable, set_weights!
 
 import LogDensityProblems: logdensity, dimension
+import LogExpFunctions: logsumexp, logaddexp
 import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot
@@ -35,7 +36,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B,
     }
     "current position"
     x::VV
@@ -51,6 +52,8 @@ struct DifferentialEvolutionState{
     memory::M
     "per-chain model copies for thread-safe parallel logdensity evaluation"
     chain_models::Vector{Model}
+    "preallocated multiple-try trials, `nothing` if multiple-try is disabled"
+    multi_try::B
     "preallocated next position"
     xₚ::VV
     "preallocated next log densities"
@@ -75,7 +78,8 @@ function DifferentialEvolutionState(
         adaptive_state::A,
         temperature_ladder::L,
         memory::M,
-        chain_models::Vector{Model}
+        chain_models::Vector{Model},
+        n_tries::Int
     ) where {
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
@@ -97,6 +101,7 @@ function DifferentialEvolutionState(
         temperature_ladder,
         memory,
         chain_models,
+        multi_try_buffers(x, n_tries),
         xₚ,
         ldₚ,
         x_smpl_view,
@@ -151,6 +156,7 @@ include("subspace_update.jl")
 include("subspace_adaptive_update.jl")
 include("composite_sampler.jl")
 include("swap_update.jl")
+include("multi_try.jl")
 include("utilities.jl")
 include("convergence.jl")
 include("templates.jl")

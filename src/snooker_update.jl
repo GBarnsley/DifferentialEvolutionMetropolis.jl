@@ -64,18 +64,16 @@ function setup_snooker_update(;
 end
 
 function proposal!(
-        state::DifferentialEvolutionState,
+        xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::DifferentialEvolutionSnookerSampler, current_state::Int
-    )
+    ) where {V <: AbstractVector}
     # Propose a new position.
     x₁, x₂, xₐ = pick_chains(state, current_state, Val(3))
 
-    if xₐ == state.x[current_state] || x₁ == x₂
-        state.xₚ[current_state] .= x₁
+    if xₐ == x || x₁ == x₂
+        xₚ .= x₁
         return (offset = -Inf)
     else
-        x = state.x[current_state]
-        xₚ = state.xₚ[current_state]
         e, x_diff = chain_buffers(sampler.scratch, eltype(x), current_state)
         e .= xₐ .- x
         norm_current = norm(e)
