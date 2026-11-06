@@ -12,7 +12,7 @@ function LogDensityProblems.dimension(model::IsotropicNormalModel{<:AbstractVect
     return length(model.mean)
 end
 function LogDensityProblems.logdensity(model::IsotropicNormalModel, x::AbstractVector{<:Real})
-    return - sum(abs2, x .- model.mean) / 2
+    return - sum(abs2(xᵢ - μᵢ) for (xᵢ, μᵢ) in zip(x, model.mean)) / 2
 end
 function LogDensityProblems.capabilities(model::IsotropicNormalModel)
     return LogDensityProblems.LogDensityOrder{0}()
@@ -225,7 +225,7 @@ for (state_name, multi_try_state) in multi_try_adaptive_states
 end
 
 tune!(SUITE)
-results = run(SUITE, verbose = true, seconds = 10)
+results = run(SUITE; verbose = true, seconds = 10)
 
 for (group_name, group) in results
     for (benchmark_name, benchmark_result) in group

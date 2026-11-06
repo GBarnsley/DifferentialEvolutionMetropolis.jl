@@ -15,34 +15,11 @@
             @test all(isfinite, result.samples)
         end
 
-        @testset "$T HMC type warning" begin
-            model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, ld.logdensity))
-            mismatched = setup_hmc_update(NUTS(0.8); n_dims = 2)
-            @test_logs (:error, r"HMC metric element type Float64 does not match") DifferentialEvolutionMetropolis.initialize_adaptive_state(mismatched, model, 4, T)
-            matched = setup_hmc_update(NUTS(T(0.8)); n_dims = 2)
-            @test_logs DifferentialEvolutionMetropolis.initialize_adaptive_state(matched, model, 4, T)
-        end
-
-        @testset "$T HMC scheme $(keys(hmc_kw))" for hmc_kw in ((;), (; metric_strategy = memory_metric()))
-            model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, ld.logdensity))
-            scheme = setup_sampler_scheme(
-                setup_de_update(),
-                setup_hmc_update(NUTS(T(0.8)); n_dims = 2, hmc_kw...)
-            )
-            result = sample(
-                backwards_compat_rng(1234), model, scheme, 50;
-                num_warmup = 50, initial_position = initial_position, n_chains = 4,
-                silent = true, progress = false, chain_type = DifferentialEvolutionOutput
-            )
-            @test result isa DifferentialEvolutionOutput{T}
-            @test all(isfinite, result.samples)
-        end
-
         @testset "$T typed update parameters" begin
             scheme = setup_sampler_scheme(
-                setup_de_update(γ = T(0.5), β = Normal(zero(T), T(1.0e-6))),
-                setup_snooker_update(γ = Uniform(T(0.8), T(1.2))),
-                setup_subspace_sampling(γ = T(1), cr = DiscreteNonParametric(T[0.5, 1], T[0.5, 0.5]))
+                setup_de_update(; γ = T(0.5), β = Normal(zero(T), T(1.0e-6))),
+                setup_snooker_update(; γ = Uniform(T(0.8), T(1.2))),
+                setup_subspace_sampling(; γ = T(1), cr = DiscreteNonParametric(T[0.5, 1], T[0.5, 0.5]))
             )
             result = sample(
                 backwards_compat_rng(1234), ld, scheme, 50;

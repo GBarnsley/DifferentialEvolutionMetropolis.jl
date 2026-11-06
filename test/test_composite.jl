@@ -23,7 +23,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         # Test with custom weights
         weighted_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_snooker_update(),
+            setup_snooker_update();
             w = [0.7, 0.3]
         )
         @test isa(weighted_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
@@ -33,13 +33,13 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         # Test error cases
         @test_throws ErrorException setup_sampler_scheme(
             setup_de_update(),
-            setup_snooker_update(),
+            setup_snooker_update();
             w = [0.5, 0.3, 0.2]  # Wrong number of weights
         )
 
         @test_throws ErrorException setup_sampler_scheme(
             setup_de_update(),
-            setup_snooker_update(),
+            setup_snooker_update();
             w = [-0.1, 0.5]  # Negative weights
         )
     end
@@ -113,7 +113,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
             setup_subspace_sampling(),
-            setup_snooker_update(),
+            setup_snooker_update();
             w = [0.5, 0.3, 0.2]
         )
 
@@ -167,7 +167,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         # Adaptive subspace + non-adaptive DE
         de_sampler = setup_sampler_scheme(
             setup_subspace_sampling(),
-            setup_de_update(),
+            setup_de_update();
             w = [0.6, 0.4]
         )
 
@@ -234,7 +234,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         # All non-adaptive samplers should result in static adaptive state
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_snooker_update(),
+            setup_snooker_update();
             w = [0.7, 0.3]
         )
 
@@ -276,8 +276,8 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
 
         # Create composite with adaptive subspace sampler
         de_sampler = setup_sampler_scheme(
-            setup_subspace_sampling(n_cr = n_cr),
-            setup_de_update(),
+            setup_subspace_sampling(; n_cr = n_cr),
+            setup_de_update();
             w = [0.8, 0.2]
         )
 
@@ -311,25 +311,25 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         )
 
         # Attempts for subspace sampler
-        L_values = cat([state.L for state in subspace_adaptive_states]..., dims = 2)
+        L_values = cat([state.L for state in subspace_adaptive_states]...; dims = 2)
         @test any(L_values .> 0)
         @test size(L_values, 1) == n_cr
-        @test all(diff(L_values, dims = 2) .≥ 0)
+        @test all(diff(L_values; dims = 2) .≥ 0)
 
         # Jump distances for subspace sampler
-        Δ_values = cat([state.Δ for state in subspace_adaptive_states]..., dims = 2)
+        Δ_values = cat([state.Δ for state in subspace_adaptive_states]...; dims = 2)
         @test size(Δ_values, 1) == n_cr
-        @test all(diff(Δ_values, dims = 2) .≥ 0)
+        @test all(diff(Δ_values; dims = 2) .≥ 0)
         @test all(Δ_values .≥ 0)
 
         # Variance tracking for subspace sampler
         var_counts = [state.var_count for state in subspace_adaptive_states]
         @test all(diff(var_counts) .≥ 0)  # Should be non-decreasing
 
-        var_means = cat([state.var_mean for state in subspace_adaptive_states]..., dims = 2)
+        var_means = cat([state.var_mean for state in subspace_adaptive_states]...; dims = 2)
         @test size(var_means, 1) == LogDensityProblems.dimension(model)
 
-        var_m2 = cat([state.var_m2 for state in subspace_adaptive_states]..., dims = 2)
+        var_m2 = cat([state.var_m2 for state in subspace_adaptive_states]...; dims = 2)
         @test size(var_m2, 1) == LogDensityProblems.dimension(model)
         @test all(var_m2 .≥ 0)
 
@@ -356,7 +356,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             state.adaptive_state.adaptive_states[1]
                 for state in states_noadapt
         ]
-        L_values_noadapt = cat([state.L for state in subspace_states_noadapt]..., dims = 2)
+        L_values_noadapt = cat([state.L for state in subspace_states_noadapt]...; dims = 2)
         @test L_values_noadapt[:, 1] == L_values_noadapt[:, end]
         crs_noadapt = [state.cr_spl for state in subspace_states_noadapt]
         @test crs_noadapt[1] == crs_noadapt[end]

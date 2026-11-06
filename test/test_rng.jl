@@ -5,12 +5,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         de_sampler_old = deepcopy(de_sampler)
@@ -78,12 +78,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         #should give the same result
@@ -140,12 +140,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         #should give the same result

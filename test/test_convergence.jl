@@ -1,3 +1,5 @@
+using MCMCDiagnosticTools
+
 @testset "Rhat Convergence" begin
     rng = backwards_compat_rng(1234)
 
@@ -31,14 +33,5 @@
         )
         @test length(samples) == (max_its - 1)
         @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
-    end
-
-    @testset "Rhat stopping criteria stops at maximum iterations" begin
-        ret = r̂_stopping_criteria(
-            nothing, nothing, nothing, nothing, nothing, 1500;
-            check_every = 1000,
-            maximum_iterations = 1500
-        )
-        @test ret == true
     end
 end

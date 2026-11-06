@@ -42,7 +42,6 @@
                     ld, 100;
                     n_chains = 3,
                     n_hot_chains = 2,
-                    epoch_limit = 2,
                     α = 1.2,
                     max_temp_pt = 4.0,
                     rng = rng
@@ -59,7 +58,6 @@
                     ld, 100;
                     n_chains = 3,
                     n_hot_chains = 2,
-                    epoch_limit = 2,
                     α = 0.8,
                     max_temp_pt = 6.0,
                     rng = rng
@@ -94,8 +92,6 @@
         @testset "deMCzs with Simulated Annealing" begin
             result = deMCzs(
                 ld, 50;
-                warmup_epochs = 2,
-                epoch_limit = 2,
                 annealing = true,
                 max_temp_sa = 3.0,
                 n_chains = 4,
@@ -110,8 +106,6 @@
         @testset "DREAMz with Simulated Annealing" begin
             result = DREAMz(
                 ld, 50;
-                warmup_epochs = 2,
-                epoch_limit = 2,
                 annealing = true,
                 max_temp_sa = 3.0,
                 n_chains = 4,
@@ -134,8 +128,6 @@
                 n_chains = 3,
                 n_hot_chains = 2,
                 annealing = true,
-                warmup_epochs = 2,
-                epoch_limit = 2,
                 max_temp_pt = 3.0,
                 max_temp_sa = 4.0,
                 α = 1.0,
@@ -210,7 +202,6 @@
             n_chains = 2,
             n_hot_chains = 3,
             memory = true,
-            epoch_limit = 2,
             rng = rng
         )
     end
@@ -225,7 +216,6 @@
                 n_chains = 2,
                 n_hot_chains = 2,
                 n_cr = 2,
-                epoch_limit = 2,
                 rng = rng,
                 memory = false
             )
@@ -238,7 +228,6 @@
                 n_chains = 2,
                 n_hot_chains = 2,
                 p_snooker = 0.3,
-                epoch_limit = 2,
                 rng = rng,
                 memory = false
             )
@@ -255,7 +244,6 @@
             n_chains = 2,
             n_hot_chains = 2,
             parallel = true,
-            epoch_limit = 2,
             rng = rng,
             memory = false
         )

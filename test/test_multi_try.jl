@@ -35,7 +35,9 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
 
     @testset "setup" begin
         @test DEM.n_tries(initial_state(setup_de_update()).multi_try) == 1
-        state = initial_state(setup_subspace_sampling(); n_chains = 4, n_hot_chains = 2, memory = false, n_tries = 3)
+        state = suppress_warnings(NO_SWAP_WARNING) do
+            initial_state(setup_subspace_sampling(); n_chains = 4, n_hot_chains = 2, memory = false, n_tries = 3)
+        end
         @test DEM.n_tries(state.multi_try) == 3
         @test length(state.chain_models) == 18
         @test size(state.multi_try.reference) == (2, 6)
@@ -50,10 +52,12 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
 
     @testset "threaded matches serial" begin
         @testset "$(nameof(typeof(update)))" for update in (setup_de_update(), setup_subspace_sampling())
-            run(parallel) = sample(
-                backwards_compat_rng(3), model, update, 100;
-                n_chains = 6, n_hot_chains = 2, num_warmup = 50, parallel = parallel, n_tries = 4, sample_kwargs...
-            )
+            run(parallel) = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+                sample(
+                    backwards_compat_rng(3), model, update, 100;
+                    n_chains = 6, n_hot_chains = 2, num_warmup = 50, parallel = parallel, n_tries = 4, sample_kwargs...
+                )
+            end
             serial = run(false)
             threaded = run(true)
             @test threaded.samples == serial.samples
@@ -98,10 +102,12 @@ LogDensityProblems.capabilities(::OriginOnlyModel) = LogDensityProblems.LogDensi
     @testset "Gaussian moments" begin
         @testset "$(nameof(typeof(update))), hot chains = $n_hot, memory = $memory" for update in (setup_de_update(n_dims = 3), setup_subspace_sampling()),
                 n_hot in (0, 3), memory in (false, true)
-            output = sample(
-                backwards_compat_rng(1234), model, update, 3000;
-                n_chains = 6, n_hot_chains = n_hot, memory = memory, num_warmup = 1000, n_tries = 4, sample_kwargs...
-            )
+            output = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+                sample(
+                    backwards_compat_rng(1234), model, update, 3000;
+                    n_chains = 6, n_hot_chains = n_hot, memory = memory, num_warmup = 1000, n_tries = 4, sample_kwargs...
+                )
+            end
             draws = reshape(output.samples[1001:end, :, :], :, 3)
             @test isapprox(vec(mean(draws; dims = 1)), [-5.0, 5.0, 1.0]; atol = 0.15)
             @test isapprox(vec(var(draws; dims = 1)), ones(3); atol = 0.15)

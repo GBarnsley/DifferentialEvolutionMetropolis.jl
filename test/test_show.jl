@@ -1,11 +1,8 @@
-plain(x) = sprint(show, MIME"text/plain"(), x)
-compact(x) = sprint(show, x; context = :compact => true)
-
 @testset "show methods" begin
-    de = setup_de_update(γ = 1.0)
+    de = setup_de_update(; γ = 1.0)
     snooker = setup_snooker_update()
     subspace = setup_subspace_sampling()
-    subspace_fixed = setup_subspace_sampling(γ = 0.5, cr = 0.3)
+    subspace_fixed = setup_subspace_sampling(; γ = 0.5, cr = 0.3)
 
     @testset "samplers" begin
         @test repr(de) == "DE update(γ = 1.0::Float64)"
@@ -81,22 +78,5 @@ compact(x) = sprint(show, x; context = :compact => true)
         @test repr(output) == "DifferentialEvolutionOutput{Float64}(5 iterations, 3 chains, 2 parameters)"
         @test plain(output) == "DifferentialEvolutionOutput{Float64}\n  iterations:  5\n  chains:      3\n  parameters:  2\n  log density: mean -1.0, range (-1.0, -1.0)"
         @test !occursin("log density", plain(DifferentialEvolutionOutput(zeros(0, 3, 2), zeros(0, 3))))
-    end
-
-    @testset "HMC" begin
-        hmc = setup_hmc_update(NUTS(0.8); n_dims = 2, metric_strategy = memory_metric())
-        @test repr(hmc) == "HMC update(DiagEuclideanMetric, memory_metric(shrinkage = 0.0, every = 100))"
-        @test startswith(plain(hmc), "HMC update\n  trajectory:")
-        @test repr(cluster_pooled_metric()) == "cluster_pooled_metric(shrinkage = 0.0, every = 100, kmax = 10)"
-        @test repr(per_cluster_metric(kmax = 3)) == "per_cluster_metric(shrinkage = 0.0, every = 100, kmax = 3)"
-        @test repr(setup_hmc_update(NUTS(0.8); n_dims = 2)) == "HMC update(DiagEuclideanMetric, stock adaptor)"
-
-        model = AbstractMCMC.LogDensityModel(
-            ADgradient(:ForwardDiff, CorrelatedGaussianModel(MvNormal(zeros(2), [1.0 0.0; 0.0 1.0])))
-        )
-        _, state = AbstractMCMC.step(
-            backwards_compat_rng(1), model, setup_sampler_scheme(hmc, de); n_chains = 4
-        )
-        @test occursin("adaptive state: composite(HMC (not initialised, 0 HMC steps), static)", plain(state))
     end
 end

@@ -2,7 +2,7 @@
     DEM = DifferentialEvolutionMetropolis
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0]))
     swap = setup_swap_update()
-    function swap_state(ladder; memory = false, sampler = setup_de_update(n_dims = 1))
+    function swap_state(ladder; memory = false, sampler = setup_de_update(; n_dims = 1))
         _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
             AbstractMCMC.step(
                 backwards_compat_rng(1), model, sampler;
@@ -106,7 +106,7 @@
     end
 
     @testset "samples, caches and memory after swaps" begin
-        sampler = setup_sampler_scheme(setup_de_update(n_dims = 1), swap; w = [0.5, 0.5])
+        sampler = setup_sampler_scheme(setup_de_update(; n_dims = 1), swap; w = [0.5, 0.5])
         for memory in (false, true), parallel in (false, true)
             s = swap_state([[1.0, 1.0, 1.0, 2.0, 4.0]]; memory, sampler)
             rng = backwards_compat_rng(123)
@@ -145,7 +145,7 @@
     end
 
     @testset "swap update and hot chain detection" begin
-        de = setup_de_update(n_dims = 1)
+        de = setup_de_update(; n_dims = 1)
         @test !DEM.has_swap_update(de)
         @test DEM.has_swap_update(swap)
         @test DEM.has_swap_update(setup_sampler_scheme(de, swap))
@@ -155,8 +155,8 @@
     end
 
     @testset "setup warnings" begin
-        de = setup_de_update(n_dims = 1)
-        kw = (n_chains = 3, memory = false, silent = true)
+        de = setup_de_update(; n_dims = 1)
+        kw = (; n_chains = 3, memory = false, silent = true)
         @test_logs (:warn, r"Parallel tempering without a swap update") AbstractMCMC.step(
             backwards_compat_rng(1), model, de; n_hot_chains = 2, kw...
         )
@@ -179,7 +179,7 @@
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, 1.0)
         @test_throws ErrorException DEM.add_swap_update(scheme, 2, true, -0.1)
 
-        kw = (n_chains = 3, n_burnin = 10, memory = false, silent = true, progress = false)
+        kw = (; n_chains = 3, n_burnin = 10, memory = false, silent = true, progress = false)
         @test_logs deMC(model, 10; n_hot_chains = 2, kw...)
         @test_logs (:warn, r"Parallel tempering without a swap update") deMC(
             model, 10; n_hot_chains = 2, use_parallel_tempering_swaps = false, kw...

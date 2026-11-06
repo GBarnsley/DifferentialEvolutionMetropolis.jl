@@ -7,23 +7,6 @@ using ForwardDiff
 using LogDensityProblemsAD
 using LinearAlgebra: diag
 
-# A correlated Gaussian with known mean/covariance — a unimodal target where the harness
-# must recover the posterior and the metric must approach the marginal variances.
-struct CorrelatedGaussianModel{D}
-    dist::D
-end
-function LogDensityProblems.dimension(model::CorrelatedGaussianModel)
-    return length(model.dist)
-end
-function LogDensityProblems.logdensity(model::CorrelatedGaussianModel, x::AbstractVector{<:Real})
-    return logpdf(model.dist, x)
-end
-LogDensityProblems.capabilities(::Type{<:CorrelatedGaussianModel}) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.capabilities(::CorrelatedGaussianModel) = LogDensityProblems.LogDensityOrder{0}()
-
-# Pull the (single, shared) HMC adaptive state out of a composite state.
-hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
-
 @testset "HMC harness (AdvancedHMCExt)" begin
 
     μ = [2.0, -1.0, 0.5]

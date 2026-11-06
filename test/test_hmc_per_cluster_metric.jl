@@ -6,7 +6,7 @@
 # this keeps them apart so separated modes of different shape each get their own preconditioner.
 # Like the pooled strategy it gates to K = 1 (= `memory_metric()`) on a unimodal archive and
 # carries the same memory/no-tempering requirements. `CorrelatedGaussianModel`,
-# `hmc_adaptive_state`, and `backwards_compat_rng` come from test_hmc.jl / runtests.jl.
+# `hmc_adaptive_state`, and `backwards_compat_rng` come from hmc_setup.jl / setup.jl.
 
 using AdvancedHMC
 using ForwardDiff
@@ -232,18 +232,18 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         astate.cluster_metrics = [m1, m2]
         astate.cluster_centers = [0.0 10.0; 0.0 10.0; 0.0 10.0]
 
-        HMCExt.fill_chain_metrics!(ms, astate, (x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]],))
+        HMCExt.fill_chain_metrics!(ms, astate, (; x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]]))
         @test astate.chain_metrics[1] === m1
         @test astate.chain_metrics[2] === m2
 
         # No recompute, only the chains moved: the labels (and metrics) follow immediately.
-        HMCExt.fill_chain_metrics!(ms, astate, (x = [[9.0, 9.0, 9.0], [1.0, 1.0, 1.0]],))
+        HMCExt.fill_chain_metrics!(ms, astate, (; x = [[9.0, 9.0, 9.0], [1.0, 1.0, 1.0]]))
         @test astate.chain_metrics[1] === m2
         @test astate.chain_metrics[2] === m1
 
         # Before the first recompute (no cluster metrics yet) it seeds every slot with the lone metric.
         seed = DifferentialEvolutionMetropolis.initialize_adaptive_state(scheme, model, 2)
-        HMCExt.fill_chain_metrics!(ms, seed, (x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]],))
+        HMCExt.fill_chain_metrics!(ms, seed, (; x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]]))
         @test all(m -> m === seed.metric, seed.chain_metrics)
     end
 
