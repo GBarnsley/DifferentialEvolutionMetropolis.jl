@@ -207,7 +207,7 @@ using LinearAlgebra: diag, Diagonal
         @test isapprox(a.metric.M⁻¹, diag(Σ); atol = 0.5)
     end
 
-    @testset "ill-conditioned target stays finite (shrinkage conditions the metric)" begin
+    @testset "ill-conditioned target stays finite (shrinkage conditions the $metric metric)" for metric in (:diagonal, :dense)
         # One nearly-degenerate direction: variance 1e-3 against unit scales.
         Σ_ill = Diagonal([1.0, 1.0e-3, 1.0])
         ill_model = AbstractMCMC.LogDensityModel(
@@ -215,7 +215,7 @@ using LinearAlgebra: diag, Diagonal
         )
         scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(
-                NUTS(0.8); n_dims = 3, metric_strategy = memory_metric(; shrinkage = 0.5)
+                NUTS(0.8; metric); n_dims = 3, metric_strategy = memory_metric(; shrinkage = 0.5)
             )
         )
         out = sample(
