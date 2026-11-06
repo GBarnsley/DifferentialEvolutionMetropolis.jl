@@ -169,7 +169,7 @@ SUITE["annealing"]["swap_update"] = @benchmarkable(
     setup = (rng = copy($rng); state = deepcopy($initial_state_mid_annealing))
 )
 
-# Multiple-try versions of the symmetric updates, for every memory option, adaptation, parallel tempering and annealing
+# Multiple-try versions of the symmetric updates, with and without memory, adaptation, parallel tempering and annealing
 n_tries = 4
 multi_try_updates = (de_update, subspace_update)
 multi_try_names = ("de_update", "subspace_update")
@@ -178,22 +178,9 @@ multi_try_step(update; kwargs...) = last(
         rng, am_model, update; n_chains = n_chains, n_tries = n_tries, silent = true, kwargs...
     )
 )
-# Steps into refill mode, as evaluations that discard a fill-to-refill switch leave the setup state at position 0
-function refill_mode(state)
-    while !(state.memory isa DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryRefill)
-        state = last(AbstractMCMC.step_warmup(rng, am_model, de_update, state))
-    end
-    return state
-end
 multi_try_states = Dict(
     "MemoryLess" => multi_try_step(de_update; memory = false, initial_position = initial_position),
     "Memory" => multi_try_step(de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀),
-    "MemoryRefill" => refill_mode(
-        multi_try_step(
-            de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
-            memory_refill = true, memory_size = 4
-        )
-    ),
     "MemoryThinned" => multi_try_step(
         de_update; memory = true, initial_position = initial_position_with_memory, N₀ = N₀,
         memory_thin_interval = 2
