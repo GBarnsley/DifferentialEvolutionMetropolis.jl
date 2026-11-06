@@ -20,7 +20,7 @@ function DifferentialEvolutionMetropolis.convert(
 
     array_out = cat(
         permutedims(output.samples, (1, 3, 2)),
-        new_ld, dims = 2
+        new_ld; dims = 2
     )
 
     chns = Chains(array_out)

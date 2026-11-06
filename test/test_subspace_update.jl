@@ -1,14 +1,14 @@
 @testset "Subspace Update" begin
     @testset "Subspace Setup" begin
-        dist = setup_subspace_sampling(
+        dist = setup_subspace_sampling(;
             γ = nothing,
             δ = 1
         )
         @test isa(dist.δ_spl, Dirac)
         @test isa(dist.cr_spl, DiscreteNonParametric)
-        dist = setup_subspace_sampling(
+        dist = setup_subspace_sampling(;
             γ = 1.0,
-            δ = truncated(Poisson(0.5), lower = 1),
+            δ = truncated(Poisson(0.5); lower = 1),
             cr = 0.5
         )
         @test isa(dist.γ, Real)
@@ -28,49 +28,49 @@
 
     @testset "Subspace validation errors" begin
         # Test cr validation
-        @test_throws ErrorException setup_subspace_sampling(cr = 0.0)  # should be > 0
-        @test_throws ErrorException setup_subspace_sampling(cr = -0.1)  # negative
-        @test_throws ErrorException setup_subspace_sampling(cr = 1.1)  # > 1
-        @test_throws ErrorException setup_subspace_sampling(cr = Uniform(-0.1, 0.5))  # minimum < 0
-        @test setup_subspace_sampling(cr = Beta(1, 2)) isa DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler  # minimum = 0
-        @test_throws ErrorException setup_subspace_sampling(cr = Uniform(0.5, 1.1))  # maximum > 1
+        @test_throws ErrorException setup_subspace_sampling(; cr = 0.0)  # should be > 0
+        @test_throws ErrorException setup_subspace_sampling(; cr = -0.1)  # negative
+        @test_throws ErrorException setup_subspace_sampling(; cr = 1.1)  # > 1
+        @test_throws ErrorException setup_subspace_sampling(; cr = Uniform(-0.1, 0.5))  # minimum < 0
+        @test setup_subspace_sampling(; cr = Beta(1, 2)) isa DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler  # minimum = 0
+        @test_throws ErrorException setup_subspace_sampling(; cr = Uniform(0.5, 1.1))  # maximum > 1
 
         # Test δ validation
-        @test_throws ErrorException setup_subspace_sampling(δ = 0)  # should be > 0
-        @test_throws ErrorException setup_subspace_sampling(δ = -1)  # negative
-        @test_throws ErrorException setup_subspace_sampling(δ = Poisson(0.0))  # minimum ≤ 0
+        @test_throws ErrorException setup_subspace_sampling(; δ = 0)  # should be > 0
+        @test_throws ErrorException setup_subspace_sampling(; δ = -1)  # negative
+        @test_throws ErrorException setup_subspace_sampling(; δ = Poisson(0.0))  # minimum ≤ 0
 
         # Test γ validation (when provided as Real)
-        @test_throws ErrorException setup_subspace_sampling(γ = 0.0)  # should be > 0
-        @test_throws ErrorException setup_subspace_sampling(γ = -1.0)  # negative
+        @test_throws ErrorException setup_subspace_sampling(; γ = 0.0)  # should be > 0
+        @test_throws ErrorException setup_subspace_sampling(; γ = -1.0)  # negative
 
         # Test ϵ validation (noise should be centered around 0)
-        @test_throws ErrorException setup_subspace_sampling(ϵ = Normal(1.0, 0.01))  # not centered at 0
-        @test_throws ErrorException setup_subspace_sampling(ϵ = Uniform(0.0, 1.0))  # not centered at 0
-        @test_throws ErrorException setup_subspace_sampling(ϵ = Exponential(1.0))  # not symmetric
+        @test_throws ErrorException setup_subspace_sampling(; ϵ = Normal(1.0, 0.01))  # not centered at 0
+        @test_throws ErrorException setup_subspace_sampling(; ϵ = Uniform(0.0, 1.0))  # not centered at 0
+        @test_throws ErrorException setup_subspace_sampling(; ϵ = Exponential(1.0))  # not symmetric
 
         # Test e validation (noise should be centered around 0)
-        @test_throws ErrorException setup_subspace_sampling(e = Normal(1.0, 0.01))  # not centered at 0
-        @test_throws ErrorException setup_subspace_sampling(e = Uniform(0.0, 1.0))  # not centered at 0
-        @test_throws ErrorException setup_subspace_sampling(e = Exponential(1.0))  # not symmetric
+        @test_throws ErrorException setup_subspace_sampling(; e = Normal(1.0, 0.01))  # not centered at 0
+        @test_throws ErrorException setup_subspace_sampling(; e = Uniform(0.0, 1.0))  # not centered at 0
+        @test_throws ErrorException setup_subspace_sampling(; e = Exponential(1.0))  # not symmetric
 
         # Valid cases should not error
-        @test_nowarn setup_subspace_sampling(cr = 0.5, δ = 2, γ = 1.0)
-        @test_nowarn setup_subspace_sampling(cr = Uniform(0.1, 0.9), δ = DiscreteUniform(1, 5))
-        @test_nowarn setup_subspace_sampling(ϵ = Normal(0.0, 0.01), e = Uniform(-0.01, 0.01))
+        @test_nowarn setup_subspace_sampling(; cr = 0.5, δ = 2, γ = 1.0)
+        @test_nowarn setup_subspace_sampling(; cr = Uniform(0.1, 0.9), δ = DiscreteUniform(1, 5))
+        @test_nowarn setup_subspace_sampling(; ϵ = Normal(0.0, 0.01), e = Uniform(-0.01, 0.01))
 
         # Disable checks should allow invalid distributions
-        @test_nowarn setup_subspace_sampling(cr = 0.0, check_args = false)
-        @test_nowarn setup_subspace_sampling(δ = 0, check_args = false)
-        @test_nowarn setup_subspace_sampling(γ = -1.0, check_args = false)
-        @test_nowarn setup_subspace_sampling(ϵ = Normal(1.0, 0.01), check_args = false)
+        @test_nowarn setup_subspace_sampling(; cr = 0.0, check_args = false)
+        @test_nowarn setup_subspace_sampling(; δ = 0, check_args = false)
+        @test_nowarn setup_subspace_sampling(; γ = -1.0, check_args = false)
+        @test_nowarn setup_subspace_sampling(; ϵ = Normal(1.0, 0.01), check_args = false)
     end
 
     @testset "Sample using regular Subspace" begin
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])
 
-        de_sampler = setup_subspace_sampling(
+        de_sampler = setup_subspace_sampling(;
             cr = DiscreteNonParametric((1:5) ./ 5, repeat([1 / 5], 5))
         )
 
@@ -118,7 +118,7 @@
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])
 
-        de_sampler = setup_subspace_sampling(cr = 0.1)
+        de_sampler = setup_subspace_sampling(; cr = 0.1)
 
         sample_result,
             initial_state = AbstractMCMC.step(
@@ -141,7 +141,7 @@
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])
 
-        de_sampler = setup_subspace_sampling(
+        de_sampler = setup_subspace_sampling(;
             cr = DiscreteNonParametric((1:5) ./ 5, repeat([1 / 5], 5)),
             γ = 1.0
         )

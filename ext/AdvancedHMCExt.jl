@@ -8,6 +8,7 @@ const AHMCAdapt = AdvancedHMC.Adaptation
 import AdvancedHMC.Adaptation: AbstractAdaptor
 import AbstractMCMC
 import AbstractMCMC: LogDensityModel, step, step_warmup
+import LinearAlgebra: diagind
 import LogDensityProblems
 import Random
 import Random: AbstractRNG
@@ -439,18 +440,16 @@ function diagonal_inverse_metric(positions, shrinkage::Real)
     μ ./= n
     v = zeros(T, D)
     for p in positions
-        @inbounds for d in 1:D
-            v[d] += abs2(p[d] - μ[d])
-        end
+        v .+= abs2.(p .- μ)
     end
     v ./= max(n - 1, 1)
     v̄ = sum(v) / D
     λ = T(shrinkage)
     if λ > 0
-        @. v = (1 - λ) * v + λ * v̄
+        v .= (1 .- λ) .* v .+ λ .* v̄
     end
     var_floor = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)
-    @. v = max(v, var_floor)
+    v .= max.(v, var_floor)
     return v
 end
 
@@ -467,30 +466,19 @@ function dense_inverse_metric(positions, shrinkage::Real)
     Σ = zeros(T, D, D)
     d = Vector{T}(undef, D)
     for p in positions
-        @inbounds for i in 1:D
-            d[i] = p[i] - μ[i]
-        end
-        @inbounds for j in 1:D, i in 1:D
-            Σ[i, j] += d[i] * d[j]
-        end
+        d .= p .- μ
+        Σ .+= d .* d'
     end
     Σ ./= max(n - 1, 1)
-    v̄ = zero(T)
-    @inbounds for i in 1:D
-        v̄ += Σ[i, i]
-    end
-    v̄ /= D
+    Σ_diag = view(Σ, diagind(Σ))
+    v̄ = sum(Σ_diag) / D
     λ = T(shrinkage)
     if λ > 0
-        @. Σ *= (1 - λ)
-        @inbounds for i in 1:D
-            Σ[i, i] += λ * v̄
-        end
+        Σ .*= (1 .- λ)
+        Σ_diag .+= λ .* v̄
     end
     ridge = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)   # keeps Σ PD even at λ = 0
-    @inbounds for i in 1:D
-        Σ[i, i] += ridge
-    end
+    Σ_diag .+= ridge
     return Σ
 end
 
@@ -603,7 +591,7 @@ end
 
 function column_sqdist(p, centers, j)
     s = zero(eltype(centers))
-    @inbounds for d in eachindex(p)
+    for d in eachindex(p)
         s += abs2(p[d] - centers[d, j])
     end
     return s
@@ -622,11 +610,11 @@ function farthest_first_centers(positions, k)
     end
     μ ./= M
     i1 = argmax(i -> sum(abs2, positions[i] .- μ), 1:M)
-    @inbounds centers[:, 1] .= positions[i1]
+    centers[:, 1] .= positions[i1]
     nearest = [column_sqdist(positions[i], centers, 1) for i in 1:M]
     for j in 2:k
         ij = argmax(nearest)
-        @inbounds centers[:, j] .= positions[ij]
+        centers[:, j] .= positions[ij]
         for i in 1:M
             nearest[i] = min(nearest[i], column_sqdist(positions[i], centers, j))
         end
@@ -656,21 +644,17 @@ function assign_labels!(positions, centers, labels)
 end
 
 function update_centers!(positions, centers, labels)
-    D, k = size(centers)
+    k = size(centers, 2)
     counts = zeros(Int, k)
     fill!(centers, 0)
     for i in eachindex(positions)
         z = labels[i]
         counts[z] += 1
-        @inbounds for d in 1:D
-            centers[d, z] += positions[i][d]
-        end
+        view(centers, :, z) .+= positions[i]
     end
     for j in 1:k
         counts[j] == 0 && continue
-        @inbounds for d in 1:D
-            centers[d, j] /= counts[j]
-        end
+        view(centers, :, j) ./= counts[j]
     end
     return counts
 end
@@ -680,7 +664,7 @@ function reseed_empty!(positions, centers, labels, counts)
     for j in eachindex(counts)
         counts[j] == 0 || continue
         worst = argmax(i -> column_sqdist(positions[i], centers, labels[i]), eachindex(positions))
-        @inbounds centers[:, j] .= positions[worst]
+        centers[:, j] .= positions[worst]
     end
     return nothing
 end
@@ -718,14 +702,13 @@ total_variance_trace(positions, μ) =
 
 function between_variance_trace(labels, centers, μ)
     K = size(centers, 2)
-    D = size(centers, 1)
     counts = zeros(Int, K)
     for z in labels
         counts[z] += 1
     end
     s = zero(eltype(centers))
-    @inbounds for j in 1:K, d in 1:D
-        s += counts[j] * abs2(centers[d, j] - μ[d])
+    for j in 1:K
+        s += counts[j] * sum(abs2, view(centers, :, j) .- μ)
     end
     return s
 end
@@ -765,15 +748,15 @@ function between_variance_fraction(positions, labels, centers)
         counts[z] += 1
     end
     between = zeros(T, D)
-    @inbounds for j in 1:size(centers, 2), d in 1:D
-        between[d] += counts[j] * abs2(centers[d, j] - μ[d])
+    for j in 1:size(centers, 2)
+        between .+= counts[j] .* abs2.(view(centers, :, j) .- μ)
     end
     total = zeros(T, D)
-    @inbounds for i in eachindex(positions), d in 1:D
-        total[d] += abs2(positions[i][d] - μ[d])
+    for p in positions
+        total .+= abs2.(p .- μ)
     end
     η = zero(T)
-    @inbounds for d in 1:D
+    for d in 1:D
         total[d] > 0 && (η = max(η, between[d] / total[d]))
     end
     return η

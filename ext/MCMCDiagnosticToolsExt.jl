@@ -82,7 +82,7 @@ function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
     else
         #check the last half of the sampling iterations
         rhat_ = rhat(DifferentialEvolutionMetropolis.samples_to_array(samples[(iteration ÷ 2 + 1):end]))
-        println("Rhat: ", round.(rhat_, sigdigits = 3))
+        println("Rhat: ", round.(rhat_; sigdigits = 3))
         if all(rhat_ .< maximum_R̂)
             return true
         else

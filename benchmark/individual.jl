@@ -8,7 +8,7 @@ function LogDensityProblems.dimension(model::IsotropicNormalModel{<:AbstractVect
     return length(model.mean)
 end
 function LogDensityProblems.logdensity(model::IsotropicNormalModel, x::AbstractVector{<:Real})
-    return - sum(abs2, x .- model.mean) / 2
+    return - sum(abs2(xᵢ - μᵢ) for (xᵢ, μᵢ) in zip(x, model.mean)) / 2
 end
 function LogDensityProblems.capabilities(model::IsotropicNormalModel)
     return LogDensityProblems.LogDensityOrder{0}()

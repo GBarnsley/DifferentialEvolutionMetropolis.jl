@@ -11,7 +11,7 @@ using Random, AbstractMCMC, LogDensityProblems
     @testset "Memory writes exactly n_chains" begin
         spl = setup_sampler_scheme(
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0)
+            setup_subspace_sampling(; γ = 1.0)
         )
 
         # Initialize
@@ -43,7 +43,7 @@ using Random, AbstractMCMC, LogDensityProblems
     @testset "Refill conversion conversion" begin
         spl = setup_sampler_scheme(
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0)
+            setup_subspace_sampling(; γ = 1.0)
         )
         # N₀ = 4, memory_size = 2, total_memory_size = 8 > N₀ (prevents crash)
         _, state = AbstractMCMC.step(
@@ -68,7 +68,7 @@ using Random, AbstractMCMC, LogDensityProblems
     @testset "Temperature ladder advances" begin
         spl = setup_sampler_scheme(
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0)
+            setup_subspace_sampling(; γ = 1.0)
         )
 
         # Initialize with annealing = true, annealing_steps = 10
@@ -103,7 +103,7 @@ using Random, AbstractMCMC, LogDensityProblems
     @testset "memory_size too small errors" begin
         spl = setup_sampler_scheme(
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0)
+            setup_subspace_sampling(; γ = 1.0)
         )
 
         # This should error because default N₀ is 2 * n_chains = 8.

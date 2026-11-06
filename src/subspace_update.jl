@@ -221,7 +221,7 @@ function proposal!(
     γ = get_γ(rng, sampler, δ, d)
     xₚ .= ifelse.(u .< cr, x .+ (1 .+ e) .* γ .* xₚ .+ ϵ, x)
 
-    return (offset = zero(eltype(xₚ)), cr = cr)
+    return (; offset = zero(eltype(xₚ)), cr = cr)
 end
 
 function get_γ(rng::AbstractRNG, sampler::DifferentialEvolutionSubspaceSampler, δ::Int, d::Int)

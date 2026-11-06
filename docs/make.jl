@@ -6,7 +6,7 @@ links = InterLinks(
     "MCMCDiagnosticTools" => "https://turinglang.org/MCMCDiagnosticTools.jl/stable/objects.inv"
 );
 
-makedocs(
+makedocs(;
     sitename = "Differential Evolution Metropolis",
     plugins = [links],
     pages = [
@@ -20,6 +20,6 @@ makedocs(
     modules = [DifferentialEvolutionMetropolis]
 )
 
-deploydocs(
+deploydocs(;
     repo = "github.com/GBarnsley/DifferentialEvolutionMetropolis.jl.git",
 )
