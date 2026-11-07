@@ -53,7 +53,7 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 
 ### Core state (`src/DifferentialEvolutionMetropolis.jl`)
 
-`DifferentialEvolutionState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
+`DifferentialEvolutionState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), `order_state` (fixed order cycle positions, `nothing` without a fixed order scheme), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
 
 ### Update types
 
@@ -62,7 +62,8 @@ Each implements `proposal!(state, sampler, i)` returning `(offset, ...)`; an off
 - `differential_evolution_update.jl`: classic DE-MC.
 - `snooker_update.jl`: snooker update.
 - `subspace_update.jl` / `subspace_adaptive_update.jl`: DREAM-style randomised subspace with adaptive crossover.
-- `composite_sampler.jl`: `setup_sampler_scheme` weight-samples among updates each step; collapses to static adaptive state when all components are static.
+- `composite_sampler.jl`: `setup_random_order_scheme` weight-samples among updates each step, `setup_fixed_order_scheme` runs its first update `n` times then its second once (cycle position held in `state.order_state`); `setup_sampler_scheme` picks between them from `w`.
+  Schemes collapse to static adaptive state when all components are static.
 - Chain picking uses `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
 ### Memory (`src/memory.jl`)

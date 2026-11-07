@@ -1,5 +1,5 @@
 module DifferentialEvolutionMetropolis
-export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
+export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup, fix_sampler, fix_sampler_state
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
@@ -36,7 +36,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B, O,
     }
     "current position"
     x::VV
@@ -63,6 +63,8 @@ struct DifferentialEvolutionState{
     ld_smpl_view::V2
     xₚ_smpl_view::V1
     ldₚ_smpl_view::V2
+    "position of each fixed order scheme in its cycle, `nothing` if the sampler has no fixed order scheme"
+    order_state::O
 end
 
 # Reseed a chain rng from `rng`, Xoshiro states are set directly as `seed!` allocates while hashing the seed
@@ -79,7 +81,8 @@ function DifferentialEvolutionState(
         temperature_ladder::L,
         memory::M,
         chain_models::Vector{Model},
-        n_tries::Int
+        n_tries::Int,
+        order_state
     ) where {
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
@@ -107,7 +110,8 @@ function DifferentialEvolutionState(
         x_smpl_view,
         ld_smpl_view,
         xₚ_smpl_view,
-        ldₚ_smpl_view
+        ldₚ_smpl_view,
+        order_state
     )
 end
 

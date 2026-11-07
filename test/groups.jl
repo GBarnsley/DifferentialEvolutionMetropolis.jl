@@ -14,6 +14,7 @@ const GROUPS = (;
             "test_multi_try.jl",
             "test_scratch.jl",
             "test_composite.jl",
+            "test_fixed_order.jl",
             "test_rng.jl",
             "test_threadsafe.jl",
             "test_parallel.jl",
