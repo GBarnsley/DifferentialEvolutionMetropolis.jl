@@ -159,13 +159,28 @@ function step_warmup(
     fixed_sampler = fix_sampler(sampler, adaptive_state)
     prepare_scratch!(fixed_sampler, state)
 
-    if parallel
+    if uses_multi_try(fixed_sampler, state)
+        multi_try_update!(model, state, fixed_sampler, parallel)
+        if variance_ready
+            buffers = state.multi_try
+            for i in cold_chains
+                j = buffers.selected[i]
+                j == 0 && continue
+                cr_update = findfirst(==(buffers.forward_cr[j, i]), adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_update] += 1
+                adaptive_state.Δ[cr_update] += sum(
+                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
+                        adaptive_state.variance
+                )
+            end
+        end
+    elseif parallel
         # thread safe updating
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))
 
         Threads.@threads for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
+            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
             cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
             if accepted
@@ -183,7 +198,7 @@ function step_warmup(
         end
     else
         for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
+            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(model, state, prop.offset, i)
 
             if variance_ready && i in cold_chains

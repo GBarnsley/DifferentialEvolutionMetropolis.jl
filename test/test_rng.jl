@@ -5,12 +5,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         de_sampler_old = deepcopy(de_sampler)
@@ -78,12 +78,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         #should give the same result
@@ -91,29 +91,33 @@
         n_chains = 3
         n_warmup = 1000
         seed = 112
-        output1 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCThreads(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = false,
-            progress = false
-        )
+        output1 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCThreads(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = false,
+                progress = false
+            )
+        end
 
-        output2 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCThreads(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = true,
-            progress = false
-        )
+        output2 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCThreads(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = true,
+                progress = false
+            )
+        end
 
         equality_x = vcat(
             [
@@ -136,12 +140,12 @@
         # DE + Snooker composite
         de_sampler = setup_sampler_scheme(
             setup_de_update(),
-            setup_de_update(n_dims = LogDensityProblems.dimension(model)),
-            setup_snooker_update(deterministic_γ = false),
-            setup_snooker_update(deterministic_γ = true),
+            setup_de_update(; n_dims = LogDensityProblems.dimension(model)),
+            setup_snooker_update(; deterministic_γ = false),
+            setup_snooker_update(; deterministic_γ = true),
             setup_subspace_sampling(),
-            setup_subspace_sampling(γ = 1.0),
-            setup_subspace_sampling(cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
+            setup_subspace_sampling(; γ = 1.0),
+            setup_subspace_sampling(; cr = DiscreteNonParametric([0.5, 1.0], [0.5, 0.5]))
         )
 
         #should give the same result
@@ -149,29 +153,33 @@
         n_chains = 3
         n_warmup = 1000
         seed = 112
-        output1 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCDistributed(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = false,
-            progress = false
-        )
+        output1 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCDistributed(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = false,
+                progress = false
+            )
+        end
 
-        output2 = sample(
-            backwards_compat_rng(seed),
-            AbstractMCMC.LogDensityModel(model),
-            de_sampler,
-            MCMCDistributed(),
-            n_its,
-            n_chains;
-            num_warmup = n_warmup,
-            parallel = true,
-            progress = false
-        )
+        output2 = suppress_warnings(SINGLE_WORKER_WARNING) do
+            sample(
+                backwards_compat_rng(seed),
+                AbstractMCMC.LogDensityModel(model),
+                de_sampler,
+                MCMCDistributed(),
+                n_its,
+                n_chains;
+                num_warmup = n_warmup,
+                parallel = true,
+                progress = false
+            )
+        end
 
         equality_x = vcat(
             [

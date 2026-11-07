@@ -7,23 +7,6 @@ using ForwardDiff
 using LogDensityProblemsAD
 using LinearAlgebra: diag
 
-# A correlated Gaussian with known mean/covariance — a unimodal target where the harness
-# must recover the posterior and the metric must approach the marginal variances.
-struct CorrelatedGaussianModel{D}
-    dist::D
-end
-function LogDensityProblems.dimension(model::CorrelatedGaussianModel)
-    return length(model.dist)
-end
-function LogDensityProblems.logdensity(model::CorrelatedGaussianModel, x::AbstractVector{<:Real})
-    return logpdf(model.dist, x)
-end
-LogDensityProblems.capabilities(::Type{<:CorrelatedGaussianModel}) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.capabilities(::CorrelatedGaussianModel) = LogDensityProblems.LogDensityOrder{0}()
-
-# Pull the (single, shared) HMC adaptive state out of a composite state.
-hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
-
 @testset "HMC harness (AdvancedHMCExt)" begin
 
     μ = [2.0, -1.0, 0.5]
@@ -38,11 +21,13 @@ hmc_adaptive_state(state) = state.adaptive_state.adaptive_states[1]
                 setup_hmc_update(NUTS(0.8); n_dims = length(μ)), setup_swap_update(); w = [0.5, 0.5]
             )
             rng = backwards_compat_rng(44)
-            _, state = AbstractMCMC.step(
-                rng, model, scheme;
-                n_chains = 3, n_hot_chains = 2, memory = true,
-                num_warmup = 20, silent = true
-            )
+            _, state = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+                AbstractMCMC.step(
+                    rng, model, scheme;
+                    n_chains = 3, n_hot_chains = 2, memory = true,
+                    num_warmup = 20, silent = true
+                )
+            end
             for _ in 1:10
                 p0 = state.memory.fill.position
                 draw, state = AbstractMCMC.step_warmup(

@@ -24,41 +24,45 @@
             @test size(result.ld, 2) == 3
 
             # Test with memory
-            result_mem = deMC(
-                ld, 50;
-                n_chains = 3,
-                n_hot_chains = 2,
-                memory = true,
-                rng = rng
-            )
+            result_mem = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+                deMC(
+                    ld, 50;
+                    n_chains = 3,
+                    n_hot_chains = 2,
+                    memory = true,
+                    rng = rng
+                )
+            end
             @test size(result_mem.samples, 2) == 3
         end
 
         @testset "deMCzs with Parallel Tempering" begin
-            result = deMCzs(
-                ld, 100;
-                n_chains = 3,
-                n_hot_chains = 2,
-                epoch_limit = 2,
-                α = 1.2,
-                max_temp_pt = 4.0,
-                rng = rng
-            )
+            result = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+                deMCzs(
+                    ld, 100;
+                    n_chains = 3,
+                    n_hot_chains = 2,
+                    α = 1.2,
+                    max_temp_pt = 4.0,
+                    rng = rng
+                )
+            end
 
             @test size(result.samples, 2) == 3  # Only cold chains
             @test size(result.ld, 2) == 3
         end
 
         @testset "DREAMz with Parallel Tempering" begin
-            result = DREAMz(
-                ld, 100;
-                n_chains = 3,
-                n_hot_chains = 2,
-                epoch_limit = 2,
-                α = 0.8,
-                max_temp_pt = 6.0,
-                rng = rng
-            )
+            result = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+                DREAMz(
+                    ld, 100;
+                    n_chains = 3,
+                    n_hot_chains = 2,
+                    α = 0.8,
+                    max_temp_pt = 6.0,
+                    rng = rng
+                )
+            end
 
             @test size(result.samples, 2) == 3
             @test size(result.ld, 2) == 3
@@ -88,8 +92,6 @@
         @testset "deMCzs with Simulated Annealing" begin
             result = deMCzs(
                 ld, 50;
-                warmup_epochs = 2,
-                epoch_limit = 2,
                 annealing = true,
                 max_temp_sa = 3.0,
                 n_chains = 4,
@@ -104,8 +106,6 @@
         @testset "DREAMz with Simulated Annealing" begin
             result = DREAMz(
                 ld, 50;
-                warmup_epochs = 2,
-                epoch_limit = 2,
                 annealing = true,
                 max_temp_sa = 3.0,
                 n_chains = 4,
@@ -122,18 +122,18 @@
         rng = backwards_compat_rng(9999)
 
         # Test combining both features - should complete successfully
-        result = DREAMz(
-            ld, 30;
-            n_chains = 3,
-            n_hot_chains = 2,
-            annealing = true,
-            warmup_epochs = 2,
-            epoch_limit = 2,
-            max_temp_pt = 3.0,
-            max_temp_sa = 4.0,
-            α = 1.0,
-            rng = rng
-        )
+        result = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+            DREAMz(
+                ld, 30;
+                n_chains = 3,
+                n_hot_chains = 2,
+                annealing = true,
+                max_temp_pt = 3.0,
+                max_temp_sa = 4.0,
+                α = 1.0,
+                rng = rng
+            )
+        end
         @test isa(result, DifferentialEvolutionOutput)
     end
 
@@ -202,7 +202,6 @@
             n_chains = 2,
             n_hot_chains = 3,
             memory = true,
-            epoch_limit = 2,
             rng = rng
         )
     end
@@ -217,7 +216,6 @@
                 n_chains = 2,
                 n_hot_chains = 2,
                 n_cr = 2,
-                epoch_limit = 2,
                 rng = rng,
                 memory = false
             )
@@ -230,7 +228,6 @@
                 n_chains = 2,
                 n_hot_chains = 2,
                 p_snooker = 0.3,
-                epoch_limit = 2,
                 rng = rng,
                 memory = false
             )
@@ -247,7 +244,6 @@
             n_chains = 2,
             n_hot_chains = 2,
             parallel = true,
-            epoch_limit = 2,
             rng = rng,
             memory = false
         )
@@ -262,15 +258,17 @@
 
         spl = setup_sampler_scheme(setup_de_update())
 
-        _, state = AbstractMCMC.step(
-            rng, wrapped_model, spl;
-            n_chains = 2,
-            n_hot_chains = 2,
-            max_temp_pt = 4.0,
-            memory = false,
-            adapt = false,
-            silent = true
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING) do
+            AbstractMCMC.step(
+                rng, wrapped_model, spl;
+                n_chains = 2,
+                n_hot_chains = 2,
+                max_temp_pt = 4.0,
+                memory = false,
+                adapt = false,
+                silent = true
+            )
+        end
 
         # Set temperature of chain 4 to exactly 2.0
         state.temperature_ladder.temperature[4] = 2.0

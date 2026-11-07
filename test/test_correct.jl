@@ -19,15 +19,17 @@
             end
 
             if M < L
-                res = sample(
-                    rng,
-                    AbstractMCMC.LogDensityModel(base_model),
-                    update,
-                    L - M + 1;
-                    initial_position = initial_positions,
-                    thinning = thinning,
-                    sample_kwargs...
-                )
+                res = suppress_warnings(NO_SWAP_WARNING) do
+                    sample(
+                        rng,
+                        AbstractMCMC.LogDensityModel(base_model),
+                        update,
+                        L - M + 1;
+                        initial_position = initial_positions,
+                        thinning = thinning,
+                        sample_kwargs...
+                    )
+                end
                 complete_chain[M:L, :, 1:(end - 1)] .= res.samples
                 complete_chain[M:L, :, end] .= res.ld
             else
@@ -36,15 +38,17 @@
             end
 
             if M > 1
-                res = sample(
-                    rng,
-                    AbstractMCMC.LogDensityModel(base_model),
-                    update,
-                    M;
-                    initial_position = initial_positions,
-                    thinning = thinning,
-                    sample_kwargs...
-                )
+                res = suppress_warnings(NO_SWAP_WARNING) do
+                    sample(
+                        rng,
+                        AbstractMCMC.LogDensityModel(base_model),
+                        update,
+                        M;
+                        initial_position = initial_positions,
+                        thinning = thinning,
+                        sample_kwargs...
+                    )
+                end
                 #append but ignore the value at M, its already on there
                 if res.samples[1, :, :] != complete_chain[M, :, 1:(end - 1)]
                     error("Something went wrong with chaining the results together")
@@ -101,12 +105,14 @@
             d = LogDensityProblems.dimension(base_model),
             n_chains = memory ? 5 : d * 3,
             n_hot_chains = 0,
-            N₀ = memory ? max(10 * d - n_chains, n_chains + n_hot_chains) : 0
+            N₀ = memory ? max(10 * d - n_chains, n_chains + n_hot_chains) : 0,
+            n_tries = 1
         )
         #setup for model
-        sample_kwargs = (
+        sample_kwargs = (;
             memory = memory, N₀ = N₀, n_chains = n_chains, progress = false, adapt = false,
             chain_type = DifferentialEvolutionOutput, silent = true, n_hot_chains = n_hot_chains,
+            n_tries = n_tries,
         )
 
         #setup for checks
@@ -177,32 +183,38 @@
     k = 7
 
     composite_update = setup_sampler_scheme(
-        setup_de_update(n_dims = LogDensityProblems.dimension(base_model)),
+        setup_de_update(; n_dims = LogDensityProblems.dimension(base_model)),
         setup_snooker_update(),
         setup_subspace_sampling()
     )
 
     @testset "Without memory" begin
         thinning = 4
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, setup_de_update(; n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_tries = 3)
     end
     @testset "With memory" begin
         thinning = 4
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 10, true)
+        @test sequential_testing(rng, setup_de_update(; n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 10, true)
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, true)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, true; n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, true; n_tries = 3)
     end
     @testset "With pt" begin
         thinning = 2
         n_chains = 3
         n_hot_chains = LogDensityProblems.dimension(base_model) * 2 - n_chains
-        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 5, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, setup_de_update(; n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, 5, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, setup_snooker_update(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
         @test sequential_testing(rng, composite_update, base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains)
+        @test sequential_testing(rng, setup_de_update(n_dims = LogDensityProblems.dimension(base_model)), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains, n_tries = 3)
+        @test sequential_testing(rng, setup_subspace_sampling(), base_model, L, α_between, α_across, k, Δ, n, thinning, false; n_hot_chains = n_hot_chains, n_chains = n_chains, n_tries = 3)
     end
 end

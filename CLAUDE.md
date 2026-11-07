@@ -10,13 +10,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-**Run individual test files:** use the Julia MCP server (`mcp__julia__julia_eval`) with `env_path` set to `./test` (no `Project.toml` needed; deps resolve from the stacked global env).
-Mirror the `test/runtests.jl` preamble (`using` lines, `disable_logging(Logging.Info)`, `backwards_compat_rng`, the shared model structs), then `include` the file.
-Include `test_hmc.jl` before other `test_hmc_*.jl` files, since it defines `CorrelatedGaussianModel` and `hmc_adaptive_state`.
+**Run one test group:** set `TEST_GROUP` to `core`, `hmc`, `mcmcdiagnostictools`, `mcmcchains`, `flexichains` or `pathfinder` (default `all`).
+
+```bash
+TEST_GROUP=mcmcchains julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+`test/groups.jl` is the single list of test dependencies: `COMMON_DEPS` for every group, plus each group's `deps` and `files` in `GROUPS` (`all` takes the union and is the only group that runs `test_correct.jl`).
+`activate_test_env(group)` generates and activates `test/environments/v<julia version>/<group>/` (gitignored), so only that group's packages constrain versions; delete it to re-resolve to the newest versions.
+`test/Project.toml` only lists `Pkg`; add test dependencies to `test/groups.jl`, not to any `Project.toml`.
+CI runs `all` on every Julia version, then `test/differing_groups.jl`, then each differing group in the same job: `core` when one of the package's direct dependencies resolves differently in `all`, an extension group when one of its own deps does.
+
+**Downgrade test (local only, not in CI):** run a single group on the minimum Julia version with its `[compat]` lower bounds pinned.
+
+```bash
+TEST_DOWNGRADE=true TEST_GROUP=core julia +1.10 --project=. -e 'using Pkg; Pkg.test()'
+```
+
+`lower_bounds(group)` pins the non-stdlib direct dependencies for `core` and the trigger package for an extension group, each at its lowest registered version, in `test/environments/v<julia version>/<group>-downgrade/`; `all` is rejected.
+Rerun it when a dependency is added or a lower bound changes.
+
 Do not create temp environments or runner scripts.
 
-**Formatting:** Runic (`pre-commit` hook and CI check).
-Run `runic --inplace src ext test` before committing.
+**Formatting:** `pre-commit` (Runic for Julia, Panache for Markdown).
+The hook formats on commit; do not run `pre-commit` or `runic` manually.
 
 **Docs:** `julia --project=docs docs/make.jl` (Documenter; pages: index, tutorial, hmc, custom, pathfinder).
 
@@ -36,7 +53,7 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 
 ### Core state (`src/DifferentialEvolutionMetropolis.jl`)
 
-`DifferentialEvolutionState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
+`DifferentialEvolutionState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), `order_state` (fixed order cycle positions, `nothing` without a fixed order scheme), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
 
 ### Update types
 
@@ -45,7 +62,8 @@ Each implements `proposal!(state, sampler, i)` returning `(offset, ...)`; an off
 - `differential_evolution_update.jl`: classic DE-MC.
 - `snooker_update.jl`: snooker update.
 - `subspace_update.jl` / `subspace_adaptive_update.jl`: DREAM-style randomised subspace with adaptive crossover.
-- `composite_sampler.jl`: `setup_sampler_scheme` weight-samples among updates each step; collapses to static adaptive state when all components are static.
+- `composite_sampler.jl`: `setup_random_order_scheme` weight-samples among updates each step, `setup_fixed_order_scheme` runs its first update `n` times then its second once (cycle position held in `state.order_state`); `setup_sampler_scheme` picks between them from `w`.
+  Schemes collapse to static adaptive state when all components are static.
 - Chain picking uses `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
 ### Memory (`src/memory.jl`)
@@ -77,7 +95,10 @@ Default output is `DifferentialEvolutionOutput` (`samples[iter, chain, param]`, 
 
 ### Testing conventions
 
-- `test/runtests.jl` defines shared `IsotropicNormalModel` and `BendyBananaModel`; do not redefine them in individual files.
-- `test_correct.jl` is a slow simulation-based rank-uniformity correctness test.
+- `test/setup.jl` defines the shared helpers and `IsotropicNormalModel` and `BendyBananaModel`; `test/hmc_setup.jl` defines `CorrelatedGaussianModel` and `hmc_adaptive_state`.
+  Do not redefine them in individual files.
+- Keep the test log free of warnings: wrap setups that deliberately trigger a warning not under test in `suppress_warnings(f, patterns...)`, passing only the expected message patterns (e.g. `NO_SWAP_WARNING`).
+- `test_correct.jl` is a slow simulation-based rank-uniformity correctness test; it only runs in the `all` group.
 - `Aqua.test_all` runs ambiguity/piracy checks.
-- Template/convergence tests run after `using MCMCDiagnosticTools, MCMCChains, FlexiChains`; earlier tests check behaviour without those extensions loaded.
+- Extension test files load their trigger packages themselves; the `core` environment has no weakdeps installed, so core tests check behaviour without extensions.
+- A test that needs an extension goes in that extension's group, not in a core file.

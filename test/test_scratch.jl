@@ -45,10 +45,10 @@
     end
 
     updates = (
-        ("DE", setup_de_update(n_dims = n_dims)),
+        ("DE", setup_de_update(; n_dims = n_dims)),
         ("snooker", setup_snooker_update()),
         ("subspace", setup_subspace_sampling()),
-        ("subspace fixed γ", setup_subspace_sampling(γ = 1.0)),
+        ("subspace fixed γ", setup_subspace_sampling(; γ = 1.0)),
     )
     @testset "$name proposals do not allocate" for (name, update) in updates
         for memory in (false, true), T in (Float64, Float32)
@@ -63,7 +63,7 @@
             @test length(update.scratch.buffers) == length(state.x)
             @test update.scratch.buffers isa Vector{<:NTuple{<:Any, Vector{T}}}
             if check_allocations
-                proposal_bytes(s, u) = @allocated DifferentialEvolutionMetropolis.proposal!(s, u, 1)
+                proposal_bytes(s, u) = @allocated DifferentialEvolutionMetropolis.proposal!(s.xₚ[1], s.x[1], s, u, 1)
                 proposal_bytes(state, update)
                 @test proposal_bytes(state, update) == 0
             end
@@ -73,7 +73,9 @@
     @testset "a reused update resizes its buffers for more chains and dimensions" begin
         update = setup_subspace_sampling()
         rng = backwards_compat_rng(2)
-        _, state = AbstractMCMC.step(rng, model, update; n_chains = 4, memory = false)
+        _, state = suppress_warnings(r"In a memoryless model the number of chains") do
+            AbstractMCMC.step(rng, model, update; n_chains = 4, memory = false)
+        end
         _, state = AbstractMCMC.step(rng, model, update, state)
         @test all(length(buffer) == n_dims for buffers in update.scratch.buffers for buffer in buffers)
         larger = AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(8)))
@@ -86,31 +88,31 @@
 
     @testset "subspace proposals only change the selected dimensions" begin
         for (cr, expected) in ((1.0e-9, 1), (1.0, n_dims))
-            update = setup_subspace_sampling(cr = cr)
-            state = initial_state(update)
+            update = setup_subspace_sampling(; cr = cr)
+            state = suppress_warnings(() -> initial_state(update), FIXED_CROSSOVER_WARNING)
             DEM.prepare_scratch!(update, state)
             for _ in 1:20, i in eachindex(state.x)
-                DEM.proposal!(state, update, i)
+                DEM.proposal!(state.xₚ[i], state.x[i], state, update, i)
                 @test count(state.xₚ[i] .!= state.x[i]) == expected
             end
         end
     end
 
     @testset "equality and hashing ignore the buffers" begin
-        a = setup_de_update(n_dims = n_dims)
-        b = setup_de_update(n_dims = n_dims)
+        a = setup_de_update(; n_dims = n_dims)
+        b = setup_de_update(; n_dims = n_dims)
         DEM.prepare_scratch!(a, initial_state(a))
         @test a == b
         @test hash(a) == hash(b)
-        @test a != setup_de_update(γ = 0.5, n_dims = n_dims)
-        @test setup_subspace_sampling(cr = 0.5) == setup_subspace_sampling(cr = 0.5)
+        @test a != setup_de_update(; γ = 0.5, n_dims = n_dims)
+        @test setup_subspace_sampling(; cr = 0.5) == setup_subspace_sampling(; cr = 0.5)
         empty_scratch = DEM.ProposalScratch{2}()
         @test empty_scratch == a.scratch
         @test hash(empty_scratch) == hash(a.scratch)
     end
 
     @testset "composite sampler needs no proposal buffers of its own" begin
-        update = setup_de_update(n_dims = n_dims)
+        update = setup_de_update(; n_dims = n_dims)
         composite = setup_sampler_scheme(update)
         state = initial_state(update)
         @test DEM.prepare_scratch!(composite, state) === nothing

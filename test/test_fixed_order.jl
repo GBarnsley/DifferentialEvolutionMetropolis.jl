@@ -2,7 +2,7 @@
     DEM = DifferentialEvolutionMetropolis
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
     # Proposals from this update round back to the current position, so chains only move on secondary iterations
-    still_update = setup_de_update(γ = 1.0e-300, β = Normal(0.0, 1.0e-300))
+    still_update = setup_de_update(; γ = 1.0e-300, β = Normal(0.0, 1.0e-300))
     # Steps `scheme` `n` times (warm-up for the first `n_warmup`) and records whether any chain moved
     function record_moves!(rng, scheme, state, n; n_warmup = 0)
         moved = Bool[]
@@ -61,6 +61,18 @@
         moved, state = record_moves!(rng, scheme, state, 12; n_warmup = 6)
         @test moved == repeat([false, false, false, true], 3)
         @test state.order_state.iteration == 12
+    end
+
+    @testset "Multiple-try (adapt = $adapt)" for adapt in (true, false)
+        rng = backwards_compat_rng(1234)
+        @test DEM.supports_multi_try(setup_fixed_order_scheme(setup_snooker_update(), setup_de_update()))
+        @test !DEM.supports_multi_try(setup_fixed_order_scheme(setup_snooker_update(), setup_swap_update()))
+        scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 3)
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt, n_tries = 3)
+        @test DEM.n_tries(state.multi_try) == 3
+        moved, state = record_moves!(rng, scheme, state, 8; n_warmup = 4)
+        @test moved == repeat([false, false, false, true], 2)
+        @test state.order_state.iteration == 8
     end
 
     @testset "Adaptive updates only adapt when used" begin
@@ -221,7 +233,9 @@
         out = deMC(model, 100; n_burnin = 100, p_γ₂ = 0.1f0, γ₂ = 1.0f0, rng = rng, progress = false)
         @test all(isfinite, out.samples)
 
-        out = deMCzs(model, 10; n_burnin = 10, p_snooker = 4, n_hot_chains = 2, rng = rng, progress = false, save_final_state = true)
+        out = suppress_warnings(MEMORY_HOT_CHAINS_WARNING) do
+            deMCzs(model, 10; n_burnin = 10, p_snooker = 4, n_hot_chains = 2, rng = rng, progress = false, save_final_state = true)
+        end
         @test all(isfinite, out[1].samples)
     end
 end

@@ -214,7 +214,7 @@ inner_order_states(order_state::DifferentialEvolutionOrderState, ::DifferentialE
 function with_order_state(state::DifferentialEvolutionState, order_state)
     return DifferentialEvolutionState(
         state.x, state.ld, state.rngs, state.adaptive_state, state.temperature_ladder, state.memory,
-        state.chain_models, state.xₚ, state.ldₚ, state.x_smpl_view, state.ld_smpl_view,
+        state.chain_models, state.multi_try, state.xₚ, state.ldₚ, state.x_smpl_view, state.ld_smpl_view,
         state.xₚ_smpl_view, state.ldₚ_smpl_view, order_state
     )
 end
@@ -229,6 +229,8 @@ function select_update!(
     order_state.iteration += 1
     return update_id
 end
+
+supports_multi_try(s::DifferentialEvolutionCompositeSampler) = any(supports_multi_try, s.updates)
 
 # if there are no actually adaptive states, we can just use the static one
 function step(

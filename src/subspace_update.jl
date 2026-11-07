@@ -185,13 +185,13 @@ Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support &&
 
 prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
 
+supports_multi_try(::AbstractDifferentialEvolutionSubspaceSampler) = true
+
 function proposal!(
-        state::DifferentialEvolutionState,
+        xₚ::V, x::V, state::DifferentialEvolutionState,
         sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
-    )
+    ) where {V <: AbstractVector}
     rng = state.rngs[current_state]
-    x = state.x[current_state]
-    xₚ = state.xₚ[current_state]
     u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
 
     #determine how many dimensions to update, those with u < cr
@@ -221,7 +221,7 @@ function proposal!(
     γ = get_γ(rng, sampler, δ, d)
     xₚ .= ifelse.(u .< cr, x .+ (1 .+ e) .* γ .* xₚ .+ ϵ, x)
 
-    return (offset = zero(eltype(xₚ)), cr = cr)
+    return (; offset = zero(eltype(xₚ)), cr = cr)
 end
 
 function get_γ(rng::AbstractRNG, sampler::DifferentialEvolutionSubspaceSampler, δ::Int, d::Int)

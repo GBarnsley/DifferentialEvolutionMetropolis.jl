@@ -4,7 +4,7 @@
 # inflation that defeats `memory_metric()` on separated modes. It gates on a cheap
 # multimodality test so it degrades to `memory_metric()` when the target is unimodal, and it
 # carries the same memory/no-tempering requirements. `CorrelatedGaussianModel`,
-# `hmc_adaptive_state`, and `backwards_compat_rng` come from test_hmc.jl / runtests.jl.
+# `hmc_adaptive_state`, and `backwards_compat_rng` come from hmc_setup.jl / setup.jl.
 
 using AdvancedHMC
 using ForwardDiff
@@ -111,6 +111,15 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         @test isapprox(within, pooled; atol = 1.0e-8)
     end
 
+    @testset "k-means reseeds a cluster emptied by a stale warm start" begin
+        positions = [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1], [10.0, 10.0], [10.1, 10.0], [10.0, 10.1]]
+        # The third warm centre is far from every point, so its cluster starts empty.
+        warm = [0.0 10.0 1000.0; 0.0 10.0 1000.0]
+        labels, centers = HMCExt.kmeans(positions, 3, warm)
+        @test sort(unique(labels)) == 1:3
+        @test all(c -> -1 <= c <= 11, centers)
+    end
+
     @testset "recovers a unimodal correlated Gaussian (gate stays closed)" begin
         scheme = setup_sampler_scheme(cluster_update())
         out = sample(
@@ -175,11 +184,13 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
         scheme = setup_sampler_scheme(cluster_update())
-        _, state = AbstractMCMC.step(
-            rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
-            num_warmup = 50, memory = true, silent = true,
-            initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
+                num_warmup = 50, memory = true, silent = true,
+                initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
+            )
+        end
         @test state.temperature_ladder isa
             DifferentialEvolutionMetropolis.DifferentialEvolutionStaticTemperatureLadder
         @test_throws ErrorException AbstractMCMC.step_warmup(

@@ -2,7 +2,7 @@
 # `memory_metric()` estimates the HMC mass matrix from the sampler's memory archive instead of
 # AdvancedHMC's windowed adaptor. It requires memory and is rejected under parallel tempering
 # (annealing is fine). `CorrelatedGaussianModel`, `hmc_adaptive_state`, and `backwards_compat_rng`
-# come from test_hmc.jl / runtests.jl.
+# come from hmc_setup.jl / setup.jl.
 
 using AdvancedHMC
 using ForwardDiff
@@ -207,7 +207,7 @@ using LinearAlgebra: diag, Diagonal
         @test isapprox(a.metric.M⁻¹, diag(Σ); atol = 0.5)
     end
 
-    @testset "ill-conditioned target stays finite (shrinkage conditions the metric)" begin
+    @testset "ill-conditioned target stays finite (shrinkage conditions the $metric metric)" for metric in (:diagonal, :dense)
         # One nearly-degenerate direction: variance 1e-3 against unit scales.
         Σ_ill = Diagonal([1.0, 1.0e-3, 1.0])
         ill_model = AbstractMCMC.LogDensityModel(
@@ -215,7 +215,7 @@ using LinearAlgebra: diag, Diagonal
         )
         scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(
-                NUTS(0.8); n_dims = 3, metric_strategy = memory_metric(; shrinkage = 0.5)
+                NUTS(0.8; metric); n_dims = 3, metric_strategy = memory_metric(; shrinkage = 0.5)
             )
         )
         out = sample(
@@ -235,11 +235,13 @@ using LinearAlgebra: diag, Diagonal
         rng = backwards_compat_rng(123)
         ncold, nhot = 6, 4
         scheme = setup_sampler_scheme(mem_update())
-        _, state = AbstractMCMC.step(
-            rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
-            num_warmup = 50, memory = true, silent = true,
-            initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
+                num_warmup = 50, memory = true, silent = true,
+                initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
+            )
+        end
         @test state.temperature_ladder isa
             DifferentialEvolutionMetropolis.DifferentialEvolutionStaticTemperatureLadder
         @test_throws ErrorException AbstractMCMC.step_warmup(
@@ -253,11 +255,13 @@ using LinearAlgebra: diag, Diagonal
         rng = backwards_compat_rng(124)
         ncold, nhot = 6, 4
         scheme = setup_sampler_scheme(mem_update())
-        _, state = AbstractMCMC.step(
-            rng, model, scheme; n_chains = ncold, n_hot_chains = nhot, annealing_steps = 5,
-            num_warmup = 50, memory = true, silent = true,
-            initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
+            AbstractMCMC.step(
+                rng, model, scheme; n_chains = ncold, n_hot_chains = nhot, annealing_steps = 5,
+                num_warmup = 50, memory = true, silent = true,
+                initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
+            )
+        end
         @test state.temperature_ladder isa
             DifferentialEvolutionMetropolis.DifferentialEvolutionAnnealingTemperatureLadder
         @test length(state.temperature_ladder.cold_chains) < length(state.x)
@@ -296,11 +300,13 @@ using LinearAlgebra: diag, Diagonal
         scheme = setup_sampler_scheme(
             DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
         )
-        _, state = AbstractMCMC.step(
-            rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
-            num_warmup = 50, memory = false, silent = true,
-            initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
-        )
+        _, state = suppress_warnings(NO_SWAP_WARNING) do
+            AbstractMCMC.step(
+                rng, model, scheme; n_chains = ncold, n_hot_chains = nhot,
+                num_warmup = 50, memory = false, silent = true,
+                initial_position = [randn(rng, length(μ)) for _ in 1:(ncold + nhot)]
+            )
+        end
         cold = state.temperature_ladder.cold_chains
         hot = setdiff(1:length(state.x), cold)
         @test length(cold) == ncold && length(hot) == nhot
