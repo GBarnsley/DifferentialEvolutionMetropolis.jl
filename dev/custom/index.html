@@ -40,10 +40,12 @@ result = sample(
     max_iterations = 5000,  # passed as keyword argument
     n_chains = 4
 )</code></pre><h2 id="Custom-Proposal-Distributions"><a class="docs-heading-anchor" href="#Custom-Proposal-Distributions">Custom Proposal Distributions</a><a id="Custom-Proposal-Distributions-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Proposal-Distributions" title="Permalink"></a></h2><p>You can create your own proposal distributions by defining a new sampler type that subtypes <code>AbstractDifferentialEvolutionSampler</code> and implementing the <code>proposal</code> method.</p><p>The method signature for the proposal is:</p><pre><code class="language-julia hljs">function proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::YourSampler,
     current_state::Int
-)</code></pre><ul><li><code>state</code>: The current state containing all chain positions, log-densities, and chain specific rngs</li><li><code>sampler</code>: An instance of your custom sampler struct</li><li><code>current_state</code>: The index of the chain to be updated</li></ul><p>The function should modify <code>state.xₚ[current_state] = proposed_position</code> and return a named tuple with at least <code>(offset = hastings_correction)</code> where:</p><ul><li><code>proposed_position</code>: The proposed new position (vector)</li><li><code>offset</code>: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)</li></ul><h3 id="Chains-Required-for-Memoryless-Sampling"><a class="docs-heading-anchor" href="#Chains-Required-for-Memoryless-Sampling">Chains Required for Memoryless Sampling</a><a id="Chains-Required-for-Memoryless-Sampling-1"></a><a class="docs-heading-anchor-permalink" href="#Chains-Required-for-Memoryless-Sampling" title="Permalink"></a></h3><p>When memoryless sampling is used (<code>memory = false</code>), the sampler validates that the number of parallel chains is sufficient for the sampler&#39;s proposals (since they cannot be drawn from the memory database). By default, any custom sampler subtyping <code>AbstractDifferentialEvolutionSampler</code> has a conservative fallback requiring at least 3 chains. If your custom sampler has a different requirement, you should implement the <code>chains_required(sampler)</code> trait function. For example:</p><pre><code class="language-julia hljs"># If your sampler only needs 1 chain (e.g., standard random walk):
+) where {V &lt;: AbstractVector}</code></pre><ul><li><code>xₚ</code>: The vector to write the proposed position into</li><li><code>x</code>: The position to propose from</li><li><code>state</code>: The current state containing all chain positions, log-densities, and chain specific rngs</li><li><code>sampler</code>: An instance of your custom sampler struct</li><li><code>current_state</code>: The index of the chain to be updated</li></ul><p>The function should write the proposed position into <code>xₚ</code> (proposing from <code>x</code>) and return a named tuple with at least <code>(offset = hastings_correction)</code> where:</p><ul><li><code>offset</code>: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)</li></ul><h3 id="Chains-Required-for-Memoryless-Sampling"><a class="docs-heading-anchor" href="#Chains-Required-for-Memoryless-Sampling">Chains Required for Memoryless Sampling</a><a id="Chains-Required-for-Memoryless-Sampling-1"></a><a class="docs-heading-anchor-permalink" href="#Chains-Required-for-Memoryless-Sampling" title="Permalink"></a></h3><p>When memoryless sampling is used (<code>memory = false</code>), the sampler validates that the number of parallel chains is sufficient for the sampler&#39;s proposals (since they cannot be drawn from the memory database). By default, any custom sampler subtyping <code>AbstractDifferentialEvolutionSampler</code> has a conservative fallback requiring at least 3 chains. If your custom sampler has a different requirement, you should implement the <code>chains_required(sampler)</code> trait function. For example:</p><pre><code class="language-julia hljs"># If your sampler only needs 1 chain (e.g., standard random walk):
 DifferentialEvolutionMetropolis.chains_required(::YourSampler) = 1</code></pre><p>Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:</p><pre><code class="language-julia hljs">using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
@@ -53,15 +55,14 @@ end
 
 # Implement the proposal function
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::MetropolisHastingsUpdate,
     current_state::Int
-)
-    # Get the current position of this chain
-    x_current = state.x[current_state]
-
-    # Propose a new point (stored in state) using a random walk
-    state.xₚ[current_state] .= x_current .+ rand(state.rngs[current_state], sampler.proposal_distribution)
+) where {V &lt;: AbstractVector}
+    # Propose a new point using a random walk
+    xₚ .= x .+ rand(state.rngs[current_state], sampler.proposal_distribution)
 
     # The proposal is symmetric, so no Hastings correction needed
     return (offset = 0.0)
@@ -82,18 +83,19 @@ function DifferentialEvolutionMetropolis.prepare_scratch!(sampler::ScratchMetrop
 end
 
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::ScratchMetropolisHastingsUpdate,
     current_state::Int
-)
+) where {V &lt;: AbstractVector}
     # Draw the random walk step into this chain&#39;s buffer rather than a new vector
     # We pass the type of the state (here Float64) to make `chain_buffers` type stable
     # `scratch` itself if a mutable struct that can hold vectors of any type, allowing seem-less reuse of buffers
     # across logdensities of different dimensions and types
-    T = eltype(state.x[current_state])
-    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, T, current_state)
+    (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, eltype(x), current_state)
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
-    state.xₚ[current_state] .= state.x[current_state] .+ jump
+    xₚ .= x .+ jump
     return (offset = 0.0)
 end
 
@@ -145,13 +147,14 @@ end
 
 # Proposal method (same as non-adaptive)
 function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
     state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     sampler::AdaptiveMetropolisUpdate,
     current_state::Int
-)
-    x_current = state.x[current_state]
+) where {V &lt;: AbstractVector}
     # Use current proposal covariance from adaptive state
-    state.xₚ[current_state] .= rand(state.rngs[current_state], MvNormal(x_current, state.adaptive_state.proposal_cov))
+    xₚ .= rand(state.rngs[current_state], MvNormal(x, state.adaptive_state.proposal_cov))
     return (offset = 0.0)
 end
 
@@ -220,4 +223,4 @@ result = sample(
 )
 
 plot(result.samples[:, :, 1])
-plot(result.samples[:, :, 2])</code></pre><img src="953cb2d4.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../hmc/">« Combining HMC with differential evolution</a><a class="docs-footer-nextpage" href="../pathfinder/">Initialising from Pathfinder »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Friday 6 November 2026 19:33">Friday 6 November 2026</span>. Using Julia version 1.13.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(result.samples[:, :, 2])</code></pre><img src="a25b7336.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../hmc/">« Combining HMC with differential evolution</a><a class="docs-footer-nextpage" href="../pathfinder/">Initialising from Pathfinder »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Saturday 7 November 2026 00:04">Saturday 7 November 2026</span>. Using Julia version 1.13.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
