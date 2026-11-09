@@ -98,7 +98,7 @@ Default output is `DifferentialEvolutionOutput` (`samples[iter, chain, param]`, 
 - `test/setup.jl` defines the shared helpers and `IsotropicNormalModel` and `BendyBananaModel`; `test/hmc_setup.jl` defines `CorrelatedGaussianModel` and `hmc_adaptive_state`.
   Do not redefine them in individual files.
 - Keep the test log free of warnings: wrap setups that deliberately trigger a warning not under test in `suppress_warnings(f, patterns...)`, passing only the expected message patterns (e.g. `NO_SWAP_WARNING`).
-- `test_correct.jl` is a slow simulation-based rank-uniformity correctness test; it only runs in the `all` group.
+- `test_correct.jl` is a slow simulation-based correctness test (sequential rank-uniformity, one-step covariance, short-run Uniform stationarity and long-run Normal moments, looped over updates); it only runs in the `all` group.
 - `Aqua.test_all` runs ambiguity/piracy checks.
 - Extension test files load their trigger packages themselves; the `core` environment has no weakdeps installed, so core tests check behaviour without extensions.
 - A test that needs an extension goes in that extension's group, not in a core file.

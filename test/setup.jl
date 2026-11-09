@@ -66,6 +66,11 @@ function LogDensityProblems.logdensity(model::BendyBananaModel, x::AbstractVecto
 end
 LogDensityProblems.capabilities(model::BendyBananaModel) = LogDensityProblems.LogDensityOrder{0}()
 
+struct UnitIntervalModel end
+LogDensityProblems.dimension(::UnitIntervalModel) = 1
+LogDensityProblems.logdensity(::UnitIntervalModel, x::AbstractVector{<:Real}) = 0 <= x[1] <= 1 ? 0.0 : -Inf
+LogDensityProblems.capabilities(::UnitIntervalModel) = LogDensityProblems.LogDensityOrder{0}()
+
 mutable struct CountingNormalModel
     mean::Vector{Float64}
     count::Int
