@@ -40,13 +40,14 @@
     end
 
     """
-        z_test(estimates, expected)
+        t_test(estimates, expected)
 
-    Two-sided p-value that the mean of independent `estimates` equals `expected`.
+    Two-sided one-sample t-test p-value that the mean of independent `estimates` equals `expected`.
     """
-    function z_test(estimates, expected)
-        z = (mean(estimates) - expected) / (std(estimates) / sqrt(length(estimates)))
-        return 2 * ccdf(Normal(), abs(z))
+    function t_test(estimates, expected)
+        n = length(estimates)
+        t = (mean(estimates) - expected) / (std(estimates) / sqrt(n))
+        return 2 * ccdf(TDist(n - 1), abs(t))
     end
 
     # Rank test from https://arxiv.org/pdf/2001.06465, inspired by MCMCTesting.jl.
@@ -171,7 +172,7 @@
                 estimates[r, k] = mean(x -> x^k, samples)
             end
         end
-        return [z_test(estimates[:, k], μ) for (k, μ) in enumerate((0.0, 1.0, 0.0, 3.0))]
+        return [t_test(estimates[:, k], μ) for (k, μ) in enumerate((0.0, 1.0, 0.0, 3.0))]
     end
 
     """
@@ -193,7 +194,7 @@
             covariance[r] = mean(((i, j),) -> x[i] * x[j], pairs)
             cross_moment[r] = mean(((i, j),) -> (x[i] * x[j])^2, pairs)
         end
-        return z_test(covariance, 0.0), z_test(cross_moment, 1.0)
+        return t_test(covariance, 0.0), t_test(cross_moment, 1.0)
     end
 
     """
@@ -211,7 +212,7 @@
             x = run_sampler(rng, model, update, n_steps + 1, initial_positions, kwargs).samples[end, :, 1]
             deviation[r] = mean(y -> (y - 0.5)^2, x)
         end
-        return z_test(deviation, 1 / 12)
+        return t_test(deviation, 1 / 12)
     end
 
     rng = backwards_compat_rng(1234)
@@ -240,10 +241,14 @@
         @testset "$name" for (name, (update, n_tries)) in updates
             @test sequential_testing(rng, update(3), sequential_model, α; n_tries, setup...)
             covariance_p, cross_moment_p = one_step_covariance_testing(rng, update(1); n_tries, setup...)
-            @test covariance_p > α
-            @test cross_moment_p > α
-            @test short_run_marginal_stationarity(rng, update(1); n_tries, setup...) > α
-            @test minimum(normal_moments_check(rng, update(1); n_tries, setup...)) > α
+            uniform_p = short_run_marginal_stationarity(rng, update(1); n_tries, setup...)
+            moment_ps = normal_moments_check(rng, update(1); n_tries, setup...)
+            # Bonferroni correction over this update's non-sequential p-values.
+            α_corrected = α / (3 + length(moment_ps))
+            @test covariance_p > α_corrected
+            @test cross_moment_p > α_corrected
+            @test uniform_p > α_corrected
+            @test minimum(moment_ps) > α_corrected
         end
     end
 end
