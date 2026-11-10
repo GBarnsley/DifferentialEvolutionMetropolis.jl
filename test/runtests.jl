@@ -1,7 +1,7 @@
 include("groups.jl")
 
 # Slow tests run only in the all group, which CI runs on every Julia version.
-const ALL_ONLY_FILES = ["test_correct.jl"]
+const ALL_ONLY_FILES = ["test_correct.jl", "test_correct_hmc.jl"]
 
 const TEST_GROUP = Symbol(get(ENV, "TEST_GROUP", "all"))
 const TEST_DOWNGRADE = parse(Bool, get(ENV, "TEST_DOWNGRADE", "false"))
@@ -9,6 +9,7 @@ activate_test_env(TEST_GROUP; downgrade = TEST_DOWNGRADE)
 Pkg.status()
 
 include("setup.jl")
+TEST_GROUP === :all && include("correctness_setup.jl")
 
 @testset "DifferentialEvolutionMetropolis.jl" begin
     for group in (TEST_GROUP === :all ? keys(GROUPS) : (TEST_GROUP,))

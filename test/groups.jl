@@ -35,6 +35,7 @@ const GROUPS = (;
         files = [
             "hmc_setup.jl",
             "test_hmc.jl",
+            "test_correct_hmc.jl",
             "test_hmc_memory_metric.jl",
             "test_hmc_cluster_pooled_metric.jl",
             "test_hmc_per_cluster_metric.jl",
