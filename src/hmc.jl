@@ -9,8 +9,9 @@ During warm-up each sampler adapts what its AdvancedHMC adaptor adapts: `NUTS` t
 size and the mass matrix (`StanHMCAdaptor`), `HMCDA` tunes the step size only
 (`NesterovDualAveraging`), and `HMC` adapts nothing (`NoAdaptation`). A hand-built `HMCSampler`
 must use one of these three adaptors. A sampler given a symbol integrator (the default, e.g.
-`HMC(10)`) has its step size found on the first warm-up step; an explicit integrator such as
-`HMC(0.1, 10)` keeps its step size unless the adaptor tunes it.
+`HMC(10)`) has its step size found on the first warm-up step. An explicit step size, e.g.
+`HMC(0.1, 10)`, is kept by `HMC` and is where `NUTS` and `HMCDA` start dual averaging, as in
+AdvancedHMC.
 
 Without warm-up (`adapt = false`, or `num_warmup = 0`) the update runs the sampler as built:
 the initial metric and the integrator's step size. This needs an integrator with an explicit

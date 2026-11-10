@@ -81,7 +81,7 @@ nothing # hide
 Both styles produce the same kind of update; the example below uses the `NUTS()` form.
 
 `HMC` and `HMCDA` work the same way and keep their AdvancedHMC adaptation: during warm-up `NUTS` tunes the step size and mass matrix, `HMCDA` tunes only the step size, and `HMC` tunes nothing.
-A symbol integrator (the default) has its step size found on the first warm-up step, while an explicit one keeps its step size unless the sampler tunes it.
+A symbol integrator (the default) has its step size found on the first warm-up step, while an explicit step size is kept by `HMC` and is where `NUTS` and `HMCDA` start dual averaging, as in AdvancedHMC.
 Without warm-up (`adapt = false` or `num_warmup = 0`) the update runs the sampler as built, so give it an explicit step size:
 
 ```@example HMC

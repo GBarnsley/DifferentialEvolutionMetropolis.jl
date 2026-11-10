@@ -240,13 +240,18 @@ has_step_size(integrator::AbstractIntegrator) = AdvancedHMC.nom_step_size(integr
 good_step_size(rng, ℓ, astate::DEMHMCAdaptiveState, state) =
     find_good_stepsize(rng, Hamiltonian(astate.metric, ℓ), ensemble_mean(state.x))
 
+# The integrator's explicit step size, or one found at the ensemble for a symbol integrator (as AdvancedHMC).
+initial_step_size(rng, ℓ, astate::DEMHMCAdaptiveState, state) =
+    has_step_size(astate.integrator) ? AdvancedHMC.nom_step_size(astate.integrator) :
+    good_step_size(rng, ℓ, astate, state)
+
 function set_step_size!(astate::DEMHMCAdaptiveState, adaptor::AbstractAdaptor)
     astate.κ = AdvancedHMC.update(astate.κ, adaptor)
     astate.integrator = astate.κ.τ.integrator
     return nothing
 end
 
-# First-step lazy work: find a good step size at the ensemble and lay out the adaptation schedule.
+# First-step lazy work: set the initial step size and lay out the adaptation schedule.
 function refine_step_size!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, astate::DEMHMCAdaptiveState, state;
         n_adapts::Int
@@ -256,13 +261,13 @@ function refine_step_size!(
     return nothing
 end
 
-# Re-anchor the configured step-size adaptor in place, preserving its type/settings.
+# Anchor dual averaging at the initial step size in place, preserving the adaptor's type/settings.
 function refine_step_size!(
         rng, ℓ, astate, adaptor::Union{StanHMCAdaptor, AHMCAdapt.NesterovDualAveraging}, state,
         n_adapts
     )
     ssa = step_size_adaptor(adaptor)
-    ssa.state.ϵ = good_step_size(rng, ℓ, astate, state)
+    ssa.state.ϵ = initial_step_size(rng, ℓ, astate, state)
     AHMCAdapt.reset!(ssa)
     set_step_size!(astate, adaptor)
     # The cursor advances per HMC step, so `n_adapts` is an upper bound in HMC-step units.

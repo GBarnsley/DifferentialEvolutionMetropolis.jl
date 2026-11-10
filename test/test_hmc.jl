@@ -290,6 +290,17 @@ using LinearAlgebra: diag
         @test a.metric.M⁻¹ == ones(length(μ))
     end
 
+    @testset "dual averaging starts from an explicit step size ($name)" for (name, sampler, ssa) in (
+            ("NUTS", NUTS(0.8; integrator = Leapfrog(0.37)), a -> a.adaptor.ssa),
+            ("HMCDA", HMCDA(0.8, 2.0; integrator = Leapfrog(0.37)), a -> a.adaptor),
+        )
+        rng = backwards_compat_rng(5)
+        scheme = setup_sampler_scheme(setup_hmc_update(sampler; n_dims = length(μ)))
+        _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 6, num_warmup = 50, memory = false, silent = true)
+        _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50)
+        @test ssa(hmc_adaptive_state(state)).state.μ ≈ log(10 * 0.37)
+    end
+
     @testset "unsupported adaptors are rejected at construction" begin
         d = length(μ)
         metric = DiagEuclideanMetric(d)
