@@ -525,7 +525,7 @@ function step(
         initial_position = [Vector{T}(position) for position in initial_position]
         current_N = length(initial_position)
         current_pars = length(initial_position[1])
-        if current_pars != dimension(model)
+        if any(position -> length(position) != dimension(model), initial_position)
             print_log(log)
             error("   Number of parameters in initial position must be equal to the number of parameters in the log density")
         end
