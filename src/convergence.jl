@@ -10,6 +10,8 @@ indicating convergence across chains. This function is designed to be used as th
 The diagnostic is computed on the last half of the collected samples to focus on
 the stationary portion of the chains.
 
+Load MCMCDiagnosticTools before using this criterion. Otherwise, it throws an error.
+
 # Arguments
 - `rng`: Random number generator (unused but required by AbstractMCMC interface)
 - `model`: The model being sampled (unused but required by interface)
@@ -55,6 +57,5 @@ function r̂_stopping_criteria(
         iteration;
         kwargs...
     )
-    @error "Please load MCMCDiagnosticTools.jl to use `r̂_stopping_criteria`"
-    return true
+    return error("Please load MCMCDiagnosticTools.jl to use `r̂_stopping_criteria`")
 end
