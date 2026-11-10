@@ -19,13 +19,14 @@ This package aims to support julia versions from LTS up to pre-release.
 
 ```
 using DifferentialEvolutionMetropolis, TransformedLogDensities, TransformVariables
+using AbstractMCMC
 
 function ld_normal(x)
     sum(-(x .* x)/2)
 end
 ld = TransformedLogDensity(as(Array, 4), ld_normal);
 
-DREAMz(ld, 1000)
+DREAMz(AbstractMCMC.LogDensityModel(ld), 1000)
 ```
 
 ## Bibliography

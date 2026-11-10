@@ -435,22 +435,24 @@ $(generic_de_kwargs)
 
 # Examples
 ```@example step_function
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Setup
 rng = Random.default_rng()
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
-sampler = deMCzs()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Basic initialization with default settings
-sample, state = step(rng, model_wrapper, sampler)
+sample, state = AbstractMCMC.step(rng, model_wrapper, sampler)
 
 # Custom number of chains with memory disabled
-sample2, state2 = step(rng, model_wrapper, sampler; n_chains=10, memory=false)
+sample2, state2 = AbstractMCMC.step(rng, model_wrapper, sampler; n_chains=10, memory=false)
 
 # With custom initial positions
-init_pos = [randn(2) for _ in 1:8]
-sample3, state3 = step(rng, model_wrapper, sampler; initial_position=init_pos)
+init_pos = [randn(rng, 2) for _ in 1:8]
+sample3, state3 = AbstractMCMC.step(rng, model_wrapper, sampler; initial_position=init_pos)
 ```
 
 # Notes

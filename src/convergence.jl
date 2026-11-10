@@ -32,13 +32,16 @@ Load MCMCDiagnosticTools before using this criterion. Otherwise, it throws an er
 
 # Example
 ```@example convergence
-using DifferentialEvolutionMetropolis, AbstractMCMC, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
+using MCMCDiagnosticTools
 
 # Create a simple model
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Setup sampler
-sampler = deMCzs()
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Use with adaptive stopping criterion
 rng = Random.default_rng()

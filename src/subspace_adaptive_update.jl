@@ -118,15 +118,18 @@ to the adaptation, and jumps are recorded once the running variance is available
 
 # Example
 ```@example step_warmup
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Setup for warmup step example
 rng = Random.default_rng()
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
-sampler = DREAMz()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_subspace_sampling()
 
-# Initialize state (this would typically be done by AbstractMCMC.sample)
-# sample, new_state = step_warmup(rng, model_wrapper, sampler, state; parallel=false)
+# Initialize state and perform a warmup step
+_, state = AbstractMCMC.step(rng, model_wrapper, sampler)
+sample, new_state = AbstractMCMC.step_warmup(rng, model_wrapper, sampler, state; parallel=false)
 ```
 
 See also [`step`](@ref), [`fix_sampler`](@ref).

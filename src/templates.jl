@@ -23,10 +23,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
@@ -134,10 +136,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMCzs(model_wrapper, 1000; n_chains = 3)
@@ -242,10 +246,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run DREAM with subspace sampling
 result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
