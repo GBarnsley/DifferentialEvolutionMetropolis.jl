@@ -282,4 +282,47 @@ using Random, AbstractMCMC, LogDensityProblems
         @test state_set.memory.fill.position == 8
         @test state_set.memory.mem_x[1:8] == init[17:24]
     end
+
+    @testset "Memory size check before sampling" begin
+        DEM = DifferentialEvolutionMetropolis
+        target(C, k) = ceil(Int, C / (1 - 0.99^(1 / k)) - C)
+        de = setup_de_update(; n_dims = 2)
+        subspace = setup_subspace_sampling(; δ = DiscreteUniform(1, 5))
+
+        @test DEM.memory_picks(de) == 3
+        @test DEM.memory_picks(setup_snooker_update()) == 4
+        @test DEM.memory_picks(subspace) == 6
+        @test DEM.memory_picks(setup_subspace_sampling(; δ = Categorical([0.1, 0.1, 0.8]))) == 6
+        @test DEM.memory_picks(setup_subspace_sampling(; δ = truncated(Poisson(3); lower = 1))) == 6
+        @test DEM.memory_picks(setup_sampler_scheme(de, subspace)) == 6
+        @test DEM.target_memory_size(de, n_chains) == target(n_chains, 3)
+
+        A = DEM.target_memory_size(de, n_chains)
+        N₀ = 8
+        for thin in (0, 3)
+            D = max(thin, 1) * cld(A - N₀, n_chains)
+            @test_logs (:warn, Regex("at least $D warm-up steps")) DEM.check_memory_size!(
+                String[], de, n_chains, N₀, D - 1, thin, false, 10^6
+            )
+            @test_logs min_level = Logging.Warn DEM.check_memory_size!(
+                String[], de, n_chains, N₀, D, thin, false, 10^6
+            )
+        end
+
+        log = @test_logs min_level = Logging.Warn DEM.check_memory_size!(String[], de, n_chains, N₀, 0, 0, false, 10^6)
+        @test log == ["   Suggested minimum memory size before sampling is $A positions (N₀ = $N₀)."]
+
+        @test_logs (:warn, MEMORY_REFILL_WARNING) DEM.check_memory_size!(String[], de, n_chains, N₀, 10^6, 0, true, A - 1)
+        @test_logs min_level = Logging.Warn DEM.check_memory_size!(String[], de, n_chains, N₀, 10^6, 0, true, A)
+
+        @test_logs (:warn, MEMORY_SIZE_WARNING) AbstractMCMC.step(
+            rng, wrapped_model, de; n_chains, N₀, num_warmup = 10, silent = true
+        )
+        @test_logs min_level = Logging.Warn AbstractMCMC.step(
+            rng, wrapped_model, de; n_chains, N₀ = A, num_warmup = 10, memory_size = 1001, silent = true
+        )
+        @test_logs (:warn, MEMORY_REFILL_WARNING) AbstractMCMC.step(
+            rng, wrapped_model, de; n_chains, memory_refill = true, memory_size = 10, silent = true
+        )
+    end
 end

@@ -2,21 +2,22 @@
     """
         correctness_setup(model, update; memory, n_hot_chains, n_tries)
 
-    Sampler keyword arguments, a buffer of initial positions (chains, then hot chains, then
-    memory) and the temperature each initial position is drawn at. Uses 3 chains, or the
-    minimum a memoryless `update` requires if larger.
+    Sampler keyword arguments, a buffer of initial positions (chains, then hot chains) and the
+    temperature each initial position is drawn at. Uses 3 chains, or the minimum a memoryless
+    `update` requires if larger. With memory, the sampler fills an initial memory of `N₀ = 3000`
+    positions itself, so the memory is not drawn from the target.
     """
     function correctness_setup(model, update; memory, n_hot_chains, n_tries)
         d = LogDensityProblems.dimension(model)
         n_chains = memory ? 3 : max(3, DifferentialEvolutionMetropolis.chains_required(update))
         ladder = vcat(ones(n_chains), [1 + (2 * sqrt(d) - 1) * h / n_hot_chains for h in 1:n_hot_chains])
-        N₀ = memory ? 3 * n_chains * d : 0
+        N₀ = memory ? 3000 : 0
         kwargs = (;
             memory, N₀, n_chains, n_hot_chains, n_tries, temperature_ladder = [ladder],
             progress = false, adapt = false, chain_type = DEMOutput, silent = true,
         )
-        initial_positions = [Vector{Float64}(undef, d) for _ in 1:(n_chains + n_hot_chains + N₀)]
-        temperatures = vcat(ladder, ones(N₀))
+        initial_positions = [Vector{Float64}(undef, d) for _ in 1:(n_chains + n_hot_chains)]
+        temperatures = ladder
         return kwargs, initial_positions, temperatures
     end
 

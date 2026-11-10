@@ -376,3 +376,4 @@ function initialize_adaptive_state(
 end
 
 chains_required(s::AbstractDEMCompositeSampler) = maximum(chains_required, s.updates)
+memory_picks(s::AbstractDEMCompositeSampler) = maximum(memory_picks, s.updates)

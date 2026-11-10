@@ -106,3 +106,30 @@ function update_position!(method::DEMMemoryFillThin)
         return false
     end
 end
+
+function target_memory_size(sampler::AbstractDEMMetaSampler, n_chains::Int; p::Real = 0.01)
+    k = memory_picks(sampler)
+    return ceil(Int, n_chains / (1 - (1 - p)^(1 / k)) - n_chains)
+end
+
+function check_memory_size!(
+        log::Vector{String}, sampler::AbstractDEMMetaSampler, n_chains::Int, N₀::Int,
+        num_warmup::Int, thin_interval::Int, refill::Bool, total_memory_size::Int
+    )
+    A = target_memory_size(sampler, n_chains)
+    refill_too_small = refill && total_memory_size < A
+    if refill_too_small
+        @warn "With `memory_refill = true` the memory stores at most $total_memory_size positions, fewer than the suggested minimum of $A before sampling. Consider `memory_size` of at least $(cld(A, n_chains))."
+    end
+    if num_warmup == 0
+        push!(log, "   Suggested minimum memory size before sampling is $A positions (N₀ = $N₀).")
+    elseif !refill_too_small
+        thin = max(thin_interval, 1)
+        B = N₀ + n_chains * div(num_warmup, thin)
+        if B < A
+            D = thin * cld(A - N₀, n_chains)
+            @warn "After num_warmup = $num_warmup warm-up steps the memory will store $B positions, fewer than the suggested minimum of $A before sampling. Consider using at least $D warm-up steps and ensure convergence."
+        end
+    end
+    return log
+end

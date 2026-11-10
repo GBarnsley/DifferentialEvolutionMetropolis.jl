@@ -15,7 +15,9 @@ include("setup.jl")
         @testset "$group" begin
             for file in GROUPS[group].files
                 TEST_GROUP !== :all && file in ALL_ONLY_FILES && continue
-                include(file)
+                suppress_warnings(MEMORY_SIZE_WARNING, MEMORY_REFILL_WARNING) do
+                    include(file)
+                end
             end
         end
     end

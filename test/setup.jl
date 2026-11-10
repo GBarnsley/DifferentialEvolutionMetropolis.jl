@@ -22,6 +22,8 @@ const MEMORY_HOT_CHAINS_WARNING = r"Memory-based samplers do not typically requi
 const SINGLE_WORKER_WARNING = r"Only a single (thread|process) available"
 const FIXED_CROSSOVER_WARNING = r"sampler already has a fixed crossover probability"
 const MEMORYLESS_PARALLEL_WARNING = r"None of the provided samplers can evaluate in parallel"
+const MEMORY_SIZE_WARNING = r"warm-up steps the memory will store"
+const MEMORY_REFILL_WARNING = r"With `memory_refill = true` the memory stores at most"
 
 struct WarningFilter{L <: AbstractLogger} <: AbstractLogger
     logger::L

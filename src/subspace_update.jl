@@ -234,3 +234,9 @@ function get_γ(
 end
 
 chains_required(::AbstractDEMSubspaceSampler) = 3
+
+memory_picks(sampler::AbstractDEMSubspaceSampler) = 2 * ceil(Int, δ_median(sampler.δ_spl))
+
+# `sampler(δ)` can return a sampler with no `median` (e.g. an `AliasTable` for `Categorical`), so those use a sampled median.
+δ_median(δ::Union{Dirac, DiscreteUniform}) = median(δ)
+δ_median(δ::Sampleable) = median(rand(Xoshiro(1), δ, 1000))

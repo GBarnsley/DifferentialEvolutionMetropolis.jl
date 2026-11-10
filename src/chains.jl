@@ -689,6 +689,7 @@ function step(
             push!(log, "   Using memory refill with default memory size of $memory_size (2x num_warmup/n_burnin) to store a maximum of $total_memory_size chains.")
             push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")
         end
+        check_memory_size!(log, sampler, n_true_chains, N₀, num_warmup, memory_thin_interval, memory_refill, total_memory_size)
         true_memory = vcat(mem_x, [similar(mem_x[1]) for _ in 1:(total_memory_size - N₀)])
 
         #setup fill method

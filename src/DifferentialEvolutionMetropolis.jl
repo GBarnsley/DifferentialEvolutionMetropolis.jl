@@ -8,7 +8,7 @@ export r̂_stopping_criteria
 import Distributions: UnivariateDistribution, DiscreteUnivariateDistribution,
     ContinuousUnivariateDistribution
 import Distributions: Sampleable, Discrete, Continuous, Univariate, sampler
-import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParametric
+import Distributions: Dirac, Uniform, DiscreteUniform, Normal, DiscreteNonParametric, median
 import Distributions
 import AliasTables: AliasTable, set_weights!
 
@@ -90,6 +90,9 @@ Minimum number of chains `sampler` needs when sampling without memory.
 Define a method for a custom update that needs a different number, e.g. `chains_required(::MyUpdate) = 1` for a random walk.
 """
 chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
+
+# Number of memory positions an update draws, used to give the suggested memory size before sampling
+memory_picks(sampler::AbstractDEMSampler) = chains_required(sampler)
 
 """
     proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSampler, current_state::Int)

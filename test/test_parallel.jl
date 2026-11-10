@@ -3,6 +3,9 @@ using Distributed
 @testset "ensemble × in-step threading" begin
     new_workers = addprocs(2; exeflags = `--project=$(Base.active_project()) --threads=2`)
     @everywhere new_workers using DifferentialEvolutionMetropolis, LogDensityProblems
+    # The worker runs repeat the serial runs here, whose warnings are filtered or shown on this process
+    @everywhere new_workers using Logging
+    @everywhere new_workers disable_logging(Logging.Warn)
     @everywhere begin
         struct EnsembleNormalModel
             mean::Vector{Float64}

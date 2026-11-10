@@ -197,7 +197,7 @@
         rng = backwards_compat_rng(2222)
 
         # Test warning when using hot chains with memory
-        @test_logs (:warn, r"Memory-based samplers.*hot chains") deMCzs(
+        @test_logs (:warn, r"Memory-based samplers.*hot chains") (:warn, MEMORY_SIZE_WARNING) deMCzs(
             ld, 50;
             n_chains = 2,
             n_hot_chains = 3,
