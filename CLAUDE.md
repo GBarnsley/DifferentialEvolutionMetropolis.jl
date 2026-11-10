@@ -48,7 +48,7 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 - `step(rng, model, sampler; kwargs...)` initialises: builds temperature ladder, memory, adaptive state, per-chain model copies, and `DEMState`.
 - `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state.
   It reseeds `state.rngs` from `rng`, then for each chain calls `proposal!(state, sampler, i)` and `update_chain!` (log density + tempered MH accept/reject).
-- `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` freeze adapted parameters.
+- `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` (unexported, documented with the rest of the custom sampler API in `docs/src/custom.md`) freeze adapted parameters.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
 
 ### Core state (`src/DifferentialEvolutionMetropolis.jl`)

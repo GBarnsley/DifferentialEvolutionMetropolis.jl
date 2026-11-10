@@ -1,4 +1,4 @@
-struct DEMSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry}
+struct DEMSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSingleTry}
     γ_spl::G
     scratch::DEMProposalScratch{2}
 end

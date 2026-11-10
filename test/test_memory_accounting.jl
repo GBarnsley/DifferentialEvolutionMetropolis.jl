@@ -96,7 +96,7 @@ using Random, AbstractMCMC, LogDensityProblems
         @test l1 - l2 == 1
 
         # fix_sampler_state leaves it unchanged
-        fixed_spl, fixed_state = fix_sampler_state(spl, state1)
+        fixed_spl, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(spl, state1)
         @test length(fixed_state.temperature_ladder.temperature_ladder) == l1
     end
 

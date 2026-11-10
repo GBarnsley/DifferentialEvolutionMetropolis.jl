@@ -171,7 +171,7 @@
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 2)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
         _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
-        fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
+        fixed_scheme, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(scheme, state)
         @test fixed_state.order_state === state.order_state
         @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
         moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 3)
@@ -185,7 +185,7 @@
         )
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = true)
         subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]
-        fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
+        fixed_scheme, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(scheme, state)
         @test fixed_scheme.updates[2].updates[1].cr_spl === subspace_state.cr_spl
         @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
         moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 4)

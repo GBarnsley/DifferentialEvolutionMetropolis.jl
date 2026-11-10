@@ -1,7 +1,7 @@
 struct DEMSampler{
         G <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
         B <: Sampleable{Univariate, Continuous},
-    } <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}
+    } <: AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}
     γ_spl::G
     β_spl::B
     scratch::DEMProposalScratch{1}

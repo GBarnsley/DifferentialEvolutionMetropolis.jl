@@ -1,4 +1,4 @@
-struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDEMSampler{DifferentialEvolutionMetropolis.AbstractDEMSamplerSerial, DifferentialEvolutionMetropolis.AbstractDEMSamplerSingleTry} end
+struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDEMSampler{DifferentialEvolutionMetropolis.DEMSamplerSerial, DifferentialEvolutionMetropolis.DEMSamplerSingleTry} end
 
 @testset "Composite Sampler" begin
     @testset "Composite Setup" begin

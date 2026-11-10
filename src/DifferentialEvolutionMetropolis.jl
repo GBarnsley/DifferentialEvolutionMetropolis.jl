@@ -1,6 +1,6 @@
 module DifferentialEvolutionMetropolis
 export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
-export step, step_warmup, fix_sampler, fix_sampler_state
+export step, step_warmup
 export DEMOutput
 export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
@@ -21,21 +21,60 @@ import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
 import AbstractMCMC: LogDensityModel, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
-# define types to represent capabilities
+"""
+    AbstractDEMSamplerExecutionMode
 
+Supertype indicating the execution mode of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether chains can update in parallel with multithreading.
+"""
 abstract type AbstractDEMSamplerExecutionMode end
-# Can't use multithreading, without multi-try or memory mode:
-abstract type AbstractDEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
-# Can use multithreading:
-abstract type AbstractDEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
 
+"""
+    DEMSamplerSerial
+
+Execution mode of an update whose proposals read other chains, so without memory the chains must update in turn (unless multiple tries are used).
+"""
+struct DEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
+
+"""
+    DEMSamplerMultiThread
+
+Execution mode of an update whose chains can update in parallel, even without memory.
+"""
+struct DEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
+
+"""
+    AbstractDEMSamplerTryMode
+
+Supertype indicating if an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), supports multiple tries.
+"""
 abstract type AbstractDEMSamplerTryMode end
-abstract type AbstractDEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
-abstract type AbstractDEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
 
+"""
+    DEMSamplerSingleTry
 
+Does not support multiple tries.
+"""
+struct DEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
+
+"""
+    DEMSamplerMultipleTry
+
+Try mode of an update that supports `n_tries > 1`, which requires a symmetric proposal with zero Hastings correction.
+"""
+struct DEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
+
+"""
+    AbstractDEMMetaSampler
+
+Supertype of every update and sampler scheme in the package. Includes both actual updates [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref) and composite schemes.
+"""
 abstract type AbstractDEMMetaSampler <: AbstractMCMC.AbstractSampler end
 
+"""
+    AbstractDEMSampler{E <: AbstractDEMSamplerExecutionMode, T <: AbstractDEMSamplerTryMode}
+
+Supertype of a single update. A struct inheriting from this type and implementing [`DifferentialEvolutionMetropolis.proposal!`](@ref), will function as an update in this package.
+"""
 abstract type AbstractDEMSampler{
     E <: AbstractDEMSamplerExecutionMode,
     T <: AbstractDEMSamplerTryMode,
@@ -43,14 +82,53 @@ abstract type AbstractDEMSampler{
 
 abstract type AbstractDEMCompositeSampler <: AbstractDEMMetaSampler end
 
+"""
+    chains_required(sampler::AbstractDEMMetaSampler)
+
+Minimum number of chains `sampler` needs when sampling without memory.
+
+Define a method for a custom update that needs a different number, e.g. `chains_required(::MyUpdate) = 1` for a random walk.
+"""
 chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
+"""
+    proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSampler, current_state::Int)
+
+Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
+
+Every update must implement this.
+Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
+
+# Returns
+- A named tuple with at least `offset`, the log Hastings correction (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
+"""
+function proposal! end
+
+"""
+    AbstractDEMAdaptiveState{T}
+
+Supertype of the adaptive state of a sampler, held in [`DifferentialEvolutionMetropolis.DEMState`](@ref), with `T` the position element type.
+"""
 abstract type AbstractDEMAdaptiveState{T} end
 
 abstract type AbstractDEMMemory{T} end
 
 abstract type AbstractDEMTemperatureLadder{T} end
 
+"""
+    DEMState
+
+State of all chains, passed between steps and to [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+
+Fields a custom update may read:
+- `x`: current position of each chain.
+- `ld`: log density at each current position.
+- `rngs`: per-chain random number generators.
+- `adaptive_state`: the [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref) of the sampler.
+
+Draw other chains or memory positions with [`DifferentialEvolutionMetropolis.pick_chains`](@ref).
+The remaining fields are preallocated buffers and should not be modified.
+"""
 struct DEMState{
         T <: Real, A <: AbstractDEMAdaptiveState{T},
         L <: AbstractDEMTemperatureLadder{T},

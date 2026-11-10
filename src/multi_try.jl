@@ -63,8 +63,8 @@ function check_n_tries(sampler::AbstractDEMMetaSampler, n_tries::Int)
     return n_tries
 end
 
-sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, AbstractDEMSamplerSingleTry}) = false
-sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, AbstractDEMSamplerMultipleTry}) = true
+sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, DEMSamplerSingleTry}) = false
+sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}) = true
 sampler_supports_multitry(sampler::AbstractDEMCompositeSampler) = any(update -> sampler_supports_multitry(update), sampler.updates)
 
 trial_cr(proposal) = NaN
@@ -104,7 +104,7 @@ function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Boo
     return nothing
 end
 
-function propose_forward!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, AbstractDEMSamplerMultipleTry}, i::Int)
+function propose_forward!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, i::Int)
     forward_ld = buffers.forward_ld_view[i]
     for (j, xₜ) in enumerate(buffers.forward_view[i])
         proposal = proposal!(xₜ, state.x[i], state, sampler, i)
@@ -114,7 +114,7 @@ function propose_forward!(buffers::DEMMultiTryBuffers, state, sampler::AbstractD
     return nothing
 end
 
-function propose_reference!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, AbstractDEMSamplerMultipleTry}, i::Int)
+function propose_reference!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, i::Int)
     t = get_temperature(state.temperature_ladder, i)
     forward_ld = buffers.forward_ld_view[i]
     log_weight = logsumexp(ld / t for ld in forward_ld)
@@ -150,7 +150,7 @@ end
 # Forward and reference trials are each evaluated in one loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
-        sampler::AbstractDEMSampler{<:Any, AbstractDEMSamplerMultipleTry}, parallel::Bool
+        sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
     n_chains = length(state.x)
@@ -165,7 +165,7 @@ end
 # Memoryless chains are updated in turn, so only each chain's trials are evaluated in parallel
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless, <:Any, <:DEMMultiTryBuffers},
-        sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}, parallel::Bool
+        sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
     for i in eachindex(state.x)

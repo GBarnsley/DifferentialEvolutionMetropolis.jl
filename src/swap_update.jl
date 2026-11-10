@@ -1,4 +1,4 @@
-struct DEMSwapSampler <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry} end
+struct DEMSwapSampler <: AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSingleTry} end
 
 """
 Set up a parallel tempering swap update.

@@ -1,5 +1,5 @@
 abstract type AbstractDEMSubspaceSampler <:
-AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry} end
+AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry} end
 
 struct DEMSubspaceSampler{
         C <: Sampleable{Univariate, <:Union{Continuous, Discrete}},

@@ -47,7 +47,7 @@ struct DEMHMCSampler{
         MS <: AbstractDEMMetricStrategy,
         M <: AbstractMetric, I <: AbstractIntegrator,
         K <: AbstractMCMCKernel, A <: AbstractAdaptor, AST,
-    } <: DEM.AbstractDEMSampler{DEM.AbstractDEMSamplerMultiThread, DEM.AbstractDEMSamplerSingleTry}
+    } <: DEM.AbstractDEMSampler{DEM.DEMSamplerMultiThread, DEM.DEMSamplerSingleTry}
     metric_strategy::MS
     metric::M
     integrator::I

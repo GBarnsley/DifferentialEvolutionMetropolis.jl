@@ -36,12 +36,6 @@ By default update parameters and distributions remain `Float64` and are converte
 If using a type other than `Float64`, you are encouraged to create custom updates that use the correct types, for example `setup_de_update(γ = 0.5f0, β = Normal(0.0f0, 1.0f-6))`.
 The precision and draw-type behavior of all distributions depend on Distributions.jl and are not supported in this package.
 
-<!-- panache-ignore-start -->
-!!! warning "Experimental"
-For HMC updates, the AdvancedHMC components **must** use the same type as the positions: `setup_hmc_update(NUTS(0.8f0); n_dims = D)` for `Float32`, or `setup_hmc_update(NUTS(BigFloat("0.8")); n_dims = D)` for `BigFloat`.
-A mismatched metric should error at initialization; it is not converted automatically.
-<!-- panache-ignore-end -->
-
 ## Next Steps
 
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
@@ -66,16 +60,21 @@ deMCzs
 DREAMz
 ```
 
-### Setup Functions
+### Updates
+
+```@docs
+setup_de_update
+setup_snooker_update
+setup_subspace_sampling
+setup_swap_update
+```
+
+### Composite updates
 
 ```@docs
 setup_sampler_scheme
 setup_random_order_scheme
 setup_fixed_order_scheme
-setup_de_update
-setup_snooker_update
-setup_subspace_sampling
-setup_swap_update
 ```
 
 ### HMC Setup Functions
@@ -92,9 +91,6 @@ per_cluster_metric
 ```@docs
 DifferentialEvolutionMetropolis.step
 DifferentialEvolutionMetropolis.step_warmup
-DifferentialEvolutionMetropolis.fix_sampler
-DifferentialEvolutionMetropolis.fix_sampler_state
-DifferentialEvolutionMetropolis.resolve_initial_position
 ```
 
 ### Convergence and Stopping Criteria

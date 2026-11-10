@@ -1,5 +1,7 @@
 # Combining HMC with differential evolution
 
+**Warning:** HMC integration is experimental and not recommend for routine use.
+
 Hamiltonian Monte Carlo (HMC, and its self-tuning variant NUTS) uses gradients to glide through awkward local geometry, but a single Hamiltonian trajectory will not cross a deep low-density barrier, so a lone HMC chain tends to stay in whichever mode it started in.
 
 The differential evolution updates in this package have a complementary strength.

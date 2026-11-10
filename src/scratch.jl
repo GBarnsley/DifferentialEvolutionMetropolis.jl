@@ -1,4 +1,11 @@
-# Per-chain proposal buffers held by an update, only reallocated when the element type, number of chains or dimensions changes
+"""
+    DEMProposalScratch{N}()
+
+Per-chain proposal buffers held by an update: `N` vectors per chain, with the element type and length of the positions.
+
+The buffers are sized by [`DifferentialEvolutionMetropolis.prepare_scratch!`](@ref) and only reallocated when the element type, number of chains or dimensions changes.
+Access them with [`DifferentialEvolutionMetropolis.chain_buffers`](@ref).
+"""
 mutable struct DEMProposalScratch{N}
     "`Vector{NTuple{N, Vector{T}}}` for the element type `T` of the positions"
     buffers::Any
@@ -25,15 +32,28 @@ function ensure_size!(scratch::DEMProposalScratch{N}, ::Type{T}, n_chains::Int, 
     return nothing
 end
 
-# Buffers for chain `i`, `T` must be the element type the scratch was last prepared for
+"""
+    chain_buffers(scratch::DEMProposalScratch{N}, ::Type{T}, i::Int)
+
+Return the `N` buffers of chain `i` as a tuple of `Vector{T}`.
+
+`T` must be the element type the scratch was last prepared for, i.e. `eltype(x)` inside [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+"""
 function chain_buffers(scratch::DEMProposalScratch{N}, ::Type{T}, i::Int) where {N, T}
     return (scratch.buffers::Vector{NTuple{N, Vector{T}}})[i]
 end
 
-#null call if a sampler has no scratch
+"""
+    prepare_scratch!(sampler::AbstractDEMMetaSampler, state)
+    prepare_scratch!(scratch::DEMProposalScratch, state)
+
+Size the scratch buffers of `sampler` for `state`, called before each step's chain updates since proposals may run in parallel and cannot resize safely.
+
+The fallback does nothing.
+An update holding a [`DifferentialEvolutionMetropolis.DEMProposalScratch`](@ref) should define a method that calls the `DEMProposalScratch` method on it.
+"""
 prepare_scratch!(sampler::AbstractDEMMetaSampler, state) = nothing
 
-# Must be called before chains are updated, as proposals may run in parallel and cannot resize safely
 function prepare_scratch!(scratch::DEMProposalScratch, state)
     x = first(state.x)
     return ensure_size!(scratch, eltype(x), length(state.x), length(x))

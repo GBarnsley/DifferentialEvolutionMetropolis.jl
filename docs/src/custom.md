@@ -74,16 +74,14 @@ result = sample(
 
 ## Custom Proposal Distributions
 
-Define a custom update by subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler{E, T}` and implementing `DifferentialEvolutionMetropolis.proposal!`.
-The two type parameters declare the update's capabilities:
+Define a custom update by subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler{<:AbstractDEMSamplerExecutionMode, <:AbstractDEMSamplerTryMode}` and implementing `DifferentialEvolutionMetropolis.proposal!`.
+The two type parameters declare the update's capabilities.
 
-| Parameter | Type | Behavior | | --- | --- | --- | | `E` | `AbstractDEMSamplerSerial` | Proposals read other chains, so memoryless chains must update in turn.
-| | `E` | `AbstractDEMSamplerMultiThread` | Chains can update in parallel even without memory.
-| | `T` | `AbstractDEMSamplerSingleTry` | Each chain takes one proposal per step.
-| | `T` | `AbstractDEMSamplerMultipleTry` | Supports `n_tries > 1`, including parallel evaluation of one chain's trials without memory.
-|
+`AbstractDEMSamplerExecutionMode` indicates if an update supports multi-threading (`DEMSamplerMultiThread`), by default all update, even those marked as `DEMSamplerSerial` support multithreaded across log-density evaluations when `memory = true`, execution mode refers to multithreading when `memory = false`.
+As a rule of thumb, any update that uses other chains in the ensemble should be marked `DEMSamplerSerial` if it uses other chains positions (i.e. `pick_chains`) and marked `DEMSamplerMultiThread` if it only uses it own position.
 
-Use `AbstractDEMSamplerMultipleTry` only for symmetric proposals with zero Hastings correction (or `-Inf` to reject a proposal).
+`AbstractDEMSamplerTryMode` indicates if the updates supports multi-try evaluation, **not** if it actually uses it.
+Any update implemented via the `proposal!` interface that are symmetrical should be labelled with `DEMSamplerMultipleTry`, otherwise `DEMSamplerSingleTry`.
 
 The method signature for the proposal is:
 
@@ -126,8 +124,8 @@ using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
 struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+    DifferentialEvolutionMetropolis.DEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.DEMSamplerMultipleTry,
 }
     proposal_distribution::MvNormal
 end
@@ -161,8 +159,8 @@ Only use the buffers belonging to `current_state`, as chains may be updated in p
 
 ```@example MHSampler
 struct ScratchMetropolisHastingsUpdate{D <: MvNormal} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+    DifferentialEvolutionMetropolis.DEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.DEMSamplerMultipleTry,
 }
     proposal_distribution::D
     scratch::DifferentialEvolutionMetropolis.DEMProposalScratch{1}
@@ -201,7 +199,6 @@ DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdat
 
 For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well.
 This is called during the warm-up phase.
-Unless you want your sampler to be always adaptive then you must implement `step`.
 
 You'll also need to define adaptive state structures and methods.
 Here's an example of an adaptive Metropolis-Hastings sampler:
@@ -219,8 +216,8 @@ end
 
 # Define the adaptive sampler
 struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
-    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+    DifferentialEvolutionMetropolis.DEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.DEMSamplerMultipleTry,
 }
     initial_cov::Matrix{T}
     adapt_after::Int
@@ -270,7 +267,6 @@ function DifferentialEvolutionMetropolis.proposal!(
 end
 
 DifferentialEvolutionMetropolis.chains_required(::AdaptiveMetropolisUpdate) = 1
-
 
 # Adaptive step during warm-up
 function step_warmup(
@@ -343,4 +339,61 @@ result = sample(
 
 plot(result.samples[:, :, 1])
 plot(result.samples[:, :, 2])
+```
+
+## Custom Sampler API
+
+These functions and types are not exported, so access them with the `DifferentialEvolutionMetropolis.` prefix.
+
+**Warning:** the custom sampler API may receive breaking changes in minor version updates.
+
+See also [`DifferentialEvolutionMetropolis.step`](@ref) and [`DifferentialEvolutionMetropolis.step_warmup`](@ref).
+
+### Defining your own sampler
+
+#### Types
+
+```@docs
+DifferentialEvolutionMetropolis.AbstractDEMSampler
+DifferentialEvolutionMetropolis.AbstractDEMSamplerExecutionMode
+DifferentialEvolutionMetropolis.DEMSamplerSerial
+DifferentialEvolutionMetropolis.DEMSamplerMultiThread
+DifferentialEvolutionMetropolis.AbstractDEMSamplerTryMode
+DifferentialEvolutionMetropolis.DEMSamplerSingleTry
+DifferentialEvolutionMetropolis.DEMSamplerMultipleTry
+```
+
+#### Methods to define
+
+```@docs
+DifferentialEvolutionMetropolis.proposal!
+DifferentialEvolutionMetropolis.chains_required
+DifferentialEvolutionMetropolis.prepare_scratch!
+```
+
+##### For adaptive samplers
+
+```@docs
+DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState
+DifferentialEvolutionMetropolis.initialize_adaptive_state
+DifferentialEvolutionMetropolis.fix_sampler
+```
+
+### Other internals for reference
+
+#### Types
+
+```@docs
+DifferentialEvolutionMetropolis.AbstractDEMMetaSampler
+DifferentialEvolutionMetropolis.DEMState
+DifferentialEvolutionMetropolis.DEMSample
+DifferentialEvolutionMetropolis.DEMProposalScratch
+```
+
+#### Functions
+
+```@docs
+DifferentialEvolutionMetropolis.pick_chains
+DifferentialEvolutionMetropolis.fix_sampler_state
+DifferentialEvolutionMetropolis.chain_buffers
 ```
