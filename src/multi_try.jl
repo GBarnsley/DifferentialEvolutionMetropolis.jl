@@ -90,7 +90,7 @@ function foreach_chain(f, n_chains::Int, parallel::Bool)
     return nothing
 end
 
-trial_logdensity(model, x, ld) = ld > -Inf ? logdensity(model, x) : ld
+trial_logdensity(model, x, ld) = ld > -Inf ? checked_logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
 function evaluate_trials!(lds::Array{T, 2}, xs, model, chain_models, parallel::Bool) where {T <: Real}
@@ -136,7 +136,7 @@ function accept_trial!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, 
     if j > 0
         t = get_temperature(state.temperature_ladder, i)
         reference_log_weight = logaddexp(logsumexp(ld / t for ld in buffers.reference_ld_view[i]), state.ld[i] / t)
-        if !(log(rand(state.rngs[i])) > buffers.forward_log_weight[i] - reference_log_weight)
+        if log(rand(state.rngs[i])) < buffers.forward_log_weight[i] - reference_log_weight
             copyto!(state.xₚ[i], buffers.forward[j, i])
             state.ldₚ[i] = buffers.forward_ld[j, i]
             return true

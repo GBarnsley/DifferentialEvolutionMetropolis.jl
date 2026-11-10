@@ -171,20 +171,26 @@ function update_state(
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
+function checked_logdensity(model, x)
+    value = logdensity(model, x)
+    isnan(value) && throw(DomainError(value, "Log density must not be NaN"))
+    return value
+end
+
 function update_chain!(model, state, offset, i)
     if isinf(offset) & (sign(offset) == -1.0)
         copyto!(state.xₚ[i], state.x[i])
         state.ldₚ[i] = state.ld[i]
         return false
     else
-        state.ldₚ[i] = logdensity(model, state.xₚ[i])
-        if log(rand(state.rngs[i])) >
+        state.ldₚ[i] = checked_logdensity(model, state.xₚ[i])
+        if log(rand(state.rngs[i])) <
                 (state.ldₚ[i] - state.ld[i]) / get_temperature(state.temperature_ladder, i) + offset
+            return true
+        else
             copyto!(state.xₚ[i], state.x[i])
             state.ldₚ[i] = state.ld[i]
             return false
-        else
-            return true
         end
     end
 end
@@ -209,6 +215,9 @@ function automatically fixes adaptive parameters before sampling.
 - `parallel`: Whether to run chains in parallel using threading. Defaults to `false`. Advisable for slow models.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Over writes memory options given at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions (see https://turinglang.org/AbstractMCMC.jl/stable/api/#Common-keyword-arguments)
+
+NaN target log densities throw a `DomainError`. Undefined acceptance ratios reject
+the proposal. A log density of `-Inf` remains valid for points outside the support.
 
 # Returns
 - `sample`: DifferentialEvolutionSample containing new positions and log-densities
@@ -567,10 +576,10 @@ function step(
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
-            ld[i] = logdensity(chain_models[i], x[i])
+            ld[i] = checked_logdensity(chain_models[i], x[i])
         end
     else
-        ld = T[logdensity(model, xi) for xi in x]
+        ld = T[checked_logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0
