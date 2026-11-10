@@ -68,7 +68,9 @@ __,
 )
 
 hmc_model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, IsotropicNormalModel(zeros(5))))
-hmc_update = setup_hmc_update(NUTS(0.8); n_dims = 5)
+# The un-warmed `step` benchmarks need an explicit step size.
+hmc_nuts = NUTS(0.8; integrator = Leapfrog(1.0))
+hmc_update = setup_hmc_update(hmc_nuts; n_dims = 5)
 __,
     hmc_initial_state = AbstractMCMC.step(
     rng, hmc_model, hmc_update; memory = false,
@@ -79,7 +81,7 @@ __,
     rng, hmc_model, hmc_update; memory = true,
     initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
 )
-hmc_memory_update = setup_hmc_update(NUTS(0.8); n_dims = 5, metric_strategy = memory_metric())
+hmc_memory_update = setup_hmc_update(hmc_nuts; n_dims = 5, metric_strategy = memory_metric())
 __,
     hmc_memory_initial_state_memory = AbstractMCMC.step(
     rng, hmc_model, hmc_memory_update; memory = true,
@@ -87,7 +89,7 @@ __,
 )
 
 hmc_dense_memory_update = setup_hmc_update(
-    NUTS(0.8; metric = :dense); n_dims = 5, metric_strategy = memory_metric()
+    NUTS(0.8; integrator = Leapfrog(1.0), metric = :dense); n_dims = 5, metric_strategy = memory_metric()
 )
 __,
     hmc_dense_memory_initial_state_memory = AbstractMCMC.step(
