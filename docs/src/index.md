@@ -46,8 +46,7 @@ A mismatched metric should error at initialization; it is not converted automati
 
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
 
-- Implement multi-try and delayed rejection DREAM, I avoided these so far since I have been using these samplers for costly log-densities with relatively few parameters, such as one that solve an ODE.
-- Fixed order (rather than random) updates
+- Implement delayed rejection DREAM
 - Kalman filtering for warmup (might require additions to the LD interface)
 - Investigate implementations with Gibbs/particle-filtering to support the sampling of discrete parameters
 - Investigate implementations alongside particle-gibbs/rj-MCMC with changing problem dimensions
@@ -106,14 +105,14 @@ r̂_stopping_criteria
 
 ### Output
 
-The output format can be modified with `chain_type`, the supported options are `Chains` from [MCMCChains](https://turinglang.org/MCMCChains.jl/stable/), `VNChain` from [FlexiChains](https://github.com/penelopeysm/FlexiChains.jl), `Any` which returns the basic `DifferentialEvolutionMetropolis.DifferentialEvolutionSample`, and the default option `DifferentialEvolutionOutput`.
+The output format can be modified with `chain_type`, the supported options are `Chains` from [MCMCChains](https://turinglang.org/MCMCChains.jl/stable/), `VNChain` from [FlexiChains](https://github.com/penelopeysm/FlexiChains.jl), `Any` which returns the basic `DifferentialEvolutionMetropolis.DEMSample`, and the default option `DEMOutput`.
 If `save_final_state = true` the format will be `(sample::requested format, final_state)`.
-If run in parallel using `step(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for both `Chains` and `DifferentialEvolutionOutput`, if the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
+If run in parallel using `sample(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for both `Chains` and `DEMOutput`, if the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
 
 Note that support for `FlexiChains` is a bit underutilized as the all samplers currently require all of your parameters to have one type.
 
 ```@docs
-DifferentialEvolutionOutput
+DEMOutput
 ```
 
 ## Index

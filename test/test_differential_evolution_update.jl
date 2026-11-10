@@ -63,9 +63,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler; memory = false)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -76,9 +76,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -94,7 +94,50 @@
             progress = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
+    end
+
+    @testset "memoryless chains are updated in turn" begin
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0]))
+        _, state = AbstractMCMC.step(backwards_compat_rng(1), model, setup_de_update(; n_dims = 1); n_chains = 3, memory = false, silent = true)
+        for i in 1:3
+            picked = DifferentialEvolutionMetropolis.pick_chains(state, i, Val(2))
+            expected = [j < i ? state.xₚ[j] : state.x[j] for j in 1:3 if j != i]
+            @test all(p -> count(e -> e === p, expected) == 1, picked)
+            @test picked[1] !== picked[2]
+        end
+    end
+
+    @testset "parallel without memory" begin
+        rng = backwards_compat_rng(1)
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
+        kwargs = (; n_chains = 4, memory = false, silent = true)
+        DEM = DifferentialEvolutionMetropolis
+        @test DEM.cannot_use_parallel(setup_de_update(), 1)
+        @test DEM.cannot_use_parallel(setup_swap_update(), 1)
+        @test DEM.cannot_use_parallel(setup_sampler_scheme(setup_de_update(), setup_swap_update()), 1)
+
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(
+            rng, model, setup_de_update(); parallel = true, kwargs...
+        )
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) match_mode = :any deMC(
+            model, 10; parallel = true, progress = false, silent = true
+        )
+        @test_logs AbstractMCMC.step(
+            rng, model, setup_sampler_scheme(setup_de_update(), setup_snooker_update()); parallel = true, n_tries = 2, kwargs...
+        )
+        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_tries = 2, kwargs...)
+        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_chains = 4, silent = true)
+
+        @testset "$(nameof(typeof(sampler))) runs the chains in turn" for sampler in (setup_de_update(), setup_subspace_sampling())
+            run(parallel) = suppress_warnings(MEMORYLESS_PARALLEL_WARNING) do
+                sample(
+                    backwards_compat_rng(2), model, sampler, 20;
+                    num_warmup = 10, parallel, progress = false, chain_type = DEMOutput, kwargs...
+                )
+            end
+            @test run(true).samples == run(false).samples
+        end
     end
 
     @testset "Sample using memory deMC" begin
@@ -108,9 +151,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler; memory = true)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -121,9 +164,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -139,6 +182,6 @@
             progress = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 end

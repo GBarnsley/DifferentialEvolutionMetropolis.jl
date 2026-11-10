@@ -4,7 +4,7 @@
     sampler = setup_de_update()
     options = (;
         n_chains = 4, num_warmup = 10, silent = true, progress = false,
-        chain_type = DifferentialEvolutionOutput,
+        chain_type = DEMOutput,
     )
     reference = sample(backwards_compat_rng(123), wrapped, sampler, 10; options...)
     result = sample(backwards_compat_rng(123), target, sampler, 10; options...)
@@ -15,7 +15,7 @@ end
 
 @testset "Starting position dimensions" begin
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(2)))
-    options = (; n_chains = 4, silent = true, progress = false, chain_type = DifferentialEvolutionOutput)
+    options = (; n_chains = 4, silent = true, progress = false, chain_type = DEMOutput)
     @test_throws ErrorException sample(
         backwards_compat_rng(42), model, setup_de_update(), 1;
         initial_position = [[1.0, 2.0], [1.0], [2.0, 3.0], [4.0, 5.0]],
@@ -35,17 +35,27 @@ end
 end
 
 @testset "Non-finite log densities" begin
-    options = (; n_chains = 4, memory = false, silent = true, progress = false, chain_type = DifferentialEvolutionOutput)
+    options = (; n_chains = 4, memory = false, silent = true, progress = false, chain_type = DEMOutput)
     sampler = setup_de_update()
 
-    @testset "$stage" for (stage, nan_at, n_tries) in (
-            ("initial", 1, 1), ("proposal", 5, 1),
-            ("forward trial", 5, 2), ("reference trial", 13, 2),
-        )
-        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, nan_at, 0.0))
+    @testset "initial" begin
+        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 1, 0.0))
         @test_throws DomainError sample(
-            backwards_compat_rng(42), model, sampler, 2; n_tries = n_tries, options...
+            backwards_compat_rng(42), model, sampler, 2; options...
         )
+    end
+
+    @testset "$stage" for (stage, nan_at, n_tries) in (
+            ("proposal", 1, 1), ("forward trial", 1, 2), ("reference trial", 3, 2),
+        )
+        rng = backwards_compat_rng(42)
+        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, 0.0))
+        _, state = AbstractMCMC.step(rng, model, sampler; n_tries = n_tries, options...)
+        for chain_model in state.chain_models
+            chain_model.count = 0
+            chain_model.nan_at = nan_at
+        end
+        @test_throws DomainError AbstractMCMC.step(rng, model, sampler, state)
     end
 
     @testset "undefined ratio at $value" for value in (-Inf, Inf)
@@ -63,11 +73,14 @@ end
         )
         @test all(x -> 0 <= x <= 1, output.samples)
         @test all(iszero, output.ld)
-        recovered = sample(
-            backwards_compat_rng(42), model, sampler, 100;
+        _, state = AbstractMCMC.step(
+            backwards_compat_rng(42), model, sampler;
             initial_position = [[-1.0], [0.3], [0.7], [0.9]], options...
         )
-        @test all(iszero, recovered.ld[end, :])
+        # A proposal inside the support must be accepted from a zero-density position.
+        state.xₚ[1] .= 0.5
+        @test DifferentialEvolutionMetropolis.update_chain!(state.chain_models[1], state, 0.0, 1)
+        @test iszero(state.ldₚ[1])
     end
 
     @testset "infinite-density region" begin

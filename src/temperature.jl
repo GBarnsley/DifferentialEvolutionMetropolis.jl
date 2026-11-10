@@ -32,12 +32,12 @@ function setup_temperature_struct(ladder::Vector{Vector{T}}) where {T <: Real}
     n_steps = length(ladder)
     if n_steps == 1
         if length(cold_chains) == length(ladder[1])
-            return DifferentialEvolutionNullTemperatureLadder{T}()
+            return DEMNullTemperatureLadder{T}()
         else
-            return DifferentialEvolutionStaticTemperatureLadder{T}(ladder[1], cold_chains)
+            return DEMStaticTemperatureLadder{T}(ladder[1], cold_chains)
         end
     else
-        return DifferentialEvolutionAnnealingTemperatureLadder{T}(
+        return DEMAnnealingTemperatureLadder{T}(
             ladder[1],
             view(ladder, 1:n_steps),
             cold_chains
@@ -45,37 +45,37 @@ function setup_temperature_struct(ladder::Vector{Vector{T}}) where {T <: Real}
     end
 end
 
-function setup_view(x::VV, ld::V, ladder::AbstractDifferentialEvolutionTemperatureLadder{T}) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
+function setup_view(x::VV, ld::V, ladder::AbstractDEMTemperatureLadder{T}) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
     return view(x, ladder.cold_chains), view(ld, ladder.cold_chains)
 end
 
 
-function get_temperature(ladder::AbstractDifferentialEvolutionTemperatureLadder, current_chain::Int)
+function get_temperature(ladder::AbstractDEMTemperatureLadder, current_chain::Int)
     return ladder.temperature[current_chain]
 end
 
-function update_ladder!!(ladder::AbstractDifferentialEvolutionTemperatureLadder)
+function update_ladder!!(ladder::AbstractDEMTemperatureLadder)
     return ladder
 end
 
-struct DifferentialEvolutionNullTemperatureLadder{T <: Real} <:
-    AbstractDifferentialEvolutionTemperatureLadder{T}
+struct DEMNullTemperatureLadder{T <: Real} <:
+    AbstractDEMTemperatureLadder{T}
 end
 
-function setup_view(x::VV, ld::V, ladder::DifferentialEvolutionNullTemperatureLadder{T}) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
+function setup_view(x::VV, ld::V, ladder::DEMNullTemperatureLadder{T}) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
     return view(x, :), view(ld, :)
 end
 
 function get_temperature(
-        ladder::DifferentialEvolutionNullTemperatureLadder{T},
+        ladder::DEMNullTemperatureLadder{T},
         current_chain::Int
     ) where {T <: Real}
     return one(T)
 end
 
 #for parallel tempering
-struct DifferentialEvolutionStaticTemperatureLadder{T <: Real} <:
-    AbstractDifferentialEvolutionTemperatureLadder{T}
+struct DEMStaticTemperatureLadder{T <: Real} <:
+    AbstractDEMTemperatureLadder{T}
     "temperature for each chain"
     temperature::Vector{T}
     "indicator for cold chains"
@@ -83,8 +83,8 @@ struct DifferentialEvolutionStaticTemperatureLadder{T <: Real} <:
 end
 
 #for annealing
-struct DifferentialEvolutionAnnealingTemperatureLadder{T <: Real} <:
-    AbstractDifferentialEvolutionTemperatureLadder{T}
+struct DEMAnnealingTemperatureLadder{T <: Real} <:
+    AbstractDEMTemperatureLadder{T}
     "temperature for each chain"
     temperature::Vector{T}
     "view of the temperature ladder"
@@ -93,19 +93,19 @@ struct DifferentialEvolutionAnnealingTemperatureLadder{T <: Real} <:
     cold_chains::Vector{Int}
 end
 
-function update_ladder!!(ladder::DifferentialEvolutionAnnealingTemperatureLadder{T}) where {
+function update_ladder!!(ladder::DEMAnnealingTemperatureLadder{T}) where {
         T <:
         Real,
     }
     n_steps = length(ladder.temperature_ladder)
     if n_steps == 1
         if length(ladder.cold_chains) == length(ladder.temperature)
-            return DifferentialEvolutionNullTemperatureLadder{T}()
+            return DEMNullTemperatureLadder{T}()
         else
-            return DifferentialEvolutionStaticTemperatureLadder{T}(ladder.temperature, ladder.cold_chains)
+            return DEMStaticTemperatureLadder{T}(ladder.temperature, ladder.cold_chains)
         end
     else
-        return DifferentialEvolutionAnnealingTemperatureLadder{T}(
+        return DEMAnnealingTemperatureLadder{T}(
             ladder.temperature_ladder[2],
             view(ladder.temperature_ladder, 2:n_steps),
             ladder.cold_chains

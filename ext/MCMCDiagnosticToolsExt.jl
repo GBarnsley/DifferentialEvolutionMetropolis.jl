@@ -3,7 +3,7 @@ module MCMCDiagnosticToolsExt
 
 import DifferentialEvolutionMetropolis
 import MCMCDiagnosticTools: rhat
-import AbstractMCMC: LogDensityModel, sample, AbstractModel
+import AbstractMCMC: LogDensityModel, sample
 import Random: AbstractRNG, default_rng
 
 export deMC, deMCzs, DREAMz
@@ -61,10 +61,10 @@ See also [`MCMCDiagnosticTools.rhat`](@extref), [`deMCzs`](@ref), [`DREAMz`](@re
 """
 function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         rng::AbstractRNG,
-        model::AbstractModel,
-        sampler::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler,
-        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}},
-        state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, A, L, M, V, VV},
+        model::LogDensityModel{Model},
+        sampler::DifferentialEvolutionMetropolis.AbstractDEMMetaSampler,
+        samples::Vector{DifferentialEvolutionMetropolis.DEMSample{V, VV}},
+        state::DifferentialEvolutionMetropolis.DEMState{T, A, L, M, Model, B, V, VV},
         iteration::Int;
         check_every::Int = 1000,
         maximum_R̂::T = T(1.2),
@@ -73,9 +73,10 @@ function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         kwargs...
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T},
-        M <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionMemory{T},
-        L <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionTemperatureLadder{T},
+        A <: DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState{T},
+        M <: DifferentialEvolutionMetropolis.AbstractDEMMemory{T},
+        L <: DifferentialEvolutionMetropolis.AbstractDEMTemperatureLadder{T},
+        Model, B,
     }
     if iteration >= maximum_iterations
         println("Maximum iterations reached: ", maximum_iterations)

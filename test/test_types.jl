@@ -11,7 +11,7 @@
                 initial_position = initial_position, n_chains = 4, n_burnin = 50,
                 rng = backwards_compat_rng(1234), silent = true, kw...
             )
-            @test result isa DifferentialEvolutionOutput{T}
+            @test result isa DEMOutput{T}
             @test all(isfinite, result.samples)
         end
 
@@ -24,9 +24,9 @@
             result = sample(
                 backwards_compat_rng(1234), ld, scheme, 50;
                 num_warmup = 50, initial_position = initial_position, n_chains = 4,
-                silent = true, progress = false, chain_type = DifferentialEvolutionOutput
+                silent = true, progress = false, chain_type = DEMOutput
             )
-            @test result isa DifferentialEvolutionOutput{T}
+            @test result isa DEMOutput{T}
             @test all(isfinite, result.samples)
         end
     end
@@ -42,7 +42,7 @@ end
                 n_chains = 4, n_burnin = 10, rng = backwards_compat_rng(1234),
                 silent = true, progress = false, save_final_state = true
             )
-            @test result isa DifferentialEvolutionOutput{T}
+            @test result isa DEMOutput{T}
             @test eltype(state.x[1]) === T
             @test eltype(state.ld) === T
             @test all(isfinite, result.samples)
@@ -53,7 +53,7 @@ end
                 model, 10; T = T, n_chains = 4, n_burnin = 10,
                 rng = backwards_compat_rng(1234), silent = true, progress = false, kw...
             )
-            @test result isa DifferentialEvolutionOutput{T}
+            @test result isa DEMOutput{T}
             @test all(isfinite, result.samples)
         end
     end

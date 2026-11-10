@@ -21,7 +21,7 @@
 
     @testset "crossover sampler exposes its support" begin
         support = [0.2, 0.5, 1.0]
-        cr_sampler = DifferentialEvolutionMetropolis.CrossoverSampler(support, [0.2, 0.3, 0.5])
+        cr_sampler = DifferentialEvolutionMetropolis.DEMCrossoverSampler(support, [0.2, 0.3, 0.5])
         @test Distributions.support(cr_sampler) == support
         @test all(rand(backwards_compat_rng(seed), cr_sampler) in support for seed in 1:10)
     end
@@ -32,7 +32,7 @@
         @test_throws ErrorException setup_subspace_sampling(; cr = -0.1)  # negative
         @test_throws ErrorException setup_subspace_sampling(; cr = 1.1)  # > 1
         @test_throws ErrorException setup_subspace_sampling(; cr = Uniform(-0.1, 0.5))  # minimum < 0
-        @test setup_subspace_sampling(; cr = Beta(1, 2)) isa DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler  # minimum = 0
+        @test setup_subspace_sampling(; cr = Beta(1, 2)) isa DifferentialEvolutionMetropolis.AbstractDEMSubspaceSampler  # minimum = 0
         @test_throws ErrorException setup_subspace_sampling(; cr = Uniform(0.5, 1.1))  # maximum > 1
 
         # Test δ validation
@@ -80,9 +80,9 @@
             de_sampler; memory = false, adapt = false
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -93,9 +93,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -111,7 +111,7 @@
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Sample which will likely fail to pick a dimension atleast once" begin
@@ -126,9 +126,9 @@
             de_sampler; memory = false, adapt = false
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -152,9 +152,9 @@
             de_sampler; memory = true, adapt = false
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -165,9 +165,9 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -184,6 +184,6 @@
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 end

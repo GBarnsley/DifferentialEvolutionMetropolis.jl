@@ -47,6 +47,6 @@ using MCMCChains
             chain_type = Chains, num_warmup = n_burnin, save_final_state = true
         )
         @test size(meta_chain[1]) == (n_samples, n_dims + 1, n_total_chains)
-        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
+        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DEMState})
     end
 end

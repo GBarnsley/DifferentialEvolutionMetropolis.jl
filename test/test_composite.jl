@@ -1,10 +1,10 @@
-struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler end
+struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDEMSampler{DifferentialEvolutionMetropolis.AbstractDEMSamplerSerial, DifferentialEvolutionMetropolis.AbstractDEMSamplerSingleTry} end
 
 @testset "Composite Sampler" begin
     @testset "Composite Setup" begin
         # Test single update
         single_sampler = setup_sampler_scheme(setup_de_update())
-        @test isa(single_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(single_sampler, DifferentialEvolutionMetropolis.AbstractDEMCompositeSampler)
         @test length(single_sampler.updates) == 1
         @test length(single_sampler.update_weights) == 1
         @test single_sampler.update_weights[1] == 1.0
@@ -15,7 +15,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             setup_snooker_update(),
             setup_subspace_sampling()
         )
-        @test isa(multi_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(multi_sampler, DifferentialEvolutionMetropolis.AbstractDEMCompositeSampler)
         @test length(multi_sampler.updates) == 3
         @test length(multi_sampler.update_weights) == 3
         @test all(multi_sampler.update_weights .== 1.0)
@@ -26,7 +26,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             setup_snooker_update();
             w = [0.7, 0.3]
         )
-        @test isa(weighted_sampler, DifferentialEvolutionMetropolis.DifferentialEvolutionCompositeSampler)
+        @test isa(weighted_sampler, DifferentialEvolutionMetropolis.AbstractDEMCompositeSampler)
         @test length(weighted_sampler.updates) == 2
         @test weighted_sampler.update_weights == [0.7, 0.3]
 
@@ -68,10 +68,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             de_sampler; memory = false, adapt = false
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -82,10 +82,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -102,7 +102,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Sample using memory Composite (non-adaptive)" begin
@@ -123,10 +123,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             de_sampler; memory = true, adapt = false
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -137,10 +137,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -157,7 +157,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             adapt = false
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Sample using Composite with adaptive subspace" begin
@@ -177,18 +177,18 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             de_sampler; memory = true, adapt = true
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveComposite)
         @test length(initial_state.adaptive_state.adaptive_states) == 2
         @test isa(
             initial_state.adaptive_state.adaptive_states[1],
-            DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace
+            DifferentialEvolutionMetropolis.DEMAdaptiveSubspace
         )
         @test isa(
             initial_state.adaptive_state.adaptive_states[2],
-            DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic
+            DifferentialEvolutionMetropolis.DEMAdaptiveStatic
         )
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
@@ -202,10 +202,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveComposite)
         @test length(initial_state.adaptive_state.adaptive_states) == 2
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
@@ -224,7 +224,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Sample using Composite with all non-adaptive" begin
@@ -244,10 +244,10 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             de_sampler; memory = true, adapt = true
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -265,7 +265,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Check composite adaptation works as intended" begin
@@ -295,7 +295,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
 
         # Check that we have composite adaptive states
         @test all(
-            isa(state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveComposite)
+            isa(state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveComposite)
                 for state in states
         )
         @test all(length(state.adaptive_state.adaptive_states) == 2 for state in states)
@@ -306,7 +306,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
                 for state in states
         ]
         @test all(
-            isa(state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
+            isa(state, DifferentialEvolutionMetropolis.DEMAdaptiveSubspace)
                 for state in subspace_adaptive_states
         )
 
@@ -336,7 +336,7 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDifferentialEv
         # Check that the DE sampler (second component) remains static
         de_adaptive_states = [state.adaptive_state.adaptive_states[2] for state in states]
         @test all(
-            isa(state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveStatic)
+            isa(state, DifferentialEvolutionMetropolis.DEMAdaptiveStatic)
                 for state in de_adaptive_states
         )
 

@@ -4,29 +4,29 @@
     @testset "chain_type outputs" begin
         # Test default output (should be Array)
         result_default = deMC(ld, 50; memory = false)
-        @test isa(result_default, DifferentialEvolutionOutput)
+        @test isa(result_default, DEMOutput)
         @test isa(result_default.samples, Array{Float64, 3})
 
         # Test explicit Array output
-        result_array = deMC(ld, 50; memory = false, chain_type = DifferentialEvolutionOutput)
-        @test isa(result_array, DifferentialEvolutionOutput)
+        result_array = deMC(ld, 50; memory = false, chain_type = DEMOutput)
+        @test isa(result_array, DEMOutput)
         @test isa(result_array.samples, Array{Float64, 3})
 
         # Test raw samples output (default AbstractMCMC behavior)
         result_any = deMC(ld, 50; memory = false, chain_type = Any)
         @test isa(result_any, Vector)
         @test length(result_any) == 50
-        @test isa(result_any[1], DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(result_any[1], DifferentialEvolutionMetropolis.DEMSample)
 
         # Test with save_final_state = true
         result_with_state = deMC(
-            ld, 50; memory = false, chain_type = DifferentialEvolutionOutput,
+            ld, 50; memory = false, chain_type = DEMOutput,
             save_final_state = true
         )
         @test isa(result_with_state, Tuple)
         @test length(result_with_state) == 2
-        @test isa(result_with_state[1], DifferentialEvolutionOutput)  # processed samples
-        @test isa(result_with_state[2], DifferentialEvolutionMetropolis.DifferentialEvolutionState)  # final state
+        @test isa(result_with_state[1], DEMOutput)  # processed samples
+        @test isa(result_with_state[2], DifferentialEvolutionMetropolis.DEMState)  # final state
 
         # Test array dimensions are correct
         n_dims = LogDensityProblems.dimension(ld.logdensity)
@@ -51,18 +51,18 @@
 
         meta_array = sample(
             ld, setup_subspace_sampling(), MCMCSerial(), n_samples + n_burnin, n_meta_chains;
-            chain_type = DifferentialEvolutionOutput, num_warmup = n_burnin, discard_initial = 0
+            chain_type = DEMOutput, num_warmup = n_burnin, discard_initial = 0
         )
         @test size(meta_array.samples) == (n_samples + n_burnin, n_total_chains, n_dims)
         @test size(meta_array.ld) == (n_samples + n_burnin, n_total_chains)
 
         meta_array = sample(
             ld, setup_subspace_sampling(), MCMCSerial(), n_samples + n_burnin, n_meta_chains;
-            chain_type = DifferentialEvolutionOutput, num_warmup = n_burnin, discard_initial = 0, save_final_state = true
+            chain_type = DEMOutput, num_warmup = n_burnin, discard_initial = 0, save_final_state = true
         )
         @test size(meta_array[1].samples) == (n_samples + n_burnin, n_total_chains, n_dims)
         @test size(meta_array[1].ld) == (n_samples + n_burnin, n_total_chains)
-        @test isa(meta_array[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
+        @test isa(meta_array[2], Vector{<:DifferentialEvolutionMetropolis.DEMState})
     end
 
     @testset "non memory runs" begin

@@ -2,7 +2,7 @@
 
 function samples_to_array(
         samples::Vector{
-            DifferentialEvolutionSample{
+            DEMSample{
                 V, VV,
             },
         }
@@ -27,7 +27,7 @@ end
 
 function ld_to_array(
         samples::Vector{
-            DifferentialEvolutionSample{
+            DEMSample{
                 V, VV,
             },
         }
@@ -49,12 +49,12 @@ end
 
 function process_outputs(
         samples::Vector{
-            DifferentialEvolutionSample{
+            DEMSample{
                 V, VV,
             },
         }
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
-    return DifferentialEvolutionOutput{T}(
+    return DEMOutput{T}(
         samples_to_array(samples),
         ld_to_array(samples)
     )
@@ -62,10 +62,10 @@ end
 
 #code for post-processing outputs from sample()
 function bundle_samples(
-        samples::Vector{DifferentialEvolutionSample{V, VV}},
+        samples::Vector{DEMSample{V, VV}},
         model_wrapper::LogDensityModel,
-        sampler::AbstractDifferentialEvolutionSampler,
-        state::DifferentialEvolutionState,
+        sampler::AbstractDEMMetaSampler,
+        state::DEMState,
         ::Type{T};
         save_final_state::Bool = false,
         kwargs...
@@ -81,10 +81,10 @@ function bundle_samples(
     end
 end
 
-function chainsstack(chns::Vector{DifferentialEvolutionOutput{T}}) where {
+function chainsstack(chns::Vector{DEMOutput{T}}) where {
         T <: Real,
     }
-    return DifferentialEvolutionOutput{T}(
+    return DEMOutput{T}(
         cat([c.samples for c in chns]...; dims = 2),
         cat((c.ld for c in chns)...; dims = 2)
     )
@@ -96,7 +96,7 @@ function chainsstack(
                 T, E,
             },
         }
-    ) where {T, E <: DifferentialEvolutionState}
+    ) where {T, E <: DEMState}
     return (
         chainsstack([c[1] for c in chns]),
         [c[2] for c in chns],
@@ -105,14 +105,14 @@ end
 
 function convert(
         ::Type{T},
-        samples::Vector{DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DEMSample{V, VV}}
     ) where {T, T2 <: Real, V <: AbstractVector{T2}, VV <: AbstractVector{V}}
     return samples
 end
 
 function convert(
-        ::Type{DifferentialEvolutionOutput},
-        samples::Vector{DifferentialEvolutionSample{V, VV}}
+        ::Type{DEMOutput},
+        samples::Vector{DEMSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
     return process_outputs(samples)
 end

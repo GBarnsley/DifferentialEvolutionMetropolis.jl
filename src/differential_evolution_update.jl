@@ -1,15 +1,13 @@
-struct DifferentialEvolutionSampler{
+struct DEMSampler{
         G <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
         B <: Sampleable{Univariate, Continuous},
-    } <: AbstractDifferentialEvolutionSampler
+    } <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}
     γ_spl::G
     β_spl::B
-    scratch::ProposalScratch{1}
+    scratch::DEMProposalScratch{1}
 end
 
-prepare_scratch!(sampler::DifferentialEvolutionSampler, state) = prepare_scratch!(sampler.scratch, state)
-
-supports_multi_try(::DifferentialEvolutionSampler) = true
+prepare_scratch!(sampler::DEMSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 """
 Set up a Differential Evolution (DE) update step for MCMC sampling.
@@ -32,7 +30,7 @@ See doi.org/10.1007/s11222-006-8769-1 for more information.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
-- A `DifferentialEvolutionSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
+- A `DEMSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
 
 # Example
 ```@example de_update
@@ -69,7 +67,7 @@ function setup_de_update(;
         noise_checks(β, "β")
     end
 
-    return DifferentialEvolutionSampler(sampler(γ), sampler(β), ProposalScratch{1}())
+    return DEMSampler(sampler(γ), sampler(β), DEMProposalScratch{1}())
 end
 
 function noise_checks(dist, name)
@@ -81,8 +79,8 @@ function noise_checks(dist, name)
 end
 
 function proposal!(
-        xₚ::V, x::V, state::DifferentialEvolutionState,
-        sampler::DifferentialEvolutionSampler, current_state::Int
+        xₚ::V, x::V, state::DEMState,
+        sampler::DEMSampler, current_state::Int
     ) where {V <: AbstractVector}
     x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂
@@ -98,4 +96,4 @@ function proposal!(
     end
 end
 
-chains_required(::DifferentialEvolutionSampler) = 3
+chains_required(::DEMSampler) = 3

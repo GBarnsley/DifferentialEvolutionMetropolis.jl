@@ -1,7 +1,7 @@
 module DifferentialEvolutionMetropolis
 export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup, fix_sampler, fix_sampler_state
-export DifferentialEvolutionOutput
+export DEMOutput
 export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
 
@@ -18,25 +18,46 @@ import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot
 import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
-import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
+import AbstractMCMC: LogDensityModel, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
-abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
+# define types to represent capabilities
 
-chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback, COV_EXCL_LINE
+abstract type AbstractDEMSamplerExecutionMode end
+# Can't use multithreading, without multi-try or memory mode:
+abstract type AbstractDEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
+# Can use multithreading:
+abstract type AbstractDEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
 
-abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
+abstract type AbstractDEMSamplerTryMode end
+abstract type AbstractDEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
+abstract type AbstractDEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
 
-abstract type AbstractDifferentialEvolutionMemory{T} end
 
-abstract type AbstractDifferentialEvolutionTemperatureLadder{T} end
+abstract type AbstractDEMMetaSampler <: AbstractMCMC.AbstractSampler end
 
-struct DifferentialEvolutionState{
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemory{T},
+abstract type AbstractDEMSampler{
+    E <: AbstractDEMSamplerExecutionMode,
+    T <: AbstractDEMSamplerTryMode,
+} <: AbstractDEMMetaSampler end
+
+abstract type AbstractDEMCompositeSampler <: AbstractDEMMetaSampler end
+
+chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
+
+abstract type AbstractDEMAdaptiveState{T} end
+
+abstract type AbstractDEMMemory{T} end
+
+abstract type AbstractDEMTemperatureLadder{T} end
+
+struct DEMState{
+        T <: Real, A <: AbstractDEMAdaptiveState{T},
+        L <: AbstractDEMTemperatureLadder{T},
+        M <: AbstractDEMMemory{T},
+        Model, B,
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B, O,
+        R <: AbstractRNG, V1 <: SubArray, V2 <: SubArray, O,
     }
     "current position"
     x::VV
@@ -73,7 +94,7 @@ function reseed!(chain_rng::Xoshiro, rng::AbstractRNG)
     return copy!(chain_rng, Xoshiro(rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64)))
 end
 
-function DifferentialEvolutionState(
+function DEMState(
         rng::R,
         x::VV,
         ld::V,
@@ -84,9 +105,9 @@ function DifferentialEvolutionState(
         n_tries::Int,
         order_state
     ) where {
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemory{T},
+        T <: Real, A <: AbstractDEMAdaptiveState{T},
+        L <: AbstractDEMTemperatureLadder{T},
+        M <: AbstractDEMMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
         R <: AbstractRNG, Model,
     }
@@ -96,7 +117,7 @@ function DifferentialEvolutionState(
     ldₚ = copy(ld)
     x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
     xₚ_smpl_view, ldₚ_smpl_view = setup_view(xₚ, ldₚ, temperature_ladder)
-    return DifferentialEvolutionState(
+    return DEMState(
         x,
         ld,
         rngs,
@@ -116,7 +137,7 @@ function DifferentialEvolutionState(
 end
 
 """
-    DifferentialEvolutionOutput{T <: Real}
+    DEMOutput{T <: Real}
 
 Container for differential evolution MCMC sampling results.
 
@@ -142,7 +163,7 @@ log_densities = output.ld          # Shape: (n_samples, n_chains)
 chain_1_samples = output.samples[:, 1, :]  # All samples from chain 1
 ```
 """
-struct DifferentialEvolutionOutput{T <: Real}
+struct DEMOutput{T <: Real}
     samples::Array{T, 3}
     ld::Matrix{T}
 end

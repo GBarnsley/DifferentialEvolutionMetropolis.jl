@@ -53,7 +53,7 @@ LogDensityProblems.capabilities(::Type{<:PathfinderBimodalModel}) = LogDensityPr
         end
     end
 
-    @testset "Tuple or vector of PathfinderResults" begin
+    @testset "Tuple or vector of DEMPathfinderResults" begin
         for ip in ((pf_left, pf_right), [pf_left, pf_right])
             state = initialise(ip; N₀ = 40)
             @test sign.(first.(state.x)) == [-1.0, 1.0, -1.0, 1.0]
@@ -102,7 +102,7 @@ LogDensityProblems.capabilities(::Type{<:PathfinderBimodalModel}) = LogDensityPr
             n_chains = n_chains, N₀ = 20, n_burnin = 10,
             rng = backwards_compat_rng(6), silent = true, progress = false
         )
-        @test result isa DifferentialEvolutionOutput{Float32}
+        @test result isa DEMOutput{Float32}
         @test all(isfinite, result.samples)
     end
 

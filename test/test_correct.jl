@@ -13,7 +13,7 @@
         N₀ = memory ? 3 * n_chains * d : 0
         kwargs = (;
             memory, N₀, n_chains, n_hot_chains, n_tries, temperature_ladder = [ladder],
-            progress = false, adapt = false, chain_type = DifferentialEvolutionOutput, silent = true,
+            progress = false, adapt = false, chain_type = DEMOutput, silent = true,
         )
         initial_positions = [Vector{Float64}(undef, d) for _ in 1:(n_chains + n_hot_chains + N₀)]
         temperatures = vcat(ladder, ones(N₀))

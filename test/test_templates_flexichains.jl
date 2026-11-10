@@ -35,6 +35,6 @@ using FlexiChains
         @test size(meta_chain[1]) == (n_samples, n_total_chains)
         @test size(FlexiChains.parameters(meta_chain[1]), 1) == n_dims   # parameters
         @test size(FlexiChains.extras(meta_chain[1]), 1) == 1   # ld
-        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionState})
+        @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DEMState})
     end
 end

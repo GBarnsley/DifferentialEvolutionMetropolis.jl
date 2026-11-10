@@ -21,6 +21,7 @@ const NO_SWAP_WARNING = r"Parallel tempering without a swap update"
 const MEMORY_HOT_CHAINS_WARNING = r"Memory-based samplers do not typically require hot chains"
 const SINGLE_WORKER_WARNING = r"Only a single (thread|process) available"
 const FIXED_CROSSOVER_WARNING = r"sampler already has a fixed crossover probability"
+const MEMORYLESS_PARALLEL_WARNING = r"None of the provided samplers can evaluate in parallel"
 
 struct WarningFilter{L <: AbstractLogger} <: AbstractLogger
     logger::L

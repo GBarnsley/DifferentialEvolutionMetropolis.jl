@@ -125,7 +125,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
-            chain_type = DifferentialEvolutionOutput
+            chain_type = DEMOutput
         )
         flat = reshape(out.samples, :, length(μ))
         post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
@@ -192,7 +192,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
             )
         end
         @test state.temperature_ladder isa
-            DifferentialEvolutionMetropolis.DifferentialEvolutionStaticTemperatureLadder
+            DifferentialEvolutionMetropolis.DEMStaticTemperatureLadder
         @test_throws ErrorException AbstractMCMC.step_warmup(
             rng, model, scheme, state; num_warmup = 50
         )
@@ -207,7 +207,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
             num_warmup = 50, memory = true, silent = true, initial_position = init
         )
         @test state.temperature_ladder isa
-            DifferentialEvolutionMetropolis.DifferentialEvolutionAnnealingTemperatureLadder
+            DifferentialEvolutionMetropolis.DEMAnnealingTemperatureLadder
         @test length(state.temperature_ladder.cold_chains) == length(state.x)
         for _ in 1:30
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 50)
@@ -227,7 +227,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
             sample(
                 backwards_compat_rng(13), model, setup_sampler_scheme(dense_update()), 800;
                 n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
-                progress = false, chain_type = DifferentialEvolutionOutput
+                progress = false, chain_type = DEMOutput
             ).samples, :, length(μ)
         )
         serial = runit(false)

@@ -14,10 +14,10 @@ The stopping criterion function has the following signature:
 ```julia
 function your_stopping_criteria(
     rng::AbstractRNG,
-    model::AbstractModel,
-    sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{<:DifferentialEvolutionSample},
-    state::DifferentialEvolutionState,
+    model::AbstractMCMC.AbstractModel,
+    sampler::DifferentialEvolutionMetropolis.AbstractDEMMetaSampler,
+    samples::Vector{<:DifferentialEvolutionMetropolis.DEMSample},
+    state::DifferentialEvolutionMetropolis.DEMState,
     iteration::Int;
     kwargs...
 )
@@ -36,18 +36,18 @@ The function should return `true` if sampling should stop, and `false` otherwise
 Here is an example of a very simple stopping criterion that stops sampling after a maximum number of iterations has been reached:
 
 ```julia
-using DifferentialEvolutionMetropolis, AbstractMCMC
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
 
 function max_iterations_stopping(
     rng::AbstractRNG,
-    model::AbstractModel,
-    sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{<:DifferentialEvolutionSample},
-    state::DifferentialEvolutionState{T, A},
+    model::AbstractMCMC.AbstractModel,
+    sampler::DifferentialEvolutionMetropolis.AbstractDEMMetaSampler,
+    samples::Vector{<:DifferentialEvolutionMetropolis.DEMSample},
+    state::DifferentialEvolutionMetropolis.DEMState,
     iteration::Int;
     max_iterations::Int = 10000,
     kwargs...
-) where {T<:Real, A<:AbstractDifferentialEvolutionAdaptiveState{T}}
+)
     if iteration >= max_iterations
         println("Reached maximum iterations ($max_iterations), stopping.")
         return true
@@ -60,6 +60,7 @@ using LogDensityProblems
 
 model = LogDensityModel(your_log_density)
 sampler = setup_de_update()
+rng = Random.default_rng()
 
 result = sample(
     rng,
@@ -73,7 +74,16 @@ result = sample(
 
 ## Custom Proposal Distributions
 
-You can create your own proposal distributions by defining a new sampler type that subtypes `AbstractDifferentialEvolutionSampler` and implementing the `proposal` method.
+Define a custom update by subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler{E, T}` and implementing `DifferentialEvolutionMetropolis.proposal!`.
+The two type parameters declare the update's capabilities:
+
+| Parameter | Type | Behavior | | --- | --- | --- | | `E` | `AbstractDEMSamplerSerial` | Proposals read other chains, so memoryless chains must update in turn.
+| | `E` | `AbstractDEMSamplerMultiThread` | Chains can update in parallel even without memory.
+| | `T` | `AbstractDEMSamplerSingleTry` | Each chain takes one proposal per step.
+| | `T` | `AbstractDEMSamplerMultipleTry` | Supports `n_tries > 1`, including parallel evaluation of one chain's trials without memory.
+|
+
+Use `AbstractDEMSamplerMultipleTry` only for symmetric proposals with zero Hastings correction (or `-Inf` to reject a proposal).
 
 The method signature for the proposal is:
 
@@ -81,7 +91,7 @@ The method signature for the proposal is:
 function proposal!(
     xₚ::V,
     x::V,
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    state::DifferentialEvolutionMetropolis.DEMState,
     sampler::YourSampler,
     current_state::Int
 ) where {V <: AbstractVector}
@@ -93,14 +103,14 @@ function proposal!(
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
-The function should write the proposed position into `xₚ` (proposing from `x`) and return a named tuple with at least `(offset = hastings_correction)` where:
+The function should write the proposed position into `xₚ` (proposing from `x`) and return a named tuple with at least `(offset = hastings_correction,)` where:
 
 - `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
 
 ### Chains Required for Memoryless Sampling
 
 When memoryless sampling is used (`memory = false`), the sampler validates that the number of parallel chains is sufficient for the sampler's proposals (since they cannot be drawn from the memory database).
-By default, any custom sampler subtyping `AbstractDifferentialEvolutionSampler` has a conservative fallback requiring at least 3 chains.
+By default, custom updates subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler` require at least 3 chains.
 If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function.
 For example:
 
@@ -115,7 +125,10 @@ Here is an example of a simple Metropolis-Hastings random walk update with a fix
 using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
-struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+}
     proposal_distribution::MvNormal
 end
 
@@ -123,7 +136,7 @@ end
 function DifferentialEvolutionMetropolis.proposal!(
     xₚ::V,
     x::V,
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    state::DifferentialEvolutionMetropolis.DEMState,
     sampler::MetropolisHastingsUpdate,
     current_state::Int
 ) where {V <: AbstractVector}
@@ -131,7 +144,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     xₚ .= x .+ rand(state.rngs[current_state], sampler.proposal_distribution)
 
     # The proposal is symmetric, so no Hastings correction needed
-    return (offset = 0.0)
+    return (offset = 0.0,)
 end
 
 DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
@@ -142,18 +155,21 @@ DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
 
 The example above allocates a new vector for every proposal.
 This is usually negligible next to the cost of the log density, so it is the recommended starting point.
-To avoid allocations, an update can hold a `ProposalScratch{N}`, which gives each chain `N` preallocated vectors of the positions' element type the length of the parameter vector.
+To avoid allocations, an update can hold a `DEMProposalScratch{N}`, which gives each chain `N` preallocated vectors of the positions' element type the length of the parameter vector.
 The buffers are sized by `prepare_scratch!` before chains are updated, and only reallocated when the element type, number of chains or parameters changes.
 Only use the buffers belonging to `current_state`, as chains may be updated in parallel.
 
 ```@example MHSampler
-struct ScratchMetropolisHastingsUpdate{D <: MvNormal} <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+struct ScratchMetropolisHastingsUpdate{D <: MvNormal} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+}
     proposal_distribution::D
-    scratch::DifferentialEvolutionMetropolis.ProposalScratch{1}
+    scratch::DifferentialEvolutionMetropolis.DEMProposalScratch{1}
 end
 
 function ScratchMetropolisHastingsUpdate(proposal_distribution::MvNormal)
-    return ScratchMetropolisHastingsUpdate(proposal_distribution, DifferentialEvolutionMetropolis.ProposalScratch{1}())
+    return ScratchMetropolisHastingsUpdate(proposal_distribution, DifferentialEvolutionMetropolis.DEMProposalScratch{1}())
 end
 
 # Size the buffers before each step
@@ -164,7 +180,7 @@ end
 function DifferentialEvolutionMetropolis.proposal!(
     xₚ::V,
     x::V,
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    state::DifferentialEvolutionMetropolis.DEMState,
     sampler::ScratchMetropolisHastingsUpdate,
     current_state::Int
 ) where {V <: AbstractVector}
@@ -175,7 +191,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, eltype(x), current_state)
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
     xₚ .= x .+ jump
-    return (offset = 0.0)
+    return (offset = 0.0,)
 end
 
 DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
@@ -194,7 +210,7 @@ Here's an example of an adaptive Metropolis-Hastings sampler:
 using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, LogDensityProblems
 import AbstractMCMC: step, step_warmup
 # Define adaptive state
-mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}
+mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState{T}
     proposal_cov::Matrix{T}
     adaptation_count::Int
     running_mean::Vector{T}
@@ -202,7 +218,10 @@ mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropoli
 end
 
 # Define the adaptive sampler
-struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultiThread,
+    DifferentialEvolutionMetropolis.AbstractDEMSamplerMultipleTry,
+}
     initial_cov::Matrix{T}
     adapt_after::Int
     adapt_every::Int
@@ -241,13 +260,13 @@ end
 function DifferentialEvolutionMetropolis.proposal!(
     xₚ::V,
     x::V,
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
+    state::DifferentialEvolutionMetropolis.DEMState,
     sampler::AdaptiveMetropolisUpdate,
     current_state::Int
 ) where {V <: AbstractVector}
     # Use current proposal covariance from adaptive state
     xₚ .= rand(state.rngs[current_state], MvNormal(x, state.adaptive_state.proposal_cov))
-    return (offset = 0.0)
+    return (offset = 0.0,)
 end
 
 DifferentialEvolutionMetropolis.chains_required(::AdaptiveMetropolisUpdate) = 1
@@ -258,7 +277,7 @@ function step_warmup(
     rng::AbstractRNG,
     model_wrapper::AbstractMCMC.LogDensityModel,
     sampler::AdaptiveMetropolisUpdate{T},
-    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, <:AdaptiveMetropolisState{T}};
+    state::DifferentialEvolutionMetropolis.DEMState{T, <:AdaptiveMetropolisState{T}};
     parallel::Bool = false,
     kwargs...
 ) where {T<:Real}
@@ -319,7 +338,7 @@ result = sample(
     num_warmup = 10000, #adaptive steps
     memory = true,
     parallel = false,
-    chain_type = DifferentialEvolutionOutput
+    chain_type = DEMOutput
 )
 
 plot(result.samples[:, :, 1])

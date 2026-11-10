@@ -1,4 +1,4 @@
-struct DifferentialEvolutionSwapSampler <: AbstractDifferentialEvolutionSampler end
+struct DEMSwapSampler <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry} end
 
 """
 Set up a parallel tempering swap update.
@@ -19,7 +19,7 @@ Intended for use within [`setup_sampler_scheme`](@ref), alongside updates that m
 chains, e.g. with a low weight.
 
 # Returns
-- A `DifferentialEvolutionSwapSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref).
+- A `DEMSwapSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref).
 
 # Example
 ```@example swap_update
@@ -31,24 +31,24 @@ sampler = setup_sampler_scheme(setup_de_update(), setup_swap_update(); w = [0.9,
 
 See also [`setup_sampler_scheme`](@ref), [`setup_de_update`](@ref).
 """
-setup_swap_update() = DifferentialEvolutionSwapSampler()
+setup_swap_update() = DEMSwapSampler()
 
-chains_required(::DifferentialEvolutionSwapSampler) = 2  # COV_EXCL_LINE
+chains_required(::DEMSwapSampler) = 2  # COV_EXCL_LINE
 
-has_swap_update(::AbstractDifferentialEvolutionSampler) = false  # COV_EXCL_LINE
-has_swap_update(::DifferentialEvolutionSwapSampler) = true  # COV_EXCL_LINE
-has_swap_update(s::DifferentialEvolutionCompositeSampler) = any(has_swap_update, s.updates)
+has_swap_update(::AbstractDEMMetaSampler) = false  # COV_EXCL_LINE
+has_swap_update(::DEMSwapSampler) = true  # COV_EXCL_LINE
+has_swap_update(s::AbstractDEMCompositeSampler) = any(has_swap_update, s.updates)
 
-has_hot_chains(::DifferentialEvolutionNullTemperatureLadder) = false  # COV_EXCL_LINE
-has_hot_chains(ladder::AbstractDifferentialEvolutionTemperatureLadder) =
+has_hot_chains(::DEMNullTemperatureLadder) = false  # COV_EXCL_LINE
+has_hot_chains(ladder::AbstractDEMTemperatureLadder) =
     length(ladder.cold_chains) < length(ladder.temperature)
 
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::DifferentialEvolutionSwapSampler,
-        state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveStatic{T},
+        sampler::DEMSwapSampler,
+        state::DEMState{
+            T, DEMAdaptiveStatic{T},
         };
         update_memory::Bool = true,
         kwargs...
@@ -68,9 +68,9 @@ function step(
         )
 end
 
-swap_adjacent_temperatures!(rng, state, ::DifferentialEvolutionNullTemperatureLadder) = nothing
+swap_adjacent_temperatures!(rng, state, ::DEMNullTemperatureLadder) = nothing
 
-function swap_adjacent_temperatures!(rng, state, ladder::AbstractDifferentialEvolutionTemperatureLadder)
+function swap_adjacent_temperatures!(rng, state, ladder::AbstractDEMTemperatureLadder)
     has_distinct_temperatures(ladder) || return nothing
     first_pass = rand(rng, 1:2)
     for pass in (first_pass, 3 - first_pass)
@@ -162,7 +162,7 @@ end
 
 # Appends a swap update to a template's scheme, warning about and disabling nonsensical settings.
 function add_swap_update(
-        sampler_scheme::DifferentialEvolutionCompositeSampler, n_hot_chains::Int,
+        sampler_scheme::AbstractDEMCompositeSampler, n_hot_chains::Int,
         use_parallel_tempering_swaps::Bool, parallel_tempering_swap_probability::Real
     )
     use_parallel_tempering_swaps || return sampler_scheme
@@ -178,7 +178,7 @@ function add_swap_update(
     return append_swap_update(sampler_scheme, parallel_tempering_swap_probability)
 end
 
-function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerRandom, p::Real)
+function append_swap_update(sampler_scheme::DEMCompositeSamplerRandom, p::Real)
     w = sampler_scheme.update_weights
     return setup_random_order_scheme(
         sampler_scheme.updates..., setup_swap_update();
@@ -186,11 +186,11 @@ function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSample
     )
 end
 
-function append_swap_update(sampler_scheme::DifferentialEvolutionCompositeSamplerFixedOrder, p::Real)
+function append_swap_update(sampler_scheme::DEMCompositeSamplerFixedOrder, p::Real)
     return setup_random_order_scheme(sampler_scheme, setup_swap_update(); w = [1 - p, p])
 end
 
-function check_swap_setup(sampler::AbstractDifferentialEvolutionSampler, ladder)
+function check_swap_setup(sampler::AbstractDEMMetaSampler, ladder)
     return if has_hot_chains(ladder) && !has_swap_update(sampler)
         @warn "Parallel tempering without a swap update, the chains may mix better with swaps. Add `setup_swap_update()` to the sampler scheme (or set `use_parallel_tempering_swaps = true` in the templates)."
     elseif !has_hot_chains(ladder) && has_swap_update(sampler)

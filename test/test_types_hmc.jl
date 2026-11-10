@@ -20,9 +20,9 @@
             result = sample(
                 backwards_compat_rng(1234), model, scheme, 50;
                 num_warmup = 50, initial_position = initial_position, n_chains = 4,
-                silent = true, progress = false, chain_type = DifferentialEvolutionOutput
+                silent = true, progress = false, chain_type = DEMOutput
             )
-            @test result isa DifferentialEvolutionOutput{T}
+            @test result isa DEMOutput{T}
             @test all(isfinite, result.samples)
         end
     end

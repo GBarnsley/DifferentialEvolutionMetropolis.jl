@@ -33,10 +33,10 @@
         model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0, 0.0]))
         scheme = setup_sampler_scheme(de, subspace)
         sample, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; n_chains = 4)
-        @test repr(sample) == "DifferentialEvolutionSample(4 chains, 2 parameters)"
+        @test repr(sample) == "DEMSample(4 chains, 2 parameters)"
         @test repr(state.temperature_ladder) == "none"
         @test repr(state.memory) == "8 stored positions (filled every iteration, grows when full)"
-        @test repr(state) == "DifferentialEvolutionState{Float64}(4 chains, 2 parameters)"
+        @test repr(state) == "DEMState{Float64}(4 chains, 2 parameters)"
         text = plain(state)
         @test occursin("chains:         4\n", text)
         @test occursin("adaptive state: composite(static, adaptive subspace (3 crossover probabilities))", text)
@@ -74,9 +74,9 @@
     end
 
     @testset "output" begin
-        output = DifferentialEvolutionOutput(zeros(5, 3, 2), fill(-1.0, 5, 3))
-        @test repr(output) == "DifferentialEvolutionOutput{Float64}(5 iterations, 3 chains, 2 parameters)"
-        @test plain(output) == "DifferentialEvolutionOutput{Float64}\n  iterations:  5\n  chains:      3\n  parameters:  2\n  log density: mean -1.0, range (-1.0, -1.0)"
-        @test !occursin("log density", plain(DifferentialEvolutionOutput(zeros(0, 3, 2), zeros(0, 3))))
+        output = DEMOutput(zeros(5, 3, 2), fill(-1.0, 5, 3))
+        @test repr(output) == "DEMOutput{Float64}(5 iterations, 3 chains, 2 parameters)"
+        @test plain(output) == "DEMOutput{Float64}\n  iterations:  5\n  chains:      3\n  parameters:  2\n  log density: mean -1.0, range (-1.0, -1.0)"
+        @test !occursin("log density", plain(DEMOutput(zeros(0, 3, 2), zeros(0, 3))))
     end
 end

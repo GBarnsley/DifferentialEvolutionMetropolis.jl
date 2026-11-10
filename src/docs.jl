@@ -15,13 +15,13 @@ _generic_de_kwargs_1 = """
 - `stratify_initial_position`: If `true`, chain starting positions drawn from a mixture of Pathfinder results cycle
   through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
-- `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
-  Defaults to `false`.
+- `parallel`: Whether to update chains, and evaluate initial log-densities, in parallel. Useful for expensive models.
+  Most updates require either `memory = true` or multi-try updates to take advantage of multithreading. Defaults to `false`.
 - `n_tries`: Number of multiple-try proposals per chain each step.
   Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering), then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
-  This needs `n_chains * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
+  This needs up to `(n_chains + n_hot_chains) * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
   Only symmetric updates use multiple tries ([`setup_de_update`](@ref) and [`setup_subspace_sampling`](@ref)), other updates in a scheme take a single proposal. Defaults to 1 (no multiple tries).
-- `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
+- `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3. Consider increasing it if you implement your own proposal that calls `pick_chains` with more than 3 indices.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.
 ## Memory-based Sampling Arguments
@@ -77,7 +77,7 @@ template_swap_kwargs = """
 """
 
 template_chains_kwargs = """
-- `chain_type`: Type of chain to return (e.g., `Any`, `DifferentialEvolutionOutput`, `MCMCChains.Chains`, or `FlexiChains.VNChain`). Defaults to `DifferentialEvolutionOutput`.
+- `chain_type`: Type of chain to return (e.g., `Any`, `DEMOutput`, `MCMCChains.Chains`, or `FlexiChains.VNChain`). Defaults to `DEMOutput`.
 - `save_final_state`: Whether to return the final state along with samples, if true the output will be (samples::chain_type, final_state). Defaults to `false`.
 """
 
@@ -87,8 +87,8 @@ Run the Differential Evolution Markov Chain (DE-MC) sampler proposed by ter Braa
 This sampler uses differential evolution updates with optional switching between two
 scaling factors (`γ₁` and `γ₂`) to enable mode switching.
 
-This implementation varies slightly from the original: updates within a population
-occur based on the previous positions to enable easy parallelization.
+Without memory, chains are updated in turn, each proposing from the current positions of the
+other chains, so `parallel = true` only evaluates each chain's multiple-try proposals in parallel.
 
 See doi.org/10.1007/s11222-006-8769-1 for more information.
 """
@@ -117,8 +117,8 @@ deMCzs_kwargs = """
 DREAMz_description = """
 Run the Differential Evolution Adaptive Metropolis (DREAMz) sampler.
 
-This advanced adaptive sampler uses subspace sampling with adaptive crossover probabilities. It can switch between scaling factors and includes
-outlier chain detection/replacement. The algorithm adapts during warm-up and can use
+This adaptive sampler uses subspace sampling with adaptive crossover probabilities and can switch between scaling factors.
+The algorithm adapts during warm-up and can use
 memory-based sampling for efficiency.
 
 Based on Vrugt et al. (2009), see doi.org/10.1515/IJNSNS.2009.10.3.273.

@@ -5,10 +5,10 @@ import FlexiChains: VNChain, FlexiChain, Parameter, Extra
 import AbstractMCMC
 
 function AbstractMCMC.bundle_samples(
-        samples::Vector{DME.DifferentialEvolutionSample{V, VV}},
+        samples::Vector{DME.DEMSample{V, VV}},
         model_wrapper::AbstractMCMC.LogDensityModel,
-        sampler::DME.AbstractDifferentialEvolutionSampler,
-        state::DME.DifferentialEvolutionState,
+        sampler::DME.AbstractDEMMetaSampler,
+        state::DME.DEMState,
         ::Type{VNChain};
         save_final_state::Bool = false,
         kwargs...
@@ -26,7 +26,7 @@ end
 
 function DME.convert(
         ::Type{VNChain},
-        samples::Vector{DME.DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DME.DEMSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
 
     n_its = length(samples)

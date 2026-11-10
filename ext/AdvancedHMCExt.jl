@@ -14,20 +14,20 @@ import Random
 import Random: AbstractRNG
 
 # Selects how the metric is produced during adaptation.
-abstract type AbstractDifferentialEvolutionMetricStrategy end
+abstract type AbstractDEMMetricStrategy end
 
 """Produce the metric by driving AdvancedHMC's `StanHMCAdaptor` directly."""
-struct DifferentialEvolutionStockAdaptorMetric <: AbstractDifferentialEvolutionMetricStrategy end
+struct DEMStockAdaptorMetric <: AbstractDEMMetricStrategy end
 
 # Reject an incompatible strategy/metric pairing at construction; the default accepts every metric.
-validate_metric_strategy(::AbstractDifferentialEvolutionMetricStrategy, ::AbstractMetric) = nothing
+validate_metric_strategy(::AbstractDEMMetricStrategy, ::AbstractMetric) = nothing
 
 # -----------------------------------------------------------------------------
 # Types
 # -----------------------------------------------------------------------------
 
 """
-    DifferentialEvolutionHMCSampler(metric_strategy, metric, integrator, κ, adaptor, chain_metrics)
+    DEMHMCSampler(metric_strategy, metric, integrator, κ, adaptor, chain_metrics)
 
 One HMC update for a composite scheme. It stores the AdvancedHMC modular pieces directly
 — `metric`, `integrator`, kernel `κ`, and `adaptor` — rather than a `NUTS`/`HMC`/`HMCDA`
@@ -38,16 +38,16 @@ once in `setup_hmc_update` and then discarded.
 Immutable, like every sampler in this package. The pieces are built at their final size in
 `setup_hmc_update` (which is why it needs `n_dims`); only the step *size* is unknown until a
 position exists, so it is refined on the first warmup step. `fix_sampler` returns another
-`DifferentialEvolutionHMCSampler` carrying the *adapted* pieces, which is how the adapted
+`DEMHMCSampler` carrying the *adapted* pieces, which is how the adapted
 metric/`κ` reach the post-warmup `step`. That fixed sampler also carries the live
-`HMCAdaptiveState` (`astate`), so the memory-based strategies keep tracking the growing
+`DEMHMCAdaptiveState` (`astate`), so the memory-based strategies keep tracking the growing
 archive during sampling; before warmup `astate` is `nothing`.
 """
-struct DifferentialEvolutionHMCSampler{
-        MS <: AbstractDifferentialEvolutionMetricStrategy,
+struct DEMHMCSampler{
+        MS <: AbstractDEMMetricStrategy,
         M <: AbstractMetric, I <: AbstractIntegrator,
         K <: AbstractMCMCKernel, A <: AbstractAdaptor, AST,
-    } <: DEM.AbstractDifferentialEvolutionSampler
+    } <: DEM.AbstractDEMSampler{DEM.AbstractDEMSamplerMultiThread, DEM.AbstractDEMSamplerSingleTry}
     metric_strategy::MS
     metric::M
     integrator::I
@@ -61,7 +61,7 @@ struct DifferentialEvolutionHMCSampler{
 end
 
 """
-    HMCAdaptiveState{T}
+    DEMHMCAdaptiveState{T}
 
 The shared, evolving HMC pieces — one set per HMC update, NOT one per chain. This lives in
 the sampler *state* (`state.adaptive_state`); the immutable sampler holds it only by reference,
@@ -73,10 +73,10 @@ adaptation.
 adaptor are mutated/replaced as adaptation proceeds; the step size is refined on the first
 HMC step (`refine_step_size!`), guarded by `initialized`.
 """
-mutable struct HMCAdaptiveState{
+mutable struct DEMHMCAdaptiveState{
         T <: Real, M <: AbstractMetric, I <: AbstractIntegrator,
         K <: AbstractMCMCKernel, A <: AbstractAdaptor,
-    } <: DEM.AbstractDifferentialEvolutionAdaptiveState{T}
+    } <: DEM.AbstractDEMAdaptiveState{T}
     metric::M
     integrator::I
     κ::K
@@ -98,12 +98,12 @@ mutable struct HMCAdaptiveState{
 end
 
 # `T` has no field, so it cannot be inferred; take it explicitly and infer the piece types.
-function HMCAdaptiveState{T}(
+function DEMHMCAdaptiveState{T}(
         metric::M, integrator::I, κ::K, adaptor::A, initialized::Bool,
         chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Matrix{T},
         metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Matrix{T}
     ) where {T <: Real, M <: AbstractMetric, I <: AbstractIntegrator, K <: AbstractMCMCKernel, A <: AbstractAdaptor}
-    return HMCAdaptiveState{T, M, I, K, A}(
+    return DEMHMCAdaptiveState{T, M, I, K, A}(
         metric, integrator, κ, adaptor, initialized, chain_metrics, cold, hot, prev_centers,
         metric_steps, cluster_metrics, cluster_centers
     )
@@ -116,7 +116,7 @@ end
 function DEM.setup_hmc_update(
         sampler::AbstractHMCSampler;
         n_dims::Int = 0,
-        metric_strategy::AbstractDifferentialEvolutionMetricStrategy = DifferentialEvolutionStockAdaptorMetric()
+        metric_strategy::AbstractDEMMetricStrategy = DEMStockAdaptorMetric()
     )
     # `NUTS`/`HMC`/`HMCDA` store the metric as a symbol and size it lazily, so they need `n_dims`;
     # a hand-built `HMCSampler` already carries a sized metric.
@@ -132,15 +132,15 @@ function DEM.setup_hmc_update(
     integrator = AdvancedHMC.make_integrator(sampler, oneunit(T))
     κ = AdvancedHMC.make_kernel(sampler, integrator)
     adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
-    return DifferentialEvolutionHMCSampler(
+    return DEMHMCSampler(
         metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[], Int[], Int[], nothing
     )
 end
 
 """
-    initialize_adaptive_state(::DifferentialEvolutionHMCSampler, model_wrapper, n_chains, T)
+    initialize_adaptive_state(::DEMHMCSampler, model_wrapper, n_chains, T)
 
-Build a fresh `HMCAdaptiveState` for this run from copies of the sampler's pieces (the
+Build a fresh `DEMHMCAdaptiveState` for this run from copies of the sampler's pieces (the
 metric and adaptor carry mutable adaptation state, so each run needs its own). Enforce that
 the metric was sized for this model and that the target is differentiable.
 
@@ -149,7 +149,7 @@ target, so we fail loudly if the model is order-0 rather than silently assuming 
 carries a gradient.
 """
 function DEM.initialize_adaptive_state(
-        sampler::DifferentialEvolutionHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
+        sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
         ::Type{T}
     ) where {T <: Real}
     ℓ = model_wrapper.logdensity
@@ -178,7 +178,7 @@ function DEM.initialize_adaptive_state(
     chain_metrics = needs_private_scratch(metric) ?
         [deepcopy(metric) for _ in 1:n_chains] :
         Vector{typeof(metric)}(undef, n_chains)
-    return HMCAdaptiveState{T}(
+    return DEMHMCAdaptiveState{T}(
         metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
         false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
         Matrix{T}(undef, d, 0)
@@ -186,15 +186,15 @@ function DEM.initialize_adaptive_state(
 end
 
 """
-    fix_sampler(::DifferentialEvolutionHMCSampler, ::HMCAdaptiveState)
+    fix_sampler(::DEMHMCSampler, ::DEMHMCAdaptiveState)
 
-Return a `DifferentialEvolutionHMCSampler` carrying the adaptive state's current pieces by
+Return a `DEMHMCSampler` carrying the adaptive state's current pieces by
 reference (they are immutable, so no copy), plus the live `astate` itself. The sampling
 `step` reads the pieces, and — for memory-based strategies — keeps mutating `astate` to track
 the growing archive (the stock strategy leaves it frozen).
 """
-function DEM.fix_sampler(sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState)
-    return DifferentialEvolutionHMCSampler(
+function DEM.fix_sampler(sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState)
+    return DEMHMCSampler(
         sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor,
         astate.chain_metrics, astate.cold, astate.hot, astate
     )
@@ -208,7 +208,7 @@ end
 ensemble_mean(x) = sum(x) ./ length(x)
 
 # Refresh the metric (M⁻¹) and step size from the current adaptor state.
-function refresh_pieces_from_adaptor!(astate::HMCAdaptiveState, ℓ)
+function refresh_pieces_from_adaptor!(astate::DEMHMCAdaptiveState, ℓ)
     astate.metric = AdvancedHMC.update(Hamiltonian(astate.metric, ℓ), astate.adaptor).metric
     astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
     astate.integrator = astate.κ.τ.integrator
@@ -217,7 +217,7 @@ end
 
 # First-step lazy work: find a good step size at the ensemble and lay out the windowed schedule.
 function refine_step_size!(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, astate::HMCAdaptiveState, state;
+        rng::AbstractRNG, model_wrapper::LogDensityModel, astate::DEMHMCAdaptiveState, state;
         n_adapts::Int
     )
     ℓ = model_wrapper.logdensity
@@ -270,8 +270,8 @@ end
 # move them by the cold posterior; they mix through the tempered DE updates instead. Resolved once,
 # as concrete `Vector{Int}`s for type stability; `hot` is empty without tempering.
 cold_chain_indices(state) = cold_chain_indices(state.temperature_ladder, state)
-cold_chain_indices(::DEM.DifferentialEvolutionNullTemperatureLadder, state) = collect(eachindex(state.x))
-cold_chain_indices(ladder::DEM.AbstractDifferentialEvolutionTemperatureLadder, state) = copy(ladder.cold_chains)
+cold_chain_indices(::DEM.DEMNullTemperatureLadder, state) = collect(eachindex(state.x))
+cold_chain_indices(ladder::DEM.AbstractDEMTemperatureLadder, state) = copy(ladder.cold_chains)
 hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
@@ -341,8 +341,8 @@ function pooled_adapt!(adaptor::StanHMCAdaptor, Xₚ, α)
 end
 
 function adapt_metric!(
-        ::DifferentialEvolutionStockAdaptorMetric, model_wrapper::LogDensityModel, state,
-        astate::HMCAdaptiveState, α
+        ::DEMStockAdaptorMetric, model_wrapper::LogDensityModel, state,
+        astate::DEMHMCAdaptiveState, α
     )
     pooled_adapt!(astate.adaptor, state.xₚ_smpl_view, α)
     refresh_pieces_from_adaptor!(astate, model_wrapper.logdensity)
@@ -354,7 +354,7 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    DifferentialEvolutionMemoryMetric{T}
+    DEMMemoryMetric{T}
 
 Metric strategy that rebuilds `astate.metric` from the memory-archive covariance on a schedule,
 throughout both warmup and sampling (the archive keeps growing). See [`memory_metric`](@ref) for
@@ -366,7 +366,7 @@ the full covariance `Σ` (off-diagonals and all). Dense is safe on the threaded 
 because `run_trajectories!` hands each chain a private-scratch copy of the metric (a shared
 `DenseEuclideanMetric` would race on its `_temp` buffer); see `needs_private_scratch`.
 """
-struct DifferentialEvolutionMemoryMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
+struct DEMMemoryMetric{T <: Real} <: AbstractDEMMetricStrategy
     shrinkage::T
     every::Int
 end
@@ -375,7 +375,7 @@ function DEM.memory_metric(; shrinkage::Real = 0.0, every::Integer = 100)
     0 ≤ shrinkage ≤ 1 ||
         error("memory_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
     every ≥ 1 || error("memory_metric: `every` must be ≥ 1, got $every.")
-    return DifferentialEvolutionMemoryMetric(float(shrinkage), Int(every))
+    return DEMMemoryMetric(float(shrinkage), Int(every))
 end
 
 # Accept only metrics with an estimable covariance (diagonal/dense), reject anything else (e.g. unit).
@@ -391,7 +391,7 @@ end
 
 # The two state-level requirements shared by every memory-archive strategy.
 function require_memory_untempered(state, who::AbstractString)
-    state.memory isa DEM.DifferentialEvolutionMemoryless && error(
+    state.memory isa DEM.DEMMemoryless && error(
         "$who estimates the HMC mass matrix from the memory archive, but this scheme runs " *
             "memoryless. Enable memory, or use the default stock-adaptor metric."
     )
@@ -405,23 +405,23 @@ function require_memory_untempered(state, who::AbstractString)
     return nothing
 end
 
-validate_metric_strategy(::DifferentialEvolutionMemoryMetric, metric::AbstractMetric) =
+validate_metric_strategy(::DEMMemoryMetric, metric::AbstractMetric) =
     require_estimable_metric(metric, "memory_metric")
 
 # Reject configs only knowable from the state; called once on the first warmup step.
-validate_metric_state(::AbstractDifferentialEvolutionMetricStrategy, state) = nothing
-validate_metric_state(::DifferentialEvolutionMemoryMetric, state) =
+validate_metric_state(::AbstractDEMMetricStrategy, state) = nothing
+validate_metric_state(::DEMMemoryMetric, state) =
     require_memory_untempered(state, "memory_metric")
 
 # Any chain that does not finish cold ⇒ parallel tempering (including annealing into hot chains).
-has_hot_chains(::DEM.DifferentialEvolutionNullTemperatureLadder, state) = false
-has_hot_chains(ladder::DEM.AbstractDifferentialEvolutionTemperatureLadder, state) =
+has_hot_chains(::DEM.DEMNullTemperatureLadder, state) = false
+has_hot_chains(ladder::DEM.AbstractDEMTemperatureLadder, state) =
     length(ladder.cold_chains) < length(state.x)
 
 # Positions for the covariance estimate: the memory archive (validated present and untempered).
 informative_positions(state) = informative_positions(state.memory, state)
-informative_positions(mem::DEM.DifferentialEvolutionMemoryRefill, state) = mem.mem_x
-function informative_positions(mem::DEM.DifferentialEvolutionMemoryFill, state)
+informative_positions(mem::DEM.DEMMemoryRefill, state) = mem.mem_x
+function informative_positions(mem::DEM.DEMMemoryFill, state)
     return view(mem.mem_x, 1:mem.fill.position)   # only the filled prefix is initialised
 end
 
@@ -499,11 +499,11 @@ function step_size_only_adapt!(adaptor::StanHMCAdaptor, α)
 end
 
 # Recompute on the first HMC step (archive already seeded) and every `every` steps thereafter.
-metric_due(astate::HMCAdaptiveState, every::Int) =
+metric_due(astate::DEMHMCAdaptiveState, every::Int) =
     (astate.metric_steps == 1) || (mod(astate.metric_steps, every) == 0)
 
 # Rebuild the mass matrix from the current memory archive. Dispatched per strategy.
-function refresh_memory_metric!(ms::DifferentialEvolutionMemoryMetric, astate::HMCAdaptiveState, state)
+function refresh_memory_metric!(ms::DEMMemoryMetric, astate::DEMHMCAdaptiveState, state)
     M⁻¹ = memory_inverse_metric(astate.metric, informative_positions(state), ms.shrinkage)
     astate.metric = AdvancedHMC.renew(astate.metric, M⁻¹)
     return nothing
@@ -514,20 +514,20 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    DifferentialEvolutionClusterPooledMetric{T}
+    DEMClusterPooledMetric{T}
 
 Metric strategy that clusters the memory archive, centres each archive point on its cluster
 mean, and pools the centred deviations into one covariance — stripping the between-mode
-inflation that makes the raw memory covariance ([`DifferentialEvolutionMemoryMetric`])
+inflation that makes the raw memory covariance ([`DEMMemoryMetric`])
 useless for separated modes. See [`cluster_pooled_metric`](@ref) for the user-facing
 constructor.
 
 The adjustment is gated: when the archive looks unimodal (or the between-mode variance is
 negligible) it falls through to the raw memory covariance, so the output is identical to
-[`DifferentialEvolutionMemoryMetric`] there. The result is always a single, position-
+[`DEMMemoryMetric`] there. The result is always a single, position-
 independent `M⁻¹`, fanned out to the per-chain slots exactly as Stage 2 does.
 """
-struct DifferentialEvolutionClusterPooledMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
+struct DEMClusterPooledMetric{T <: Real} <: AbstractDEMMetricStrategy
     shrinkage::T
     every::Int
     kmax::Int
@@ -538,12 +538,12 @@ function DEM.cluster_pooled_metric(; shrinkage::Real = 0.0, every::Integer = 100
         error("cluster_pooled_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
     every ≥ 1 || error("cluster_pooled_metric: `every` must be ≥ 1, got $every.")
     kmax ≥ 1 || error("cluster_pooled_metric: `kmax` must be ≥ 1, got $kmax.")
-    return DifferentialEvolutionClusterPooledMetric(float(shrinkage), Int(every), Int(kmax))
+    return DEMClusterPooledMetric(float(shrinkage), Int(every), Int(kmax))
 end
 
-validate_metric_strategy(::DifferentialEvolutionClusterPooledMetric, metric::AbstractMetric) =
+validate_metric_strategy(::DEMClusterPooledMetric, metric::AbstractMetric) =
     require_estimable_metric(metric, "cluster_pooled_metric")
-validate_metric_state(::DifferentialEvolutionClusterPooledMetric, state) =
+validate_metric_state(::DEMClusterPooledMetric, state) =
     require_memory_untempered(state, "cluster_pooled_metric")
 
 # An axis flags multimodal above this (Sarle's bimodality coefficient; uniform ≈ 0.555).
@@ -781,13 +781,13 @@ function gated_clustering(ms, astate, positions)
     return labels, centers, gated
 end
 
-function cluster_pooled_inverse_metric(ms::DifferentialEvolutionClusterPooledMetric, astate, positions)
+function cluster_pooled_inverse_metric(ms::DEMClusterPooledMetric, astate, positions)
     labels, centers, gated = gated_clustering(ms, astate, positions)
     gated && return memory_inverse_metric(astate.metric, positions, ms.shrinkage)
     return within_cluster_inverse_metric(astate.metric, positions, labels, centers, ms.shrinkage)
 end
 
-function refresh_memory_metric!(ms::DifferentialEvolutionClusterPooledMetric, astate::HMCAdaptiveState, state)
+function refresh_memory_metric!(ms::DEMClusterPooledMetric, astate::DEMHMCAdaptiveState, state)
     M⁻¹ = cluster_pooled_inverse_metric(ms, astate, informative_positions(state))
     astate.metric = AdvancedHMC.renew(astate.metric, M⁻¹)
     return nothing
@@ -798,18 +798,18 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    DifferentialEvolutionPerClusterMetric{T}
+    DEMPerClusterMetric{T}
 
 Metric strategy that keeps the cluster covariances **separate** — one metric per mode — and
 routes each chain to its current mode's metric. It is the heteroscedastic refinement of
-[`DifferentialEvolutionClusterPooledMetric`]: where the pooled strategy collapses the K
+[`DEMClusterPooledMetric`]: where the pooled strategy collapses the K
 within-cluster covariances into one shared metric (correct only when the modes share a shape),
 this one fits each mode its own metric, for separated modes of genuinely different shape. See
 [`per_cluster_metric`](@ref) for the user-facing constructor.
 
 Like the pooled strategy it is gated: when the archive looks unimodal (or the between-mode
 variance is negligible) it reduces to `K = 1`, a single metric identical to
-[`DifferentialEvolutionMemoryMetric`]. The K metrics (and their centres) are recomputed only on
+[`DEMMemoryMetric`]. The K metrics (and their centres) are recomputed only on
 the recompute cadence, but each chain is **relabelled to its nearest mode's metric before every
 HMC step**, off its current position. For separated modes this label is constant within each
 basin, so the per-mode metric is the optimal preconditioner and the choice is independent of the
@@ -817,7 +817,7 @@ step's own trajectory; for close modes whose trajectories can bridge clusters, p
 from the step's own starting position introduces a small bias on the boundary in exchange for each
 chain always running under its current mode's shape.
 """
-struct DifferentialEvolutionPerClusterMetric{T <: Real} <: AbstractDifferentialEvolutionMetricStrategy
+struct DEMPerClusterMetric{T <: Real} <: AbstractDEMMetricStrategy
     shrinkage::T
     every::Int
     kmax::Int
@@ -828,12 +828,12 @@ function DEM.per_cluster_metric(; shrinkage::Real = 0.0, every::Integer = 100, k
         error("per_cluster_metric: `shrinkage` must be in [0, 1], got $shrinkage.")
     every ≥ 1 || error("per_cluster_metric: `every` must be ≥ 1, got $every.")
     kmax ≥ 1 || error("per_cluster_metric: `kmax` must be ≥ 1, got $kmax.")
-    return DifferentialEvolutionPerClusterMetric(float(shrinkage), Int(every), Int(kmax))
+    return DEMPerClusterMetric(float(shrinkage), Int(every), Int(kmax))
 end
 
-validate_metric_strategy(::DifferentialEvolutionPerClusterMetric, metric::AbstractMetric) =
+validate_metric_strategy(::DEMPerClusterMetric, metric::AbstractMetric) =
     require_estimable_metric(metric, "per_cluster_metric")
-validate_metric_state(::DifferentialEvolutionPerClusterMetric, state) =
+validate_metric_state(::DEMPerClusterMetric, state) =
     require_memory_untempered(state, "per_cluster_metric")
 
 # A cluster with fewer distinct points than this falls back to the whole-archive (pooled) covariance: a
@@ -843,7 +843,7 @@ min_cluster_points(::AdvancedHMC.DiagEuclideanMetric) = 2
 min_cluster_points(metric::AdvancedHMC.DenseEuclideanMetric) = size(metric, 1) + 1
 
 # One metric over the whole archive (the K = 1 / gated-off fall-through), with its single centre.
-function pooled_cluster_metric(ms::DifferentialEvolutionPerClusterMetric, astate, positions)
+function pooled_cluster_metric(ms::DEMPerClusterMetric, astate, positions)
     M⁻¹ = memory_inverse_metric(astate.metric, positions, ms.shrinkage)
     centers = reshape(global_mean(positions), length(first(positions)), 1)
     return [AdvancedHMC.renew(astate.metric, M⁻¹)], centers
@@ -853,7 +853,7 @@ end
 # centres to assign chains by. Gated exactly like the pooled strategy (a unimodal archive returns
 # K = 1 = memory_metric). The returned centres match the metrics' K — distinct from the warm-start
 # `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
-function per_cluster_inverse_metrics(ms::DifferentialEvolutionPerClusterMetric, astate, positions)
+function per_cluster_inverse_metrics(ms::DEMPerClusterMetric, astate, positions)
     labels, centers, gated = gated_clustering(ms, astate, positions)
     gated && return pooled_cluster_metric(ms, astate, positions)
     floor_pts = min_cluster_points(astate.metric)
@@ -892,7 +892,7 @@ end
 # `fill_chain_metrics!`, so the metric set is held fixed between recomputes while each chain still
 # tracks its current mode. The stored centres match the metrics' K — distinct from the warm-start
 # `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
-function refresh_memory_metric!(ms::DifferentialEvolutionPerClusterMetric, astate::HMCAdaptiveState, state)
+function refresh_memory_metric!(ms::DEMPerClusterMetric, astate::DEMHMCAdaptiveState, state)
     metrics, centers = per_cluster_inverse_metrics(ms, astate, informative_positions(state))
     astate.cluster_metrics = metrics
     astate.cluster_centers = centers
@@ -903,14 +903,14 @@ end
 # Dispatch into the DEM stepping interface
 # -----------------------------------------------------------------------------
 
-const ArchiveMetricStrategy = Union{
-    DifferentialEvolutionMemoryMetric, DifferentialEvolutionClusterPooledMetric,
-    DifferentialEvolutionPerClusterMetric,
+const DEMArchiveMetricStrategy = Union{
+    DEMMemoryMetric, DEMClusterPooledMetric,
+    DEMPerClusterMetric,
 }
 
 # Advance the cadence counter and rebuild the metric when due. Shared by warmup and sampling so
 # both phases recompute on exactly the same schedule.
-function advance_memory_metric!(ms::ArchiveMetricStrategy, astate::HMCAdaptiveState, state)
+function advance_memory_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState, state)
     astate.metric_steps += 1
     metric_due(astate, ms.every) && refresh_memory_metric!(ms, astate, state)
     return nothing
@@ -921,9 +921,9 @@ end
 # to its nearest mode's metric here, before every HMC step, off the centres last computed on the
 # recompute cadence. Before the first recompute the K cluster metrics do not exist yet, so it seeds
 # the slots with the lone seed metric.
-fill_chain_metrics!(::AbstractDifferentialEvolutionMetricStrategy, astate::HMCAdaptiveState, state) =
+fill_chain_metrics!(::AbstractDEMMetricStrategy, astate::DEMHMCAdaptiveState, state) =
     prepare_chain_metrics!(astate.chain_metrics, astate.metric)
-function fill_chain_metrics!(::DifferentialEvolutionPerClusterMetric, astate::HMCAdaptiveState, state)
+function fill_chain_metrics!(::DEMPerClusterMetric, astate::DEMHMCAdaptiveState, state)
     if isempty(astate.cluster_metrics)
         prepare_chain_metrics!(astate.chain_metrics, astate.metric)
     else
@@ -933,8 +933,8 @@ function fill_chain_metrics!(::DifferentialEvolutionPerClusterMetric, astate::HM
 end
 
 function adapt_metric!(
-        ms::ArchiveMetricStrategy, model_wrapper::LogDensityModel, state,
-        astate::HMCAdaptiveState, α
+        ms::DEMArchiveMetricStrategy, model_wrapper::LogDensityModel, state,
+        astate::DEMHMCAdaptiveState, α
     )
     step_size_only_adapt!(astate.adaptor, α)
     astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
@@ -944,8 +944,8 @@ function adapt_metric!(
 end
 
 function step_warmup(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
-        state::DEM.DifferentialEvolutionState{T, <:HMCAdaptiveState};
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
+        state::DEM.DEMState{T, <:DEMHMCAdaptiveState};
         parallel::Bool = false, update_memory::Bool = true,
         num_warmup::Int = 1000, kwargs...
     ) where {T <: Real}
@@ -969,29 +969,29 @@ function step_warmup(
         )
 end
 
-track_sampling_metric!(::AbstractDifferentialEvolutionMetricStrategy, ::Nothing, state) = nothing
-track_sampling_metric!(::DifferentialEvolutionStockAdaptorMetric, ::HMCAdaptiveState, state) = nothing
-track_sampling_metric!(ms::ArchiveMetricStrategy, astate::HMCAdaptiveState, state) =
+track_sampling_metric!(::AbstractDEMMetricStrategy, ::Nothing, state) = nothing
+track_sampling_metric!(::DEMStockAdaptorMetric, ::DEMHMCAdaptiveState, state) = nothing
+track_sampling_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState, state) =
     advance_memory_metric!(ms, astate, state)
 
 # Fill the trajectory slots and return the kernel + slots for a sampling step. Once warmed these
 # come from the live adaptive state (so sampling-phase recomputes/reassignments are seen); without
 # warmup (e.g. a manually fixed sampler) they come from the sampler's own frozen pieces. Dispatched
 # on the carried adaptive state, whose concrete type is known, so it stays type-stable.
-function prepare_sampling_metrics!(sampler::DifferentialEvolutionHMCSampler, ::Nothing, state)
+function prepare_sampling_metrics!(sampler::DEMHMCSampler, ::Nothing, state)
     prepare_chain_metrics!(sampler.chain_metrics, sampler.metric)
     return sampler.κ, sampler.chain_metrics
 end
 function prepare_sampling_metrics!(
-        sampler::DifferentialEvolutionHMCSampler, astate::HMCAdaptiveState, state
+        sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState, state
     )
     fill_chain_metrics!(sampler.metric_strategy, astate, state)
     return astate.κ, astate.chain_metrics
 end
 
 function step(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DifferentialEvolutionHMCSampler,
-        state::DEM.DifferentialEvolutionState{T, DEM.DifferentialEvolutionAdaptiveStatic{T}};
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
+        state::DEM.DEMState{T, DEM.DEMAdaptiveStatic{T}};
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
     if sampler.astate === nothing
@@ -1006,29 +1006,29 @@ function step(
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end
 
-DEM.chains_required(::DifferentialEvolutionHMCSampler) = 1
+DEM.chains_required(::DEMHMCSampler) = 1
 
 # -----------------------------------------------------------------------------
 # Display
 # -----------------------------------------------------------------------------
 
-Base.show(io::IO, ::DifferentialEvolutionStockAdaptorMetric) = print(io, "stock adaptor")
-Base.show(io::IO, m::DifferentialEvolutionMemoryMetric) =
+Base.show(io::IO, ::DEMStockAdaptorMetric) = print(io, "stock adaptor")
+Base.show(io::IO, m::DEMMemoryMetric) =
     print(io, "memory_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ")")
-Base.show(io::IO, m::DifferentialEvolutionClusterPooledMetric) = print(
+Base.show(io::IO, m::DEMClusterPooledMetric) = print(
     io, "cluster_pooled_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ", kmax = ", m.kmax, ")"
 )
-Base.show(io::IO, m::DifferentialEvolutionPerClusterMetric) = print(
+Base.show(io::IO, m::DEMPerClusterMetric) = print(
     io, "per_cluster_metric(shrinkage = ", m.shrinkage, ", every = ", m.every, ", kmax = ", m.kmax, ")"
 )
 
 hmc_trajectory(κ::AbstractMCMCKernel) = hasproperty(κ, :τ) ? κ.τ : κ
 
-function Base.show(io::IO, s::DifferentialEvolutionHMCSampler)
+function Base.show(io::IO, s::DEMHMCSampler)
     return print(io, "HMC update(", nameof(typeof(s.metric)), ", ", s.metric_strategy, ")")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionHMCSampler)
+function Base.show(io::IO, ::MIME"text/plain", s::DEMHMCSampler)
     fields = [
         "trajectory" => sprint(show, hmc_trajectory(s.κ); context = io),
         "metric" => sprint(show, s.metric; context = io),
@@ -1038,7 +1038,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::DifferentialEvolutionHMCSample
     return DEM.show_multiline(io, "HMC update", fields)
 end
 
-function Base.show(io::IO, a::HMCAdaptiveState)
+function Base.show(io::IO, a::DEMHMCAdaptiveState)
     return print(
         io, "HMC (", a.initialized ? "" : "not ", "initialised, ", a.metric_steps, " HMC steps)"
     )

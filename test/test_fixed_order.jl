@@ -17,9 +17,9 @@
 
     @testset "Setup" begin
         scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 10)
-        @test scheme isa DEM.DifferentialEvolutionCompositeSamplerFixedOrder
+        @test scheme isa DEM.DEMCompositeSamplerFixedOrder
         @test scheme.n == 10
-        @test scheme.updates[2] isa DEM.DifferentialEvolutionSnookerSampler
+        @test scheme.updates[2] isa DEM.DEMSnookerSampler
         @test setup_fixed_order_scheme(setup_de_update(), setup_snooker_update()).n == 1
         @test_throws ErrorException setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 0)
         @test DEM.chains_required(setup_fixed_order_scheme(setup_de_update(), setup_snooker_update())) ==
@@ -28,10 +28,10 @@
 
     @testset "setup_sampler_scheme picks the scheme type from w" begin
         de, snooker, subspace = setup_de_update(), setup_snooker_update(), setup_subspace_sampling()
-        @test setup_sampler_scheme(de, snooker; w = 5) isa DEM.DifferentialEvolutionCompositeSamplerFixedOrder
+        @test setup_sampler_scheme(de, snooker; w = 5) isa DEM.DEMCompositeSamplerFixedOrder
         @test setup_sampler_scheme(de, snooker; w = 5).n == 5
-        @test setup_sampler_scheme(de, snooker; w = [1, 2]) isa DEM.DifferentialEvolutionCompositeSamplerRandom
-        @test setup_sampler_scheme(de, snooker, subspace) isa DEM.DifferentialEvolutionCompositeSamplerRandom
+        @test setup_sampler_scheme(de, snooker; w = [1, 2]) isa DEM.DEMCompositeSamplerRandom
+        @test setup_sampler_scheme(de, snooker, subspace) isa DEM.DEMCompositeSamplerRandom
         @test setup_random_order_scheme(de, snooker; w = [1, 2]).update_weights == [1, 2]
         @test_throws "requires exactly two updates" setup_sampler_scheme(de, snooker, subspace; w = 5)
         @test_throws "requires exactly two updates" setup_sampler_scheme(de; w = 5)
@@ -57,7 +57,7 @@
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(still_update, setup_de_update(); n = 3)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
-        @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveStatic
+        @test state.adaptive_state isa DEM.DEMAdaptiveStatic
         moved, state = record_moves!(rng, scheme, state, 12; n_warmup = 6)
         @test moved == repeat([false, false, false, true], 3)
         @test state.order_state.iteration == 12
@@ -65,8 +65,8 @@
 
     @testset "Multiple-try (adapt = $adapt)" for adapt in (true, false)
         rng = backwards_compat_rng(1234)
-        @test DEM.supports_multi_try(setup_fixed_order_scheme(setup_snooker_update(), setup_de_update()))
-        @test !DEM.supports_multi_try(setup_fixed_order_scheme(setup_snooker_update(), setup_swap_update()))
+        @test DEM.sampler_supports_multitry(setup_fixed_order_scheme(setup_snooker_update(), setup_de_update()))
+        @test !DEM.sampler_supports_multitry(setup_fixed_order_scheme(setup_snooker_update(), setup_swap_update()))
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 3)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt, n_tries = 3)
         @test DEM.n_tries(state.multi_try) == 3
@@ -80,7 +80,7 @@
         scheme = setup_fixed_order_scheme(setup_de_update(), setup_subspace_sampling(); n = 2)
         _, state = AbstractMCMC.step(rng, model, scheme; memory = true)
         subspace_state = state.adaptive_state.adaptive_states[2]
-        @test subspace_state isa DEM.DifferentialEvolutionAdaptiveSubspace
+        @test subspace_state isa DEM.DEMAdaptiveSubspace
         for _ in 1:2
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         end
@@ -95,7 +95,7 @@
         inner = setup_sampler_scheme(still_update, setup_de_update(), setup_subspace_sampling(); w = [1.0, 1.0, 0.0])
         scheme = setup_sampler_scheme(inner, still_update)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
-        @test state.adaptive_state isa (adapt ? DEM.DifferentialEvolutionAdaptiveComposite : DEM.DifferentialEvolutionAdaptiveStatic)
+        @test state.adaptive_state isa (adapt ? DEM.DEMAdaptiveComposite : DEM.DEMAdaptiveStatic)
         moved, _ = record_moves!(rng, scheme, state, 2000; n_warmup = 1000)
         @test isapprox(mean(moved), 0.25; atol = 0.04)
     end
@@ -108,7 +108,7 @@
         )
         _, state = AbstractMCMC.step(rng, model, scheme; memory = true)
         subspace_state = state.adaptive_state.adaptive_states[1].adaptive_states[2]
-        @test subspace_state isa DEM.DifferentialEvolutionAdaptiveSubspace
+        @test subspace_state isa DEM.DEMAdaptiveSubspace
         for _ in 1:5
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         end
@@ -122,7 +122,7 @@
         inner_fixed = setup_fixed_order_scheme(inner_random, setup_de_update(); n = 1)
         scheme = setup_sampler_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
-        @test state.adaptive_state isa (adapt ? DEM.DifferentialEvolutionAdaptiveComposite : DEM.DifferentialEvolutionAdaptiveStatic)
+        @test state.adaptive_state isa (adapt ? DEM.DEMAdaptiveComposite : DEM.DEMAdaptiveStatic)
         moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
         @test moved == [false, true, false, true, false, true]
         @test state.order_state.order_states[1].iteration == 6
@@ -173,7 +173,7 @@
         _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
         @test fixed_state.order_state === state.order_state
-        @test fixed_state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveStatic
+        @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
         moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 3)
         @test moved == [false, true, false]
     end
@@ -187,7 +187,7 @@
         subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]
         fixed_scheme, fixed_state = fix_sampler_state(scheme, state)
         @test fixed_scheme.updates[2].updates[1].cr_spl === subspace_state.cr_spl
-        @test fixed_state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveStatic
+        @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
         moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 4)
         @test moved == [false, true, false, true]
     end
@@ -226,7 +226,7 @@
         @test all(isfinite, out.samples)
 
         out = DREAMz(model, 100; n_burnin = 100, p_γ₂ = 4, rng = rng, progress = false, save_final_state = true)
-        @test out[2].adaptive_state isa DEM.DifferentialEvolutionAdaptiveComposite
+        @test out[2].adaptive_state isa DEM.DEMAdaptiveComposite
 
         out = deMCzs(model, 100; n_burnin = 100, p_snooker = 0.1, rng = rng, progress = false)
         @test all(isfinite, out.samples)

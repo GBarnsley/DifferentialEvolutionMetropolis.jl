@@ -11,10 +11,10 @@
             de_sampler; memory = false, adapt = true
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveSubspace)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -25,10 +25,10 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveSubspace)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -46,7 +46,7 @@
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Sample using memory Subspace" begin
@@ -61,10 +61,10 @@
             de_sampler; memory = true, adapt = true
         )
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveSubspace)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -75,10 +75,10 @@
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler, initial_state)
 
-        @test isa(sample_result, DifferentialEvolutionMetropolis.DifferentialEvolutionSample)
+        @test isa(sample_result, DifferentialEvolutionMetropolis.DEMSample)
         @test length(sample_result.x) == LogDensityProblems.dimension(model) * 2
-        @test isa(initial_state, DifferentialEvolutionMetropolis.DifferentialEvolutionState)
-        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DifferentialEvolutionAdaptiveSubspace)
+        @test isa(initial_state, DifferentialEvolutionMetropolis.DEMState)
+        @test isa(initial_state.adaptive_state, DifferentialEvolutionMetropolis.DEMAdaptiveSubspace)
         @test length(initial_state.x) == LogDensityProblems.dimension(model) * 2
         @test length(initial_state.x[1]) == LogDensityProblems.dimension(model)
         @test length(initial_state.ld) == LogDensityProblems.dimension(model) * 2
@@ -95,7 +95,7 @@
             adapt = true
         )
         @test length(samples) == 100
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "check adaption works as intended" begin
@@ -107,7 +107,7 @@
 
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler; adapt = true)
-        states = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
+        states = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
         states[1] = deepcopy(initial_state)
         for i in 2:(its + 1)
             sample_result,
@@ -151,7 +151,7 @@
         var_m2 = cat([state.adaptive_state.var_m2 for state in states]...; dims = 2)
         @test size(var_m2, 1) == LogDensityProblems.dimension(model)
 
-        states_2 = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
+        states_2 = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
         states_2[1] = states[end]
         for i in 2:(its + 1)
             sample_result,
@@ -163,7 +163,7 @@
         crs = [state.adaptive_state.cr_spl for state in states_2]
         @test crs[1] == crs[end]
 
-        states_noadapt = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
+        states_noadapt = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
         states_noadapt[1] = initial_state
         for i in 2:(its + 1)
             sample_result,
@@ -178,7 +178,7 @@
         @test crs[1] == crs[end]
 
         new_sampler, initial_state2 = fix_sampler_state(de_sampler, states[end])
-        states_noadapt = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
+        states_noadapt = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
         states_noadapt[1] = initial_state2
         for i in 2:(its + 1)
             sample_result,
@@ -188,11 +188,11 @@
             )
             states_noadapt[i] = deepcopy(state)
         end
-        @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DEMState)
 
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler; adapt = false)
-        states_noadapt = Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionState}(undef, its + 1)
+        states_noadapt = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
         states_noadapt[1] = initial_state
         for i in 2:(its + 1)
             sample_result,
@@ -201,7 +201,7 @@
             )
             states_noadapt[i] = deepcopy(state)
         end
-        @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DifferentialEvolutionState)
+        @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DEMState)
     end
     @testset "adaption ignores hot chains" begin
         rng = backwards_compat_rng(1234)

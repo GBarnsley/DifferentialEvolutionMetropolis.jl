@@ -1,5 +1,5 @@
-mutable struct DifferentialEvolutionAdaptiveSubspace{T <: Real} <:
-    AbstractDifferentialEvolutionAdaptiveState{T}
+mutable struct DEMAdaptiveSubspace{T <: Real} <:
+    AbstractDEMAdaptiveState{T}
     "adapted crossover probability holder"
     p::Vector{T}
     "attempts for each crossover probability"
@@ -7,7 +7,7 @@ mutable struct DifferentialEvolutionAdaptiveSubspace{T <: Real} <:
     "squared normalised jumping distance for each crossover probability for each crossover probability"
     Δ::Vector{T}
     "sampler for crossover probabilities, reweighted in place"
-    cr_spl::CrossoverSampler{T}
+    cr_spl::DEMCrossoverSampler{T}
     "running count for variance calculation"
     var_count::Int
     "running mean for each dimension"
@@ -22,7 +22,7 @@ end
 
 # Helper function to update running variance using Welford's algorithm
 function calculate_running_variance!(
-        adaptive_state::DifferentialEvolutionAdaptiveSubspace{T},
+        adaptive_state::DEMAdaptiveSubspace{T},
         new_values::VV
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
     for new_value in new_values
@@ -37,7 +37,7 @@ end
 
 # Helper function to get current sample variance, returns whether it is available yet
 function calculate_current_variance!(
-        adaptive_state::DifferentialEvolutionAdaptiveSubspace, min_variance_count::Int
+        adaptive_state::DEMAdaptiveSubspace, min_variance_count::Int
     )
     ready = adaptive_state.var_count ≥ min_variance_count
     if ready
@@ -47,7 +47,7 @@ function calculate_current_variance!(
 end
 
 # Probabilities proportional to mean normalised squared jump, mixed with uniform (weight `w`) so none reach zero
-function adapted_cr_probabilities!(adaptive_state::DifferentialEvolutionAdaptiveSubspace, w::Real)
+function adapted_cr_probabilities!(adaptive_state::DEMAdaptiveSubspace, w::Real)
     adaptive_state.p .= adaptive_state.Δ ./ adaptive_state.L
     adaptive_state.p ./= sum(adaptive_state.p)
     n_cr = length(adaptive_state.p)
@@ -58,10 +58,10 @@ end
 #update the sampler with the adapted cr
 
 function fix_sampler(
-        sampler::DifferentialEvolutionSubspaceSampler,
-        adaptive_state::DifferentialEvolutionAdaptiveSubspace
+        sampler::DEMSubspaceSampler,
+        adaptive_state::DEMAdaptiveSubspace
     )
-    return DifferentialEvolutionSubspaceSampler(
+    return DEMSubspaceSampler(
         adaptive_state.cr_spl,
         sampler.n_cr,
         sampler.δ_spl,
@@ -74,10 +74,10 @@ function fix_sampler(
 end
 
 function fix_sampler(
-        sampler::DifferentialEvolutionSubspaceSamplerFixedGamma,
-        adaptive_state::DifferentialEvolutionAdaptiveSubspace
+        sampler::DEMSubspaceSamplerFixedGamma,
+        adaptive_state::DEMAdaptiveSubspace
     )
-    return DifferentialEvolutionSubspaceSamplerFixedGamma(
+    return DEMSubspaceSamplerFixedGamma(
         adaptive_state.cr_spl,
         sampler.n_cr,
         sampler.δ_spl,
@@ -113,7 +113,7 @@ to the adaptation, and jumps are recorded once the running variance is available
 - `kwargs...`: Additional keyword arguments passed to update functions
 
 # Returns
-- `sample`: DifferentialEvolutionSample containing new positions and log-densities
+- `sample`: DEMSample containing new positions and log-densities
 - `new_state`: Updated state with adapted parameters for the next iteration
 
 # Example
@@ -137,9 +137,9 @@ See also [`step`](@ref), [`fix_sampler`](@ref).
 function step_warmup(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::AbstractDifferentialEvolutionSubspaceSampler,
-        state::DifferentialEvolutionState{
-            T, <:DifferentialEvolutionAdaptiveSubspace{T},
+        sampler::AbstractDEMSubspaceSampler,
+        state::DEMState{
+            T, <:DEMAdaptiveSubspace{T},
         };
         update_memory::Bool = true,
         parallel::Bool = false,
@@ -162,8 +162,8 @@ function step_warmup(
     fixed_sampler = fix_sampler(sampler, adaptive_state)
     prepare_scratch!(fixed_sampler, state)
 
-    if uses_multi_try(fixed_sampler, state)
-        multi_try_update!(model, state, fixed_sampler, parallel)
+    if !isnothing(state.multi_try)
+        update_chains!(state, fixed_sampler, parallel)
         if variance_ready
             buffers = state.multi_try
             for i in cold_chains
@@ -177,7 +177,7 @@ function step_warmup(
                 )
             end
         end
-    elseif parallel
+    elseif parallel && !(state.memory isa DEMMemoryless)
         # thread safe updating
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))
@@ -233,17 +233,17 @@ function step_warmup(
 end
 
 function initialize_adaptive_state(
-        sampler::AbstractDifferentialEvolutionSubspaceSampler,
+        sampler::AbstractDEMSubspaceSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
     ) where {T <: Real}
     n_cr = sampler.n_cr
     d = dimension(model_wrapper.logdensity)
     if n_cr == 0
         @warn "sampler already has a fixed crossover probability, cannot adapt."
-        return DifferentialEvolutionAdaptiveStatic{T}()
+        return DEMAdaptiveStatic{T}()
     elseif n_cr == 1
         @warn "Only one crossover probability, cannot adapt."
-        return DifferentialEvolutionAdaptiveStatic{T}()
+        return DEMAdaptiveStatic{T}()
     else
         p = zeros(T, n_cr)
         L = zeros(Int, n_cr)
@@ -252,14 +252,14 @@ function initialize_adaptive_state(
         if !all(Distributions.support(cr_dist) .≈ Distributions.support(create_cr_dist(n_cr)))
             @warn "Adapting provided crossover probabilities."
         end
-        cr_spl = CrossoverSampler(T.(Distributions.support(cr_dist)), Distributions.probs(cr_dist))
+        cr_spl = DEMCrossoverSampler(T.(Distributions.support(cr_dist)), Distributions.probs(cr_dist))
         # Initialize running variance tracking
         var_count = 0
         var_mean = zeros(T, d)
         var_m2 = zeros(T, d)
         delta = zeros(T, d)
         variance = ones(T, d)
-        return DifferentialEvolutionAdaptiveSubspace{T}(
+        return DEMAdaptiveSubspace{T}(
             p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance
         )
     end

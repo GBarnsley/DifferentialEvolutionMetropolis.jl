@@ -1,9 +1,9 @@
-struct DifferentialEvolutionSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDifferentialEvolutionSampler
+struct DEMSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry}
     γ_spl::G
-    scratch::ProposalScratch{2}
+    scratch::DEMProposalScratch{2}
 end
 
-prepare_scratch!(sampler::DifferentialEvolutionSnookerSampler, state) = prepare_scratch!(sampler.scratch, state)
+prepare_scratch!(sampler::DEMSnookerSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 """
 Set up a Snooker update step for MCMC sampling.
@@ -25,7 +25,7 @@ See doi.org/10.1007/s11222-008-9104-9 for more information.
 - `check_args`: Whether to validate input distributions. Defaults to `true`.
 
 # Returns
-- A `DifferentialEvolutionSnookerSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
+- A `DEMSnookerSampler` that can be used with [`setup_sampler_scheme`](@ref) or [`step`](@ref) or [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev/api/#Common-keyword-arguments).
 
 # Example
 ```@example snooker_update
@@ -60,12 +60,12 @@ function setup_snooker_update(;
         end
     end
 
-    return DifferentialEvolutionSnookerSampler(sampler(γ), ProposalScratch{2}())
+    return DEMSnookerSampler(sampler(γ), DEMProposalScratch{2}())
 end
 
 function proposal!(
-        xₚ::V, x::V, state::DifferentialEvolutionState,
-        sampler::DifferentialEvolutionSnookerSampler, current_state::Int
+        xₚ::V, x::V, state::DEMState,
+        sampler::DEMSnookerSampler, current_state::Int
     ) where {V <: AbstractVector}
     # Propose a new position.
     x₁, x₂, xₐ = pick_chains(state, current_state, Val(3))
@@ -86,4 +86,4 @@ function proposal!(
     end
 end
 
-chains_required(::DifferentialEvolutionSnookerSampler) = 4
+chains_required(::DEMSnookerSampler) = 4

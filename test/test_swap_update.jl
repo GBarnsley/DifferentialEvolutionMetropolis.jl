@@ -150,7 +150,7 @@
         @test DEM.has_swap_update(swap)
         @test DEM.has_swap_update(setup_sampler_scheme(de, swap))
         @test !DEM.has_swap_update(setup_sampler_scheme(de, setup_snooker_update()))
-        @test !DEM.has_hot_chains(DEM.DifferentialEvolutionNullTemperatureLadder{Float64}())
+        @test !DEM.has_hot_chains(DEM.DEMNullTemperatureLadder{Float64}())
         @test DEM.has_hot_chains(swap_state([[1.0, 1.0, 1.0, 2.0, 4.0]]).temperature_ladder)
     end
 
@@ -171,7 +171,7 @@
     @testset "templates" begin
         scheme = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = [3.0, 1.0])
         with_swaps = DEM.add_swap_update(scheme, 2, true, 0.2)
-        @test with_swaps.updates[end] isa DEM.DifferentialEvolutionSwapSampler
+        @test with_swaps.updates[end] isa DEM.DEMSwapSampler
         @test with_swaps.update_weights ≈ [0.6, 0.2, 0.2]
         @test DEM.add_swap_update(scheme, 2, false, 0.2) === scheme
         @test (@test_logs (:warn, r"without hot chains") DEM.add_swap_update(scheme, 0, true, 0.2)) === scheme
@@ -182,7 +182,7 @@
         fixed_scheme = setup_fixed_order_scheme(setup_de_update(), setup_snooker_update(); n = 3)
         fixed_with_swaps = DEM.add_swap_update(fixed_scheme, 2, true, 0.2)
         @test fixed_with_swaps.updates[1] === fixed_scheme
-        @test fixed_with_swaps.updates[2] isa DEM.DifferentialEvolutionSwapSampler
+        @test fixed_with_swaps.updates[2] isa DEM.DEMSwapSampler
         @test fixed_with_swaps.update_weights ≈ [0.8, 0.2]
 
         kw = (; n_chains = 3, n_burnin = 10, memory = false, silent = true, progress = false)

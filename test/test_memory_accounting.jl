@@ -57,12 +57,12 @@ using Random, AbstractMCMC, LogDensityProblems
             silent = true
         )
 
-        @test isa(state.memory, DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryFill)
+        @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryFill)
         @test state.memory.fill.position == 4
 
         # Taking 1 step: position goes from 4 to 8, which hits the length 8, and converts to Refill.
         _, state = AbstractMCMC.step_warmup(rng, wrapped_model, spl, state; num_warmup = 2)
-        @test isa(state.memory, DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryRefill)
+        @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryRefill)
     end
 
     @testset "Temperature ladder advances" begin
@@ -141,7 +141,7 @@ using Random, AbstractMCMC, LogDensityProblems
             adapt = true,
             silent = true
         )
-        @test isa(state.memory, DifferentialEvolutionMetropolis.DifferentialEvolutionMemoryFill)
+        @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryFill)
         @test length(state.memory.mem_x) == 12
     end
 

@@ -1,22 +1,22 @@
 #no memory
-struct DifferentialEvolutionMemoryless{T} <: AbstractDifferentialEvolutionMemory{T}
+struct DEMMemoryless{T} <: AbstractDEMMemory{T}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
 end
 
 #abstract memory-full type
-abstract type AbstractDifferentialEvolutionMemoryFormat{
+abstract type AbstractDEMMemoryFormat{
     T, VV <: AbstractVector{<:AbstractVector{T}},
 } <:
-AbstractDifferentialEvolutionMemory{T} end
+AbstractDEMMemory{T} end
 
 #abstract type for methods of filling memory
-abstract type AbstractDifferentialEvolutionMemoryFillMethod end
+abstract type AbstractDEMMemoryFillMethod end
 
 #full memory, refreshing from the start
-struct DifferentialEvolutionMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod} <:
-    AbstractDifferentialEvolutionMemoryFormat{T, VV}
+struct DEMMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
+    AbstractDEMMemoryFormat{T, VV}
     mem_x::VV
     fill::F
     #for preallocation only for internal use
@@ -25,7 +25,7 @@ struct DifferentialEvolutionMemoryRefill{T, VV <: AbstractVector{<:AbstractVecto
 end
 
 function update_memory!!(
-        memory::DifferentialEvolutionMemoryRefill{T, VV},
+        memory::DEMMemoryRefill{T, VV},
         x::VV
     ) where {T <: Real, VV <: AbstractVector{<:AbstractVector{T}}}
     if update_position!(memory.fill)
@@ -40,8 +40,8 @@ function update_memory!!(
 end
 
 #non-full memory, filling up to a max size then extending or refilling
-struct DifferentialEvolutionMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDifferentialEvolutionMemoryFillMethod} <:
-    AbstractDifferentialEvolutionMemoryFormat{T, VV}
+struct DEMMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
+    AbstractDEMMemoryFormat{T, VV}
     mem_x::VV
     fill::F
     refill::Bool
@@ -52,7 +52,7 @@ struct DifferentialEvolutionMemoryFill{T, VV <: AbstractVector{<:AbstractVector{
 end
 
 function update_memory!!(
-        memory::DifferentialEvolutionMemoryFill{T, VV},
+        memory::DEMMemoryFill{T, VV},
         x::VV
     ) where {T <: Real, V_elem <: AbstractVector{T}, VV <: AbstractVector{V_elem}}
     if update_position!(memory.fill)
@@ -63,7 +63,7 @@ function update_memory!!(
 
     if memory.fill.position == length(memory.mem_x)
         if memory.refill
-            memory = DifferentialEvolutionMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
+            memory = DEMMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
             memory.fill.position = 0
         else
             #increase memory size
@@ -77,26 +77,26 @@ function update_memory!!(
     return memory
 end
 
-mutable struct DifferentialEvolutionMemoryFillEvery <:
-    AbstractDifferentialEvolutionMemoryFillMethod
+mutable struct DEMMemoryFillEvery <:
+    AbstractDEMMemoryFillMethod
     position::Int
     n_chains::Int
 end
 
-function update_position!(method::DifferentialEvolutionMemoryFillEvery)
+function update_position!(method::DEMMemoryFillEvery)
     method.position += method.n_chains
     return true
 end
 
-mutable struct DifferentialEvolutionMemoryFillThin <:
-    AbstractDifferentialEvolutionMemoryFillMethod
+mutable struct DEMMemoryFillThin <:
+    AbstractDEMMemoryFillMethod
     position::Int
     n_chains::Int
     count::Int
     max_count::Int
 end
 
-function update_position!(method::DifferentialEvolutionMemoryFillThin)
+function update_position!(method::DEMMemoryFillThin)
     method.count -= 1
     if method.count == 0
         method.position += method.n_chains

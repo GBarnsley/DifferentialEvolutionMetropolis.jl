@@ -45,15 +45,15 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 
 ### AbstractMCMC integration (`src/chains.jl`)
 
-- `step(rng, model, sampler; kwargs...)` initialises: builds temperature ladder, memory, adaptive state, per-chain model copies, and `DifferentialEvolutionState`.
-- `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DifferentialEvolutionAdaptiveStatic` state.
+- `step(rng, model, sampler; kwargs...)` initialises: builds temperature ladder, memory, adaptive state, per-chain model copies, and `DEMState`.
+- `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state.
   It reseeds `state.rngs` from `rng`, then for each chain calls `proposal!(state, sampler, i)` and `update_chain!` (log density + tempered MH accept/reject).
 - `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` freeze adapted parameters.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
 
 ### Core state (`src/DifferentialEvolutionMetropolis.jl`)
 
-`DifferentialEvolutionState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), `order_state` (fixed order cycle positions, `nothing` without a fixed order scheme), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
+`DEMState` holds current/proposed positions (`x`/`xₚ`), log densities (`ld`/`ldₚ`), per-chain `rngs`, `adaptive_state`, `temperature_ladder`, `memory`, `chain_models` (per-chain `deepcopy` of the model for threading), `order_state` (fixed order cycle positions, `nothing` without a fixed order scheme), and `*_smpl_view` views that restrict output to cold chains when parallel tempering is on.
 
 ### Update types
 
@@ -68,8 +68,8 @@ Each implements `proposal!(state, sampler, i)` returning `(offset, ...)`; an off
 
 ### Memory (`src/memory.jl`)
 
-`DifferentialEvolutionMemoryless` picks from live chains.
-`DifferentialEvolutionMemoryFill` / `DifferentialEvolutionMemoryRefill` pick from a history archive `mem_x`, with fill-every or thinned fill methods.
+`DEMMemoryless` picks from live chains.
+`DEMMemoryFill` / `DEMMemoryRefill` pick from a history archive `mem_x`, with fill-every or thinned fill methods.
 
 ### Temperature (`src/temperature.jl`)
 
@@ -80,14 +80,14 @@ Null, static (parallel tempering via `n_hot_chains`), and annealing ladders.
 
 `src/hmc.jl` only contains error stubs with docstrings for `setup_hmc_update`, `memory_metric`, `cluster_pooled_metric` and `per_cluster_metric`.
 The implementation is in `AdvancedHMCExt`.
-`DifferentialEvolutionHMCSampler` decomposes a `NUTS`/`HMC`/`HMCDA` into metric/integrator/kernel/adaptor so it can act as one update in a composite scheme.
+`DEMHMCSampler` decomposes a `NUTS`/`HMC`/`HMCDA` into metric/integrator/kernel/adaptor so it can act as one update in a composite scheme.
 Metric strategies: stock Stan adaptor, or experimental archive-based strategies that estimate the mass matrix from the memory archive (these require memory and reject parallel tempering).
 
 ### Extensions
 
 `MCMCChainsExt` / `FlexiChainsExt` handle output bundling to those chain types.
 `MCMCDiagnosticToolsExt` implements `r̂_stopping_criteria` (`src/convergence.jl` stubs it).
-Default output is `DifferentialEvolutionOutput` (`samples[iter, chain, param]`, `ld[iter, chain]`).
+Default output is `DEMOutput` (`samples[iter, chain, param]`, `ld[iter, chain]`).
 
 ### Templates (`src/templates.jl`)
 

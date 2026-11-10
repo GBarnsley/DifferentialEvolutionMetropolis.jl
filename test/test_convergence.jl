@@ -15,7 +15,7 @@ using MCMCDiagnosticTools
             progress = false
         )
         @test (length(samples) % (1000 - 1)) == 0
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 
     @testset "Should hit max" begin
@@ -32,7 +32,7 @@ using MCMCDiagnosticTools
             maximum_R̂ = 1.0
         )
         @test length(samples) == (max_its - 1)
-        @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
+        @test all(isa(x, DifferentialEvolutionMetropolis.DEMSample) for x in samples)
     end
 end
 

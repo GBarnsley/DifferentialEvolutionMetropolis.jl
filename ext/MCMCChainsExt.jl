@@ -6,7 +6,7 @@ import AbstractMCMC
 
 function DifferentialEvolutionMetropolis.convert(
         ::Type{Chains},
-        samples::Vector{DifferentialEvolutionMetropolis.DifferentialEvolutionSample{V, VV}}
+        samples::Vector{DifferentialEvolutionMetropolis.DEMSample{V, VV}}
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
     output = DifferentialEvolutionMetropolis.process_outputs(samples)
 

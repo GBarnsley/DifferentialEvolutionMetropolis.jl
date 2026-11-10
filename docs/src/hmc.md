@@ -193,7 +193,7 @@ out = sample(
     Random.Xoshiro(1), model, scheme, 5000;
     n_chains = 3, num_warmup = 2000,
     initial_position = seeded_positions(Random.Xoshiro(11)), N₀ = 60,
-    memory = true, progress = false, chain_type = DifferentialEvolutionOutput,
+    memory = true, progress = false, chain_type = DEMOutput,
 )
 ```
 

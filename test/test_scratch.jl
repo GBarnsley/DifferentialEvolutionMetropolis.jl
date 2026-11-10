@@ -11,7 +11,7 @@
     )
 
     @testset "buffers are only reallocated when chains or dimensions change" begin
-        scratch = DEM.ProposalScratch{2}()
+        scratch = DEM.DEMProposalScratch{2}()
         DEM.ensure_size!(scratch, Float64, 4, 5)
         @test length(scratch.buffers) == 4
         @test all(length(buffer) == 5 for buffers in scratch.buffers for buffer in buffers)
@@ -30,7 +30,7 @@
     end
 
     @testset "buffers follow the element type of the positions" begin
-        scratch = DEM.ProposalScratch{2}()
+        scratch = DEM.DEMProposalScratch{2}()
         DEM.ensure_size!(scratch, Float64, 4, 5)
         DEM.ensure_size!(scratch, Float32, 4, 5)
         @test scratch.buffers isa Vector{NTuple{2, Vector{Float32}}}
@@ -106,7 +106,7 @@
         @test hash(a) == hash(b)
         @test a != setup_de_update(; γ = 0.5, n_dims = n_dims)
         @test setup_subspace_sampling(; cr = 0.5) == setup_subspace_sampling(; cr = 0.5)
-        empty_scratch = DEM.ProposalScratch{2}()
+        empty_scratch = DEM.DEMProposalScratch{2}()
         @test empty_scratch == a.scratch
         @test hash(empty_scratch) == hash(a.scratch)
     end

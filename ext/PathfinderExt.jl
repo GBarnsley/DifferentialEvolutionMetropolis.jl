@@ -6,8 +6,6 @@ import Pathfinder: PathfinderResult, MultiPathfinderResult
 import Distributions: MixtureModel, components
 import Random: randperm
 
-const PathfinderResults = Union{Tuple{Vararg{PathfinderResult}}, AbstractVector{<:PathfinderResult}}
-
 columns(draws::AbstractMatrix) = [Vector(c) for c in eachcol(draws)]
 
 function chain_starts(rng, mixture::MixtureModel, n_chains::Int, stratify::Bool)
@@ -36,8 +34,8 @@ function resolve_initial_position(
 end
 
 function resolve_initial_position(
-        results::PathfinderResults, rng, n_chains, n_memory; stratify = true
-    )
+        results::D, rng, n_chains, n_memory; stratify = true
+    ) where {D <: Union{Tuple{Vararg{PathfinderResult}}, AbstractVector{<:PathfinderResult}}}
     isempty(results) && throw(ArgumentError("`initial_position` must contain at least one PathfinderResult."))
     mixture = MixtureModel([result.fit_distribution for result in results])
     return vcat(

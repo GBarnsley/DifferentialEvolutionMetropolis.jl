@@ -1,12 +1,12 @@
-abstract type AbstractDifferentialEvolutionSubspaceSampler <:
-AbstractDifferentialEvolutionSampler end
+abstract type AbstractDEMSubspaceSampler <:
+AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry} end
 
-struct DifferentialEvolutionSubspaceSampler{
+struct DEMSubspaceSampler{
         C <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
         D <: Sampleable{Univariate, Discrete},
         E <: Sampleable{Univariate, Continuous},
         F <: Sampleable{Univariate, Continuous},
-    } <: AbstractDifferentialEvolutionSubspaceSampler
+    } <: AbstractDEMSubspaceSampler
     cr_spl::C
     n_cr::Int
     δ_spl::D
@@ -14,16 +14,16 @@ struct DifferentialEvolutionSubspaceSampler{
     e_spl::F
     cr_uniform_weight::Float64
     min_variance_count::Int
-    scratch::ProposalScratch{3}
+    scratch::DEMProposalScratch{3}
 end
 
-struct DifferentialEvolutionSubspaceSamplerFixedGamma{
+struct DEMSubspaceSamplerFixedGamma{
         T <: Real,
         C <: Sampleable{Univariate, <:Union{Continuous, Discrete}},
         D <: Sampleable{Univariate, Discrete},
         E <: Sampleable{Univariate, Continuous},
         F <: Sampleable{Univariate, Continuous},
-    } <: AbstractDifferentialEvolutionSubspaceSampler
+    } <: AbstractDEMSubspaceSampler
     cr_spl::C
     n_cr::Int
     δ_spl::D
@@ -31,7 +31,7 @@ struct DifferentialEvolutionSubspaceSamplerFixedGamma{
     e_spl::F
     cr_uniform_weight::Float64
     min_variance_count::Int
-    scratch::ProposalScratch{3}
+    scratch::DEMProposalScratch{3}
     γ::T
 end
 
@@ -130,7 +130,7 @@ function setup_subspace_sampling(;
     end
 
     return if isnothing(γ)
-        DifferentialEvolutionSubspaceSampler(
+        DEMSubspaceSampler(
             cr_sampler(cr),
             n_cr,
             sampler(δ),
@@ -138,7 +138,7 @@ function setup_subspace_sampling(;
             sampler(e),
             Float64(cr_uniform_weight),
             min_variance_count,
-            ProposalScratch{3}()
+            DEMProposalScratch{3}()
         )
     else
         if check_args
@@ -146,7 +146,7 @@ function setup_subspace_sampling(;
                 error("γ should be ≥ 0")
             end
         end
-        DifferentialEvolutionSubspaceSamplerFixedGamma(
+        DEMSubspaceSamplerFixedGamma(
             cr_sampler(cr),
             n_cr,
             sampler(δ),
@@ -154,7 +154,7 @@ function setup_subspace_sampling(;
             sampler(e),
             Float64(cr_uniform_weight),
             min_variance_count,
-            ProposalScratch{3}(),
+            DEMProposalScratch{3}(),
             γ
         )
     end
@@ -169,27 +169,25 @@ cr_sampler(cr::DiscreteNonParametric) = cr
 cr_sampler(cr) = sampler(cr)
 
 # Sampler over a fixed support whose alias table weights are updated in place without allocating
-struct CrossoverSampler{T <: Real} <: Sampleable{Univariate, Discrete}
+struct DEMCrossoverSampler{T <: Real} <: Sampleable{Univariate, Discrete}
     support::Vector{T}
     at::AliasTable{UInt64, Int}
 end
 
-function CrossoverSampler(support::AbstractVector{T}, weights::AbstractVector{<:Real}) where {T <: Real}
-    return CrossoverSampler{T}(collect(support), AliasTable(weights))
+function DEMCrossoverSampler(support::AbstractVector{T}, weights::AbstractVector{<:Real}) where {T <: Real}
+    return DEMCrossoverSampler{T}(collect(support), AliasTable(weights))
 end
 
-rand(rng::AbstractRNG, s::CrossoverSampler) = s.support[rand(rng, s.at)]
-Distributions.support(s::CrossoverSampler) = s.support
-set_weights!(s::CrossoverSampler, weights::AbstractVector{<:Real}) = (set_weights!(s.at, weights); s)
-Base.:(==)(a::CrossoverSampler, b::CrossoverSampler) = a.support == b.support && a.at == b.at
+rand(rng::AbstractRNG, s::DEMCrossoverSampler) = s.support[rand(rng, s.at)]
+Distributions.support(s::DEMCrossoverSampler) = s.support
+set_weights!(s::DEMCrossoverSampler, weights::AbstractVector{<:Real}) = (set_weights!(s.at, weights); s)
+Base.:(==)(a::DEMCrossoverSampler, b::DEMCrossoverSampler) = a.support == b.support && a.at == b.at
 
-prepare_scratch!(sampler::AbstractDifferentialEvolutionSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
-
-supports_multi_try(::AbstractDifferentialEvolutionSubspaceSampler) = true
+prepare_scratch!(sampler::AbstractDEMSubspaceSampler, state) = prepare_scratch!(sampler.scratch, state)
 
 function proposal!(
-        xₚ::V, x::V, state::DifferentialEvolutionState,
-        sampler::AbstractDifferentialEvolutionSubspaceSampler, current_state::Int
+        xₚ::V, x::V, state::DEMState,
+        sampler::AbstractDEMSubspaceSampler, current_state::Int
     ) where {V <: AbstractVector}
     rng = state.rngs[current_state]
     u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
@@ -224,15 +222,15 @@ function proposal!(
     return (; offset = zero(eltype(xₚ)), cr = cr)
 end
 
-function get_γ(rng::AbstractRNG, sampler::DifferentialEvolutionSubspaceSampler, δ::Int, d::Int)
+function get_γ(rng::AbstractRNG, sampler::DEMSubspaceSampler, δ::Int, d::Int)
     return 2.38 / sqrt(2 * δ * d)
 end
 
 function get_γ(
-        rng::AbstractRNG, sampler::DifferentialEvolutionSubspaceSamplerFixedGamma{T},
+        rng::AbstractRNG, sampler::DEMSubspaceSamplerFixedGamma{T},
         δ::Int, d::Int
     ) where {T <: Real}
     return sampler.γ
 end
 
-chains_required(::AbstractDifferentialEvolutionSubspaceSampler) = 3
+chains_required(::AbstractDEMSubspaceSampler) = 3

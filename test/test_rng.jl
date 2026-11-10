@@ -18,7 +18,7 @@
         #should be equal after deepcopy
         @test de_sampler.update_weights == de_sampler_old.update_weights
         for i in eachindex(de_sampler.updates)
-            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
+            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDEMSubspaceSampler)
                 @test de_sampler.updates[i].cr_spl == de_sampler_old.updates[i].cr_spl
                 @test de_sampler.updates[i].n_cr == de_sampler_old.updates[i].n_cr
                 @test de_sampler.updates[i].δ_spl == de_sampler_old.updates[i].δ_spl
@@ -56,7 +56,7 @@
         #should still be equal after deepcopy
         @test de_sampler.update_weights == de_sampler_old.update_weights
         for i in eachindex(de_sampler.updates)
-            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSubspaceSampler)
+            if isa(de_sampler.updates[i], DifferentialEvolutionMetropolis.AbstractDEMSubspaceSampler)
                 @test de_sampler.updates[i].cr_spl == de_sampler_old.updates[i].cr_spl
                 @test de_sampler.updates[i].n_cr == de_sampler_old.updates[i].n_cr
                 @test de_sampler.updates[i].δ_spl == de_sampler_old.updates[i].δ_spl

@@ -18,7 +18,8 @@ how nested schemes select their updates.
   Defaults to equal weights for random updates.
 
 # Returns
-- A `DifferentialEvolutionCompositeSampler` that can be used with `AbstractMCMC.sample`.
+- A `DEMCompositeSamplerRandom` or `DEMCompositeSamplerFixedOrder`
+  that can be used with `AbstractMCMC.sample`.
 
 # Examples
 ```@example sampler_scheme
@@ -40,23 +41,23 @@ sampler4 = setup_sampler_scheme(setup_de_update(), setup_snooker_update(); w = 9
 See also [`setup_random_order_scheme`](@ref), [`setup_fixed_order_scheme`](@ref).
 """
 function setup_sampler_scheme(
-        updates::AbstractDifferentialEvolutionSampler...;
+        updates::AbstractDEMMetaSampler...;
         w::Union{Vector{<:Real}, Integer} = ones(length(updates))
     )
     return setup_sampler_scheme(w, updates...)
 end
 
-function setup_sampler_scheme(w::Vector{<:Real}, updates::AbstractDifferentialEvolutionSampler...)
+function setup_sampler_scheme(w::Vector{<:Real}, updates::AbstractDEMMetaSampler...)
     return setup_random_order_scheme(updates...; w = w)
 end
 
 function setup_sampler_scheme(
-        n::Integer, main::AbstractDifferentialEvolutionSampler, secondary::AbstractDifferentialEvolutionSampler
+        n::Integer, main::AbstractDEMMetaSampler, secondary::AbstractDEMMetaSampler
     )
     return setup_fixed_order_scheme(main, secondary; n = n)
 end
 
-function setup_sampler_scheme(::Integer, updates::AbstractDifferentialEvolutionSampler...)
+function setup_sampler_scheme(::Integer, updates::AbstractDEMMetaSampler...)
     return error("An integer `w` requires exactly two updates, got $(length(updates)). Use a vector of weights for a random order scheme.")
 end
 
@@ -76,7 +77,7 @@ sampling strategies (e.g., DE updates with snooker updates) in a single sampler.
   with equal probability. Weights must be non-negative and will be automatically normalized.
 
 # Returns
-- A `DifferentialEvolutionCompositeSamplerRandom` that can be used with `AbstractMCMC.sample`.
+- A `DEMCompositeSamplerRandom` that can be used with `AbstractMCMC.sample`.
 
 # Examples
 ```@example random_order_scheme
@@ -89,10 +90,10 @@ sampler = setup_random_order_scheme(setup_de_update(), setup_snooker_update(); w
 See also [`setup_sampler_scheme`](@ref), [`setup_fixed_order_scheme`](@ref).
 """
 function setup_random_order_scheme(
-        updates::AbstractDifferentialEvolutionSampler...;
+        updates::AbstractDEMMetaSampler...;
         w::Vector{<:Real} = ones(length(updates))
     )
-    return DifferentialEvolutionCompositeSamplerRandom(updates, w)
+    return DEMCompositeSamplerRandom(updates, w)
 end
 
 """
@@ -127,7 +128,7 @@ it resumes from an `initial_state`.
   Defaults to 1, alternating updates.
 
 # Returns
-- A `DifferentialEvolutionCompositeSamplerFixedOrder` that can be used with `AbstractMCMC.sample`.
+- A `DEMCompositeSamplerFixedOrder` that can be used with `AbstractMCMC.sample`.
 
 # Examples
 ```@example fixed_order_scheme
@@ -147,21 +148,21 @@ sampler2 = setup_fixed_order_scheme(
 See also [`setup_sampler_scheme`](@ref), [`setup_random_order_scheme`](@ref).
 """
 function setup_fixed_order_scheme(
-        main::AbstractDifferentialEvolutionSampler,
-        secondary::AbstractDifferentialEvolutionSampler;
+        main::AbstractDEMMetaSampler,
+        secondary::AbstractDEMMetaSampler;
         n::Integer = 1
     )
-    return DifferentialEvolutionCompositeSamplerFixedOrder((main, secondary), Int(n))
+    return DEMCompositeSamplerFixedOrder((main, secondary), Int(n))
 end
 
-struct DifferentialEvolutionCompositeSamplerRandom{
-        T <: Real, S <: Tuple{Vararg{AbstractDifferentialEvolutionSampler}},
-    } <: AbstractDifferentialEvolutionSampler
+struct DEMCompositeSamplerRandom{
+        T <: Real, S <: Tuple{Vararg{AbstractDEMMetaSampler}},
+    } <: AbstractDEMCompositeSampler
     updates::S
     update_weights::Vector{T}
-    function DifferentialEvolutionCompositeSamplerRandom(
+    function DEMCompositeSamplerRandom(
             updates::S, update_weights::Vector{T}
-        ) where {T <: Real, S <: Tuple{Vararg{AbstractDifferentialEvolutionSampler}}}
+        ) where {T <: Real, S <: Tuple{Vararg{AbstractDEMMetaSampler}}}
         if length(update_weights) != length(updates)
             error("Number of update weights must be equal to the number of updates")
         end
@@ -172,12 +173,12 @@ struct DifferentialEvolutionCompositeSamplerRandom{
     end
 end
 
-struct DifferentialEvolutionCompositeSamplerFixedOrder{
-        S <: Tuple{AbstractDifferentialEvolutionSampler, AbstractDifferentialEvolutionSampler},
-    } <: AbstractDifferentialEvolutionSampler
+struct DEMCompositeSamplerFixedOrder{
+        S <: Tuple{AbstractDEMMetaSampler, AbstractDEMMetaSampler},
+    } <: AbstractDEMCompositeSampler
     updates::S
     n::Int
-    function DifferentialEvolutionCompositeSamplerFixedOrder(updates::S, n::Int) where {S}
+    function DEMCompositeSamplerFixedOrder(updates::S, n::Int) where {S}
         if n < 1
             error("n must be at least 1")
         end
@@ -185,11 +186,7 @@ struct DifferentialEvolutionCompositeSamplerFixedOrder{
     end
 end
 
-const DifferentialEvolutionCompositeSampler = Union{
-    DifferentialEvolutionCompositeSamplerRandom, DifferentialEvolutionCompositeSamplerFixedOrder,
-}
-
-mutable struct DifferentialEvolutionOrderState{S <: Tuple}
+mutable struct DEMOrderState{S <: Tuple}
     "number of times a fixed order scheme has been stepped, unused by random order schemes"
     iteration::Int
     "order states of the scheme's updates"
@@ -197,48 +194,48 @@ mutable struct DifferentialEvolutionOrderState{S <: Tuple}
 end
 
 # `nothing` unless the sampler contains a fixed order scheme
-initialize_order_state(::AbstractDifferentialEvolutionSampler) = nothing
-initialize_order_state(sampler::DifferentialEvolutionCompositeSamplerFixedOrder) =
-    DifferentialEvolutionOrderState(0, map(initialize_order_state, sampler.updates))
+initialize_order_state(::AbstractDEMMetaSampler) = nothing
+initialize_order_state(sampler::DEMCompositeSamplerFixedOrder) =
+    DEMOrderState(0, map(initialize_order_state, sampler.updates))
 
-function initialize_order_state(sampler::DifferentialEvolutionCompositeSamplerRandom)
+function initialize_order_state(sampler::DEMCompositeSamplerRandom)
     order_states = map(initialize_order_state, sampler.updates)
-    return all(isnothing, order_states) ? nothing : DifferentialEvolutionOrderState(0, order_states)
+    return all(isnothing, order_states) ? nothing : DEMOrderState(0, order_states)
 end
 
-inner_order_states(::Nothing, sampler::DifferentialEvolutionCompositeSampler) = map(_ -> nothing, sampler.updates)
-inner_order_states(order_state::DifferentialEvolutionOrderState, ::DifferentialEvolutionCompositeSampler) =
+inner_order_states(::Nothing, sampler::AbstractDEMCompositeSampler) = map(_ -> nothing, sampler.updates)
+inner_order_states(order_state::DEMOrderState, ::AbstractDEMCompositeSampler) =
     order_state.order_states
 
 # the same state with its order state replaced, used to pass a nested scheme its own position
-function with_order_state(state::DifferentialEvolutionState, order_state)
-    return DifferentialEvolutionState(
+function with_order_state(state::DEMState, order_state)
+    return DEMState(
         state.x, state.ld, state.rngs, state.adaptive_state, state.temperature_ladder, state.memory,
         state.chain_models, state.multi_try, state.xₚ, state.ldₚ, state.x_smpl_view, state.ld_smpl_view,
         state.xₚ_smpl_view, state.ldₚ_smpl_view, order_state
     )
 end
 
-select_update!(rng::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerRandom, order_state) =
+select_update!(rng::AbstractRNG, sampler::DEMCompositeSamplerRandom, order_state) =
     wsample(rng, sampler.update_weights)
 
 function select_update!(
-        ::AbstractRNG, sampler::DifferentialEvolutionCompositeSamplerFixedOrder, order_state::DifferentialEvolutionOrderState
+        ::AbstractRNG, sampler::DEMCompositeSamplerFixedOrder, order_state::DEMOrderState
     )
     update_id = rem(order_state.iteration, sampler.n + 1) < sampler.n ? 1 : 2
     order_state.iteration += 1
     return update_id
 end
 
-supports_multi_try(s::DifferentialEvolutionCompositeSampler) = any(supports_multi_try, s.updates)
+cannot_use_parallel(s::AbstractDEMCompositeSampler, n_tries::Int) = all(u -> cannot_use_parallel(u, n_tries), s.updates)
 
 # if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::DifferentialEvolutionCompositeSampler,
-        state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveStatic{T},
+        sampler::AbstractDEMCompositeSampler,
+        state::DEMState{
+            T, DEMAdaptiveStatic{T},
         };
         kwargs...
     ) where {T <: Real}
@@ -254,7 +251,7 @@ end
 # walk the tuples instead of indexing them, so each call sees a concrete update type
 function step_selected(
         i::Int, updates::Tuple, order_states::Tuple, rng::AbstractRNG, model_wrapper::LogDensityModel,
-        state::DifferentialEvolutionState; kwargs...
+        state::DEMState; kwargs...
     )
     if i == 1
         return step(rng, model_wrapper, first(updates), with_order_state(state, first(order_states)); kwargs...)
@@ -266,7 +263,7 @@ end
 
 function step_warmup_selected(
         i::Int, updates::Tuple, adaptive_states::Tuple, order_states::Tuple, rng::AbstractRNG,
-        model_wrapper::LogDensityModel, state::DifferentialEvolutionState; kwargs...
+        model_wrapper::LogDensityModel, state::DEMState; kwargs...
     )
     if i == 1
         substate = update_state(
@@ -282,14 +279,14 @@ function step_warmup_selected(
 end
 
 #if there are adaptive states, we need to keep track of them
-struct DifferentialEvolutionAdaptiveComposite{
+struct DEMAdaptiveComposite{
         T <: Real,
         # at least one state, otherwise `T` is unbound on Julia < 1.12 (Aqua unbound_args)
         A <: Tuple{
-            AbstractDifferentialEvolutionAdaptiveState{T},
-            Vararg{AbstractDifferentialEvolutionAdaptiveState{T}},
+            AbstractDEMAdaptiveState{T},
+            Vararg{AbstractDEMAdaptiveState{T}},
         },
-    } <: AbstractDifferentialEvolutionAdaptiveState{T}
+    } <: AbstractDEMAdaptiveState{T}
 
     adaptive_states::A
 end
@@ -316,7 +313,7 @@ that update, and adapts only that update's adaptive state.
 - `kwargs...`: Additional keyword arguments passed to component update functions
 
 # Returns
-- `sample`: DifferentialEvolutionSample containing new positions and log-densities
+- `sample`: DEMSample containing new positions and log-densities
 - `new_state`: Updated state with adapted parameters for the selected component
 
 See also [`step_warmup`](@ref), [`setup_sampler_scheme`](@ref).
@@ -324,9 +321,9 @@ See also [`step_warmup`](@ref), [`setup_sampler_scheme`](@ref).
 function step_warmup(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::DifferentialEvolutionCompositeSampler,
-        state::DifferentialEvolutionState{
-            T, <:DifferentialEvolutionAdaptiveComposite{T},
+        sampler::AbstractDEMCompositeSampler,
+        state::DEMState{
+            T, <:DEMAdaptiveComposite{T},
         };
         update_memory::Bool = true,
         kwargs...
@@ -348,34 +345,34 @@ function step_warmup(
 end
 
 function fix_sampler(
-        sampler::DifferentialEvolutionCompositeSamplerRandom,
-        adaptive_state::DifferentialEvolutionAdaptiveComposite
+        sampler::DEMCompositeSamplerRandom,
+        adaptive_state::DEMAdaptiveComposite
     )
-    return DifferentialEvolutionCompositeSamplerRandom(
+    return DEMCompositeSamplerRandom(
         map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.update_weights
     )
 end
 
 function fix_sampler(
-        sampler::DifferentialEvolutionCompositeSamplerFixedOrder,
-        adaptive_state::DifferentialEvolutionAdaptiveComposite
+        sampler::DEMCompositeSamplerFixedOrder,
+        adaptive_state::DEMAdaptiveComposite
     )
-    return DifferentialEvolutionCompositeSamplerFixedOrder(
+    return DEMCompositeSamplerFixedOrder(
         map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n
     )
 end
 
 function initialize_adaptive_state(
-        sampler::DifferentialEvolutionCompositeSampler,
+        sampler::AbstractDEMCompositeSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
     ) where {T <: Real}
     adaptive_states = map(s -> initialize_adaptive_state(s, model_wrapper, n_chains, T), sampler.updates)
 
-    if all(s -> s isa DifferentialEvolutionAdaptiveStatic, adaptive_states)
-        return DifferentialEvolutionAdaptiveStatic{T}()
+    if all(s -> s isa DEMAdaptiveStatic, adaptive_states)
+        return DEMAdaptiveStatic{T}()
     else
-        return DifferentialEvolutionAdaptiveComposite{T, typeof(adaptive_states)}(adaptive_states)
+        return DEMAdaptiveComposite{T, typeof(adaptive_states)}(adaptive_states)
     end
 end
 
-chains_required(s::DifferentialEvolutionCompositeSampler) = maximum(chains_required, s.updates)
+chains_required(s::AbstractDEMCompositeSampler) = maximum(chains_required, s.updates)
