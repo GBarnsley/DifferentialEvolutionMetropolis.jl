@@ -36,12 +36,13 @@ refreshing the mass matrix) works on these pieces. The wrapper is decomposed int
 once in `setup_hmc_update` and then discarded.
 
 Immutable, like every sampler in this package. The pieces are built at their final size in
-`setup_hmc_update` (which is why it needs `n_dims`); only the step *size* is unknown until a
-position exists, so it is refined on the first warmup step. `fix_sampler` returns another
+`setup_hmc_update` (which is why it needs `n_dims`); a symbol integrator gets a zero step size,
+found at the ensemble on the first warmup step. `fix_sampler` returns another
 `DEMHMCSampler` carrying the *adapted* pieces, which is how the adapted
 metric/`κ` reach the post-warmup `step`. That fixed sampler also carries the live
 `DEMHMCAdaptiveState` (`astate`), so the memory-based strategies keep tracking the growing
-archive during sampling; before warmup `astate` is `nothing`.
+archive during sampling. Without warmup `astate` is `nothing` and `step` runs the pieces as
+built, which needs an integrator with an explicit step size.
 """
 struct DEMHMCSampler{
         MS <: AbstractDEMMetricStrategy,
@@ -129,9 +130,11 @@ function DEM.setup_hmc_update(
     T = AdvancedHMC.sampler_eltype(sampler)
     metric = AdvancedHMC.make_metric(sampler.metric, T, n_dims)
     validate_metric_strategy(metric_strategy, metric)
-    integrator = AdvancedHMC.make_integrator(sampler, oneunit(T))
+    # A zero step size marks a symbol integrator, as in AdvancedHMC: it is found on the first warmup step.
+    integrator = AdvancedHMC.make_integrator(sampler, zero(T))
     κ = AdvancedHMC.make_kernel(sampler, integrator)
     adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
+    validate_adaptor(adaptor)
     return DEMHMCSampler(
         metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[], Int[], Int[], nothing
     )
@@ -152,7 +155,22 @@ function DEM.initialize_adaptive_state(
         sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
         ::Type{T}
     ) where {T <: Real}
-    ℓ = model_wrapper.logdensity
+    d = validate_target(sampler, model_wrapper.logdensity)
+    if eltype(sampler.metric) !== T
+        @error "HMC metric element type $(eltype(sampler.metric)) does not match position element type $T. Construct NUTS with a target acceptance of the position type (e.g. NUTS(0.8f0) for Float32); otherwise AdvancedHMC may fail during sampling. For hand-built HMC samplers, use matching metric and integrator types."
+    end
+    metric = deepcopy(sampler.metric)
+    chain_metrics = typeof(metric)[]
+    resize_chain_metrics!(chain_metrics, metric, n_chains)
+    return DEMHMCAdaptiveState{T}(
+        metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
+        false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
+        Matrix{T}(undef, d, 0)
+    )
+end
+
+# Require a gradient target whose dimension matches the metric; returns the dimension.
+function validate_target(sampler::DEMHMCSampler, ℓ)
     cap = LogDensityProblems.capabilities(ℓ)
     cap === nothing && error(
         "setup_hmc_update: the model does not implement the LogDensityProblems interface."
@@ -170,19 +188,7 @@ function DEM.initialize_adaptive_state(
         "setup_hmc_update was given `n_dims = $(size(sampler.metric, 1))` but the model has " *
             "$d parameters; pass the matching `n_dims`."
     )
-    if eltype(sampler.metric) !== T
-        @error "HMC metric element type $(eltype(sampler.metric)) does not match position element type $T. Construct NUTS with a target acceptance of the position type (e.g. NUTS(0.8f0) for Float32); otherwise AdvancedHMC may fail during sampling. For hand-built HMC samplers, use matching metric and integrator types."
-    end
-    # Only a dense metric needs distinct per-chain copies (its `_temp` races); others share a slot.
-    metric = deepcopy(sampler.metric)
-    chain_metrics = needs_private_scratch(metric) ?
-        [deepcopy(metric) for _ in 1:n_chains] :
-        Vector{typeof(metric)}(undef, n_chains)
-    return DEMHMCAdaptiveState{T}(
-        metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
-        Matrix{T}(undef, d, 0)
-    )
+    return d
 end
 
 """
@@ -191,9 +197,11 @@ end
 Return a `DEMHMCSampler` carrying the adaptive state's current pieces by
 reference (they are immutable, so no copy), plus the live `astate` itself. The sampling
 `step` reads the pieces, and — for memory-based strategies — keeps mutating `astate` to track
-the growing archive (the stock strategy leaves it frozen).
+the growing archive (the stock strategy leaves it frozen). An adaptive state that never took a
+warmup step leaves the sampler unchanged, so `step` runs its pieces as built.
 """
 function DEM.fix_sampler(sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState)
+    astate.initialized || return sampler
     return DEMHMCSampler(
         sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor,
         astate.chain_metrics, astate.cold, astate.hot, astate
@@ -215,23 +223,57 @@ function refresh_pieces_from_adaptor!(astate::DEMHMCAdaptiveState, ℓ)
     return nothing
 end
 
-# First-step lazy work: find a good step size at the ensemble and lay out the windowed schedule.
+# Adaptors the harness can drive: windowed Stan (NUTS), dual-averaging step size (HMCDA), none (HMC).
+const SupportedAdaptor = Union{StanHMCAdaptor, AHMCAdapt.NesterovDualAveraging, AHMCAdapt.NoAdaptation}
+validate_adaptor(::SupportedAdaptor) = nothing
+validate_adaptor(adaptor::AbstractAdaptor) = error(
+    "setup_hmc_update supports a `StanHMCAdaptor` (NUTS), a `NesterovDualAveraging` step-size " *
+        "adaptor (HMCDA) or `NoAdaptation` (HMC), but the sampler has a " *
+        "`$(nameof(typeof(adaptor)))`."
+)
+
+step_size_adaptor(adaptor::StanHMCAdaptor) = adaptor.ssa
+step_size_adaptor(adaptor::AHMCAdapt.NesterovDualAveraging) = adaptor
+
+has_step_size(integrator::AbstractIntegrator) = AdvancedHMC.nom_step_size(integrator) > 0
+
+good_step_size(rng, ℓ, astate::DEMHMCAdaptiveState, state) =
+    find_good_stepsize(rng, Hamiltonian(astate.metric, ℓ), ensemble_mean(state.x))
+
+function set_step_size!(astate::DEMHMCAdaptiveState, adaptor::AbstractAdaptor)
+    astate.κ = AdvancedHMC.update(astate.κ, adaptor)
+    astate.integrator = astate.κ.τ.integrator
+    return nothing
+end
+
+# First-step lazy work: find a good step size at the ensemble and lay out the adaptation schedule.
 function refine_step_size!(
         rng::AbstractRNG, model_wrapper::LogDensityModel, astate::DEMHMCAdaptiveState, state;
         n_adapts::Int
     )
-    ℓ = model_wrapper.logdensity
-    h = Hamiltonian(astate.metric, ℓ)
-    ϵ = find_good_stepsize(rng, h, ensemble_mean(state.x))
-    # Re-anchor the configured step-size adaptor in place, preserving its type/settings.
-    ssa = astate.adaptor.ssa
-    ssa.state.ϵ = ϵ
-    AHMCAdapt.reset!(ssa)
-    astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
-    astate.integrator = astate.κ.τ.integrator
-    # The cursor advances per HMC step, so `n_adapts` is an upper bound in HMC-step units.
-    AHMCAdapt.initialize!(astate.adaptor, n_adapts)
+    refine_step_size!(rng, model_wrapper.logdensity, astate, astate.adaptor, state, n_adapts)
     astate.initialized = true
+    return nothing
+end
+
+# Re-anchor the configured step-size adaptor in place, preserving its type/settings.
+function refine_step_size!(
+        rng, ℓ, astate, adaptor::Union{StanHMCAdaptor, AHMCAdapt.NesterovDualAveraging}, state,
+        n_adapts
+    )
+    ssa = step_size_adaptor(adaptor)
+    ssa.state.ϵ = good_step_size(rng, ℓ, astate, state)
+    AHMCAdapt.reset!(ssa)
+    set_step_size!(astate, adaptor)
+    # The cursor advances per HMC step, so `n_adapts` is an upper bound in HMC-step units.
+    AHMCAdapt.initialize!(adaptor, n_adapts)
+    return nothing
+end
+
+# Without adaptation an explicit step size is kept; a symbol integrator's is found once here.
+function refine_step_size!(rng, ℓ, astate, ::AHMCAdapt.NoAdaptation, state, n_adapts)
+    has_step_size(astate.integrator) && return nothing
+    set_step_size!(astate, AHMCAdapt.FixedStepSize(good_step_size(rng, ℓ, astate, state)))
     return nothing
 end
 
@@ -243,6 +285,18 @@ end
 # races across threads and gets per-chain copies; diagonal/unit metrics only read and are shared.
 needs_private_scratch(::AbstractMetric) = false
 needs_private_scratch(::AdvancedHMC.DenseEuclideanMetric) = true
+
+# Size the per-chain metric slots to `n` chains: private copies of a dense metric, unassigned otherwise.
+function resize_chain_metrics!(chain_metrics, metric::AbstractMetric, n::Int)
+    length(chain_metrics) == n && return nothing
+    resize!(chain_metrics, n)
+    if needs_private_scratch(metric)
+        for i in 1:n
+            chain_metrics[i] = deepcopy(metric)
+        end
+    end
+    return nothing
+end
 
 # Point each chain's slot at the metric for this step: the shared object (read-only) or, for a dense
 # metric, a per-chain copy refreshed in place (its own `_temp` left alone).
@@ -339,6 +393,10 @@ function pooled_adapt!(adaptor::StanHMCAdaptor, Xₚ, α)
     end
     return nothing
 end
+
+# Adaptors without a mass-matrix estimator only tune the step size, if anything.
+pooled_adapt!(adaptor::Union{AHMCAdapt.NesterovDualAveraging, AHMCAdapt.NoAdaptation}, Xₚ, α) =
+    step_size_only_adapt!(adaptor, α)
 
 function adapt_metric!(
         ::DEMStockAdaptorMetric, model_wrapper::LogDensityModel, state,
@@ -497,6 +555,11 @@ function step_size_only_adapt!(adaptor::StanHMCAdaptor, α)
     end
     return nothing
 end
+function step_size_only_adapt!(adaptor::AHMCAdapt.NesterovDualAveraging, α)
+    AHMCAdapt.adapt_stepsize!(adaptor, pooled_acceptance(α))
+    return nothing
+end
+step_size_only_adapt!(::AHMCAdapt.NoAdaptation, α) = nothing
 
 # Recompute on the first HMC step (archive already seeded) and every `every` steps thereafter.
 metric_due(astate::DEMHMCAdaptiveState, every::Int) =
@@ -976,9 +1039,10 @@ track_sampling_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState
 
 # Fill the trajectory slots and return the kernel + slots for a sampling step. Once warmed these
 # come from the live adaptive state (so sampling-phase recomputes/reassignments are seen); without
-# warmup (e.g. a manually fixed sampler) they come from the sampler's own frozen pieces. Dispatched
+# warmup they come from the sampler's own pieces, with slots sized to the state's chains. Dispatched
 # on the carried adaptive state, whose concrete type is known, so it stays type-stable.
 function prepare_sampling_metrics!(sampler::DEMHMCSampler, ::Nothing, state)
+    resize_chain_metrics!(sampler.chain_metrics, sampler.metric, length(state.x))
     prepare_chain_metrics!(sampler.chain_metrics, sampler.metric)
     return sampler.κ, sampler.chain_metrics
 end
@@ -989,19 +1053,31 @@ function prepare_sampling_metrics!(
     return astate.κ, astate.chain_metrics
 end
 
+# Cold/hot chains for a sampling step: resolved during warmup, or from the state without it.
+function sampling_chains(::DEMHMCSampler, ::Nothing, state)
+    cold = cold_chain_indices(state)
+    return cold, hot_chain_indices(state, cold)
+end
+sampling_chains(sampler::DEMHMCSampler, ::DEMHMCAdaptiveState, state) = sampler.cold, sampler.hot
+
 function step(
         rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
         state::DEM.DEMState{T, DEM.DEMAdaptiveStatic{T}};
         parallel::Bool = false, update_memory::Bool = true, kwargs...
     ) where {T <: Real}
     if sampler.astate === nothing
-        error("setup_hmc_update: this HMC update has not been warmed up. HMC updates resolve their chain assignments and step size during warmup; run with `adapt = true` (the default) and `num_warmup ≥ 1` / `n_burnin ≥ 1`.")
+        validate_target(sampler, model_wrapper.logdensity)
+        has_step_size(sampler.integrator) || error(
+            "setup_hmc_update: this HMC update has no step size. A symbol integrator's step " *
+                "size is found during warmup, so run with `adapt = true` (the default) and " *
+                "`num_warmup ≥ 1` / `n_burnin ≥ 1`, or give the sampler an integrator with an " *
+                "explicit step size, e.g. `HMC(0.1, 10)` or `NUTS(0.8; integrator = Leapfrog(0.1))`."
+        )
     end
     track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
     κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
-    run_trajectories!(
-        rng, model_wrapper, state, κ, chain_metrics, sampler.cold, sampler.hot, parallel
-    )
+    cold, hot = sampling_chains(sampler, sampler.astate, state)
+    run_trajectories!(rng, model_wrapper, state, κ, chain_metrics, cold, hot, parallel)
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end

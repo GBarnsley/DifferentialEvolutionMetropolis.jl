@@ -207,14 +207,95 @@ using LinearAlgebra: diag
         @test threaded == serial
     end
 
-    @testset "HMC update errors when never warmed up" begin
-        scheme = setup_sampler_scheme(DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ)))
-        _, state = AbstractMCMC.step(
-            backwards_compat_rng(1234), model, scheme;
-            n_chains = 6, num_warmup = 0, memory = false, adapt = false, silent = true
+    @testset "a symbol integrator errors when never warmed up" begin
+        for sampler in (NUTS(0.8), HMC(10), HMCDA(0.8, 1.0)), adapt in (false, true)
+            scheme = setup_sampler_scheme(setup_hmc_update(sampler; n_dims = length(μ)))
+            _, state = AbstractMCMC.step(
+                backwards_compat_rng(1234), model, scheme;
+                n_chains = 6, num_warmup = 0, memory = false, adapt, silent = true
+            )
+            @test_throws ErrorException AbstractMCMC.step(
+                backwards_compat_rng(1234), model, scheme, state
+            )
+        end
+    end
+
+    @testset "an explicit step size samples without warmup ($name, adapt = $adapt)" for (name, sampler) in (
+                "NUTS" => NUTS(0.8; integrator = Leapfrog(0.3)),
+                "NUTS dense" => NUTS(0.8; integrator = Leapfrog(0.3), metric = :dense),
+                "HMC" => HMC(0.3, 8),
+                "HMCDA" => HMCDA(0.8, 2.0; integrator = Leapfrog(0.3)),
+            ), adapt in (false, true)
+        hmc = setup_hmc_update(sampler; n_dims = length(μ))
+        out = sample(
+            backwards_compat_rng(21), model, setup_sampler_scheme(hmc), 1500;
+            n_chains = 6, memory = false, adapt, progress = false, chain_type = DEMOutput
         )
-        @test_throws ErrorException AbstractMCMC.step(
-            backwards_compat_rng(1234), model, scheme, state
+        flat = reshape(out.samples, :, length(μ))
+        @test isapprox(vec(sum(flat; dims = 1) ./ size(flat, 1)), μ; atol = 0.2)
+        @test isapprox(cov(flat), Σ; atol = 0.3)
+        @test hmc.integrator.ϵ == 0.3
+    end
+
+    @testset "an un-warmed update still requires a gradient target" begin
+        scheme = setup_sampler_scheme(setup_hmc_update(HMC(0.3, 8); n_dims = length(μ)))
+        order0 = AbstractMCMC.LogDensityModel(raw_model)
+        @test_throws ErrorException sample(
+            backwards_compat_rng(1), order0, scheme, 10;
+            n_chains = 6, memory = false, adapt = false, progress = false
         )
+    end
+
+    @testset "$name recovers a unimodal Gaussian ($strategy)" for (name, sampler) in (
+                "HMC" => HMC(0.3, 8), "HMCDA" => HMCDA(0.8, 3.0),
+            ), (strategy, kw) in (("stock", (;)), ("memory_metric", (; metric_strategy = memory_metric())))
+        scheme = setup_sampler_scheme(setup_hmc_update(sampler; n_dims = length(μ), kw...))
+        out = sample(
+            backwards_compat_rng(42), model, scheme, 2000;
+            n_chains = 6, num_warmup = 300, memory = true, progress = false,
+            chain_type = DEMOutput
+        )
+        flat = reshape(out.samples, :, length(μ))
+        @test isapprox(vec(sum(flat; dims = 1) ./ size(flat, 1)), μ; atol = 0.2)
+        @test isapprox(cov(flat), Σ; atol = 0.3)
+    end
+
+    @testset "warmup tunes only what each sampler adapts" begin
+        function warm(sampler)
+            rng = backwards_compat_rng(99)
+            scheme = setup_sampler_scheme(setup_hmc_update(sampler; n_dims = length(μ)))
+            _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 6, num_warmup = 200, memory = false, silent = true)
+            for _ in 1:200
+                _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 200)
+            end
+            return hmc_adaptive_state(state)
+        end
+
+        # HMC keeps an explicit step size and the unit metric.
+        a = warm(HMC(0.3, 8))
+        @test a.integrator.ϵ == 0.3
+        @test a.metric.M⁻¹ == ones(length(μ))
+
+        # HMC with a symbol integrator finds a step size once and keeps the unit metric.
+        a = warm(HMC(10))
+        @test 0 < a.integrator.ϵ < 10
+        @test a.metric.M⁻¹ == ones(length(μ))
+
+        # HMCDA adapts the step size by dual averaging but not the metric.
+        a = warm(HMCDA(0.8, 2.0))
+        @test a.initialized
+        @test a.adaptor.state.m == 200
+        @test a.integrator.ϵ == a.adaptor.state.ϵ
+        @test 0 < a.integrator.ϵ < 10
+        @test a.metric.M⁻¹ == ones(length(μ))
+    end
+
+    @testset "unsupported adaptors are rejected at construction" begin
+        d = length(μ)
+        metric = DiagEuclideanMetric(d)
+        integrator = Leapfrog(0.1)
+        κ = HMCKernel(Trajectory{EndPointTS}(integrator, FixedNSteps(10)))
+        adaptor = NaiveHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.8, integrator))
+        @test_throws ErrorException setup_hmc_update(HMCSampler(κ, metric, adaptor))
     end
 end

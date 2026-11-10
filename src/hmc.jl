@@ -1,9 +1,20 @@
 """
-    setup_hmc_update(sampler; metric_strategy = ...)
+    setup_hmc_update(sampler; n_dims = 0, metric_strategy = ...)
 
 Wrap an AdvancedHMC sampler (`NUTS`, `HMC`, `HMCDA`, or a hand-built `HMCSampler`) so it
 can participate as one update inside a [`setup_sampler_scheme`](@ref) composite, running
 the same HMC kernel on each chain in turn.
+
+During warm-up each sampler adapts what its AdvancedHMC adaptor adapts: `NUTS` tunes the step
+size and the mass matrix (`StanHMCAdaptor`), `HMCDA` tunes the step size only
+(`NesterovDualAveraging`), and `HMC` adapts nothing (`NoAdaptation`). A hand-built `HMCSampler`
+must use one of these three adaptors. A sampler given a symbol integrator (the default, e.g.
+`HMC(10)`) has its step size found on the first warm-up step; an explicit integrator such as
+`HMC(0.1, 10)` keeps its step size unless the adaptor tunes it.
+
+Without warm-up (`adapt = false`, or `num_warmup = 0`) the update runs the sampler as built:
+the initial metric and the integrator's step size. This needs an integrator with an explicit
+step size, e.g. `HMC(0.1, 10)` or `NUTS(0.8; integrator = Leapfrog(0.1))`, and errors otherwise.
 
 The implementation lives in the `AdvancedHMCExt` package extension; calling this requires
 `AdvancedHMC.jl` to be loaded.
@@ -25,8 +36,8 @@ sampler's memory archive rather than from AdvancedHMC's windowed adaptor. The es
 batch covariance over the history of sample positions, recomputed wholesale every `every`
 HMC steps so it keeps tracking the growing archive throughout **both warm-up and sampling**
 (recomputing the mass matrix between trajectories is valid: each HMC step is correct for
-whatever metric it uses). The step size adapts through dual averaging during warm-up and is
-then fixed.
+whatever metric it uses). The step size adapts through dual averaging during warm-up (for
+`NUTS` and `HMCDA`) and is then fixed.
 
 Pass it through `setup_hmc_update`:
 

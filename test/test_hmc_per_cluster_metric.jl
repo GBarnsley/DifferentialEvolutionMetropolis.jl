@@ -71,9 +71,10 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         # `Nothing` method must out-specialise the general one (it would read `astate.chain_metrics`).
         s = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
         @test s.astate === nothing
-        κ, cm = HMCExt.prepare_sampling_metrics!(s, s.astate, nothing)
+        κ, cm = HMCExt.prepare_sampling_metrics!(s, s.astate, (; x = [zeros(length(μ)) for _ in 1:4]))
         @test κ === s.κ
         @test cm === s.chain_metrics
+        @test length(cm) == 4 && all(m -> m === s.metric, cm)
     end
 
     @testset "K = 1 on a unimodal archive (gate closed) ⇒ memory_metric covariance" begin
