@@ -177,7 +177,7 @@ using AbstractMCMC, DifferentialEvolutionMetropolis
 # One interacting ensemble, threaded chain updates:
 deMC(model, 1000; memory = true, parallel = true)
 
-sampler = setup_sampler_scheme(setup_de_update())
+sampler = setup_de_update()
 # Four independent ensembles, each containing eight interacting chains:
 sample(model, sampler, MCMCSerial(), 1000, 4; n_chains = 8, parallel = true)
 sample(model, sampler, MCMCThreads(), 1000, 4; n_chains = 8, parallel = true)
@@ -196,7 +196,7 @@ This increases the number of log-density evaluations per step to up to `(n_chain
 Only the differential evolution and subspace updates use multiple tries, other updates in a scheme take a single proposal.
 
 ```julia
-sample(model, setup_sampler_scheme(setup_de_update()), 1000; n_chains = 8, n_tries = 4, parallel = true)
+sample(model, setup_de_update(), 1000; n_chains = 8, n_tries = 4, parallel = true)
 ```
 
 ## Interpreting Results

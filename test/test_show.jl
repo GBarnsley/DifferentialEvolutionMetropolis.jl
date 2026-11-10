@@ -35,13 +35,13 @@
         sample, state = AbstractMCMC.step(backwards_compat_rng(1), model, scheme; n_chains = 4)
         @test repr(sample) == "DEMSample(4 chains, 2 parameters)"
         @test repr(state.temperature_ladder) == "none"
-        @test repr(state.memory) == "8 stored positions (filled every iteration, grows when full)"
+        @test repr(state.memory) == "20 stored positions (filled every iteration, grows when full)"
         @test repr(state) == "DEMState{Float64}(4 chains, 2 parameters)"
         text = plain(state)
         @test occursin("chains:         4\n", text)
         @test occursin("adaptive state: composite(static, adaptive subspace (3 crossover probabilities))", text)
         @test occursin("temperature:    none", text)
-        @test occursin("memory:         8 stored positions (filled every iteration, grows when full)", text)
+        @test occursin("memory:         20 stored positions (filled every iteration, grows when full)", text)
 
         _, state = suppress_warnings(NO_SWAP_WARNING) do
             AbstractMCMC.step(
@@ -64,7 +64,7 @@
 
         rng = backwards_compat_rng(1)
         _, state = AbstractMCMC.step(
-            rng, model, de; n_chains = 4, memory_size = 3, memory_refill = true, memory_thin_interval = 2
+            rng, model, de; n_chains = 4, N₀ = 8, memory_size = 3, memory_refill = true, memory_thin_interval = 2
         )
         @test occursin("memory:         8 stored positions (filled every 2 iterations, refills when full)", plain(state))
         for _ in 1:4

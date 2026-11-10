@@ -75,21 +75,21 @@ function _deMC(
     ) where {T <: Real}
 
     #build sampler scheme
-    if γ₁ != γ₂ && is_fixed_order(p_γ₂)
+    if γ₁ == γ₂ || p_γ₂ == 0
+        sampler_scheme = setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity))
+    elseif is_fixed_order(p_γ₂)
         sampler_scheme = setup_fixed_order_scheme(
             setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity)),
             setup_de_update(; γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity));
             n = p_γ₂
         )
-    elseif γ₁ != γ₂
+    elseif p_γ₂ == 1
+        sampler_scheme = setup_de_update(; γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity))
+    else
         sampler_scheme = setup_random_order_scheme(
             setup_de_update(; γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity)),
             setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity));
             w = [p_γ₂, 1 - p_γ₂]
-        )
-    else
-        sampler_scheme = setup_random_order_scheme(
-            setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity))
         )
     end
 
@@ -187,8 +187,8 @@ function _deMCzs(
 
     #build sampler scheme
     if p_snooker == 0
-        sampler_scheme = setup_random_order_scheme(
-            setup_de_update(; γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity))
+        sampler_scheme = setup_de_update(;
+            γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity)
         )
     elseif is_fixed_order(p_snooker)
         sampler_scheme = setup_fixed_order_scheme(
@@ -196,6 +196,8 @@ function _deMCzs(
             setup_snooker_update(; γ = γₛ);
             n = p_snooker
         )
+    elseif p_snooker == 1
+        sampler_scheme = setup_snooker_update(; γ = γₛ)
     else
         sampler_scheme = setup_random_order_scheme(
             setup_de_update(; γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity)),
@@ -304,11 +306,9 @@ function _DREAMz(
 
     #build sampler scheme
     if p_γ₂ == 0
-        sampler_scheme = setup_random_order_scheme(
-            setup_subspace_sampling(;
-                γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
-                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
-            )
+        sampler_scheme = setup_subspace_sampling(;
+            γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
+            cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
         )
     elseif is_fixed_order(p_γ₂)
         sampler_scheme = setup_fixed_order_scheme(
@@ -321,6 +321,11 @@ function _DREAMz(
                 cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
             );
             n = p_γ₂
+        )
+    elseif p_γ₂ == 1
+        sampler_scheme = setup_subspace_sampling(;
+            γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e,
+            cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
         )
     else
         sampler_scheme = setup_random_order_scheme(

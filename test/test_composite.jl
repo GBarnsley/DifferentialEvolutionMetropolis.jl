@@ -31,17 +31,11 @@ struct FallbackSampler <: DifferentialEvolutionMetropolis.AbstractDEMSampler{Dif
         @test weighted_sampler.update_weights == [0.7, 0.3]
 
         # Test error cases
-        @test_throws ErrorException setup_sampler_scheme(
-            setup_de_update(),
-            setup_snooker_update();
-            w = [0.5, 0.3, 0.2]  # Wrong number of weights
-        )
-
-        @test_throws ErrorException setup_sampler_scheme(
-            setup_de_update(),
-            setup_snooker_update();
-            w = [-0.1, 0.5]  # Negative weights
-        )
+        for w in ([0.0, 0.0], [-0.0, 0.0], [0.1, 0.0], [-0.1, 0.5], [0.5, 0.3, 0.2])
+            @test_throws ErrorException setup_sampler_scheme(
+                setup_de_update(), setup_snooker_update(); w = w
+            )
+        end
     end
 
     @testset "Chains required" begin

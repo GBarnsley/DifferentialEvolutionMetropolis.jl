@@ -532,9 +532,10 @@ function step(
     model = model_wrapper.logdensity
     n_tries = check_n_tries(sampler, n_tries)
     check_parallel(sampler, parallel, memory, n_tries)
+    default_N₀ = cld(10 * dimension(model), n_chains + n_hot_chains) * (n_chains + n_hot_chains)
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
-        memory ? something(N₀, n_chains + n_hot_chains) : 0;
+        memory ? something(N₀, max(default_N₀ - n_chains - n_hot_chains, 0)) : 0;
         stratify = stratify_initial_position
     )
     if isnothing(T)
@@ -637,7 +638,7 @@ function step(
             append!(mem_x, extra_memory)
         end
         if isnothing(N₀)
-            N₀ = max(2 * n_true_chains, length(mem_x))
+            N₀ = max(default_N₀, length(mem_x))
         end
         if rem(N₀, n_true_chains) != 0
             push!(
@@ -657,10 +658,13 @@ function step(
             mem_x = mem_x[(end - N₀ + 1):end]
         end
 
-        total_memory_size = memory_size * n_true_chains
-        if total_memory_size < N₀ + n_true_chains
-            error("memory_size (currently $memory_size) is too small for the initial memory N₀ (currently $N₀) and number of chains (currently $n_true_chains). The total memory size (memory_size * n_chains = $total_memory_size) must be at least N₀ + n_chains = $(N₀ + n_true_chains). Consider specifying a larger memory_size.")
+        memory_increment = memory_size * n_true_chains
+        if memory_refill && memory_increment < N₀ + n_true_chains
+            error("memory_size (currently $memory_size) is too small for the initial memory N₀ (currently $N₀) and number of chains (currently $n_true_chains). With memory_refill = true the total memory size (memory_size * n_chains = $memory_increment) must be at least N₀ + n_chains = $(N₀ + n_true_chains). Consider specifying a larger memory_size.")
+        elseif memory_size < 1
+            error("memory_size (currently $memory_size) must be at least 1.")
         end
+        total_memory_size = memory_refill ? memory_increment : N₀ + memory_increment
         if (memory_size == 1001) & memory_refill
             push!(log, "   Using memory refill with default memory size of 1001, storing a maximum of $total_memory_size chains.")
             push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")
@@ -681,7 +685,7 @@ function step(
         end
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
-            true_memory, memory_method, memory_refill, length(true_memory),
+            true_memory, memory_method, memory_refill, memory_increment,
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
         )

@@ -162,7 +162,7 @@ end
 
 # Appends a swap update to a template's scheme, warning about and disabling nonsensical settings.
 function add_swap_update(
-        sampler_scheme::AbstractDEMCompositeSampler, n_hot_chains::Int,
+        sampler_scheme::AbstractDEMMetaSampler, n_hot_chains::Int,
         use_parallel_tempering_swaps::Bool, parallel_tempering_swap_probability::Real
     )
     use_parallel_tempering_swaps || return sampler_scheme
@@ -186,7 +186,7 @@ function append_swap_update(sampler_scheme::DEMCompositeSamplerRandom, p::Real)
     )
 end
 
-function append_swap_update(sampler_scheme::DEMCompositeSamplerFixedOrder, p::Real)
+function append_swap_update(sampler_scheme::AbstractDEMMetaSampler, p::Real)
     return setup_random_order_scheme(sampler_scheme, setup_swap_update(); w = [1 - p, p])
 end
 

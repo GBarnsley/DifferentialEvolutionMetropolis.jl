@@ -90,9 +90,9 @@
     end
 
     @testset "Nested random schemes pick updates with the product of their weights (adapt = $adapt)" for adapt in (true, false)
-        # The DE update is the only one that moves, picked with probability 1/2 × 1/2
+        # The subspace update is the only one that moves, picked with probability 1/2 × 1/2
         rng = backwards_compat_rng(1234)
-        inner = setup_sampler_scheme(still_update, setup_de_update(), setup_subspace_sampling(); w = [1.0, 1.0, 0.0])
+        inner = setup_sampler_scheme(still_update, setup_subspace_sampling())
         scheme = setup_sampler_scheme(inner, still_update)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
         @test state.adaptive_state isa (adapt ? DEM.DEMAdaptiveComposite : DEM.DEMAdaptiveStatic)
@@ -103,13 +103,12 @@
     @testset "Adaptive updates inside nested random schemes adapt" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_sampler_scheme(
-            setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [0.0, 1.0]),
-            setup_snooker_update(); w = [1.0, 0.0]
+            setup_sampler_scheme(still_update, setup_subspace_sampling()), setup_snooker_update()
         )
         _, state = AbstractMCMC.step(rng, model, scheme; memory = true)
         subspace_state = state.adaptive_state.adaptive_states[1].adaptive_states[2]
         @test subspace_state isa DEM.DEMAdaptiveSubspace
-        for _ in 1:5
+        for _ in 1:50
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
         end
         @test subspace_state.var_count > 0
@@ -118,9 +117,10 @@
 
     @testset "Random inside fixed order inside random (adapt = $adapt)" for adapt in (true, false)
         rng = backwards_compat_rng(1234)
-        inner_random = setup_sampler_scheme(still_update, setup_subspace_sampling(); w = [1.0, 0.0])
-        inner_fixed = setup_fixed_order_scheme(inner_random, setup_de_update(); n = 1)
-        scheme = setup_sampler_scheme(inner_fixed, setup_snooker_update(); w = [1.0, 0.0])
+        # Both branches of the inner random scheme hold still, so chains only move on the subspace iterations
+        inner_random = setup_sampler_scheme(still_update, still_update)
+        inner_fixed = setup_fixed_order_scheme(inner_random, setup_subspace_sampling(); n = 1)
+        scheme = setup_sampler_scheme(inner_fixed)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt)
         @test state.adaptive_state isa (adapt ? DEM.DEMAdaptiveComposite : DEM.DEMAdaptiveStatic)
         moved, state = record_moves!(rng, scheme, state, 6; n_warmup = 3)
@@ -151,7 +151,7 @@
 
     @testset "Each sample call starts a new cycle" begin
         inner = setup_fixed_order_scheme(still_update, setup_de_update(); n = 2)
-        scheme = setup_sampler_scheme(setup_fixed_order_scheme(inner, still_update), setup_snooker_update(); w = [1.0, 0.0])
+        scheme = setup_sampler_scheme(setup_fixed_order_scheme(inner, still_update))
         draws(seed) = sample(backwards_compat_rng(seed), model, scheme, 7; num_warmup = 5, progress = false)
         @test [s.x for s in draws(42)] == [s.x for s in draws(42)]
 
@@ -181,7 +181,7 @@
     @testset "fix_sampler_state fixes updates inside nested schemes" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(
-            still_update, setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update(); w = [1.0, 0.0])
+            still_update, setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update())
         )
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = true)
         subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]

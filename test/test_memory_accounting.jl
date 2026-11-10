@@ -100,18 +100,14 @@ using Random, AbstractMCMC, LogDensityProblems
         @test length(fixed_state.temperature_ladder.temperature_ladder) == l1
     end
 
-    @testset "memory_size too small errors" begin
+    @testset "memory_size allocation" begin
         spl = setup_sampler_scheme(
             setup_subspace_sampling(),
             setup_subspace_sampling(; γ = 1.0)
         )
 
-        # This should error because default N₀ is 2 * n_chains = 8.
-        # With num_warmup = 1, memory_size defaults to 2 * num_warmup = 2.
-        # total_memory_size = 2 * 4 = 8.
-        # N₀ + n_chains = 8 + 4 = 12.
-        # Since 8 < 12, it must error.
-        @test_throws ErrorException AbstractMCMC.step(
+        # Default N₀ = 10 * dimension = 20 plus memory_size = 2 * num_warmup positions per chain.
+        _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;
             n_chains = n_chains,
             num_warmup = 1,
@@ -119,19 +115,8 @@ using Random, AbstractMCMC, LogDensityProblems
             adapt = true,
             silent = true
         )
+        @test length(state.memory.mem_x) == 20 + 2 * n_chains
 
-        # User-set memory_size = 1 also errors
-        @test_throws ErrorException AbstractMCMC.step(
-            rng, wrapped_model, spl;
-            n_chains = n_chains,
-            num_warmup = 10,
-            memory = true,
-            memory_size = 1,
-            adapt = true,
-            silent = true
-        )
-
-        # Large enough memory_size (e.g. 3) should pass
         _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;
             n_chains = n_chains,
@@ -142,7 +127,88 @@ using Random, AbstractMCMC, LogDensityProblems
             silent = true
         )
         @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryFill)
-        @test length(state.memory.mem_x) == 12
+        @test length(state.memory.mem_x) == 20 + 3 * n_chains
+
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            memory = true,
+            N₀ = 5000,
+            adapt = true,
+            silent = true
+        )
+        @test length(state.memory.mem_x) == 5000 + 1001 * n_chains
+
+        @test_throws ErrorException AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            memory = true,
+            memory_size = 0,
+            adapt = true,
+            silent = true
+        )
+    end
+
+    @testset "memory_size too small errors with refill" begin
+        spl = setup_sampler_scheme(
+            setup_subspace_sampling(),
+            setup_subspace_sampling(; γ = 1.0)
+        )
+
+        # Default N₀ = 20 and memory_size = 2 * num_warmup = 2 give 2 * 4 = 8 < N₀ + n_chains = 24.
+        @test_throws ErrorException AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            num_warmup = 1,
+            memory = true,
+            memory_refill = true,
+            adapt = true,
+            silent = true
+        )
+
+        @test_throws ErrorException AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            num_warmup = 10,
+            memory = true,
+            memory_refill = true,
+            memory_size = 1,
+            adapt = true,
+            silent = true
+        )
+
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            num_warmup = 10,
+            memory = true,
+            memory_refill = true,
+            memory_size = 6,
+            adapt = true,
+            silent = true
+        )
+        @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryFill)
+        @test length(state.memory.mem_x) == 24
+    end
+
+    @testset "memory extends by memory_size per chain" begin
+        spl = setup_sampler_scheme(
+            setup_subspace_sampling(),
+            setup_subspace_sampling(; γ = 1.0)
+        )
+        _, state = AbstractMCMC.step(
+            rng, wrapped_model, spl;
+            n_chains = n_chains,
+            num_warmup = 2,
+            N₀ = 4,
+            memory_size = 1,
+            adapt = true,
+            silent = true
+        )
+        @test length(state.memory.mem_x) == 4 + n_chains
+
+        _, state = AbstractMCMC.step_warmup(rng, wrapped_model, spl, state; num_warmup = 2)
+        @test length(state.memory.mem_x) == 4 + 2 * n_chains
     end
 
     @testset "memoryless chain count validation" begin
@@ -194,26 +260,26 @@ using Random, AbstractMCMC, LogDensityProblems
 
     @testset "Default N₀ keeps all supplied initial positions" begin
         spl = setup_sampler_scheme(setup_subspace_sampling())
-        init = [randn(rng, 2) for _ in 1:20]
+        init = [randn(rng, 2) for _ in 1:24]
 
         _, state = AbstractMCMC.step(
             rng, wrapped_model, spl;
             n_chains = n_chains, initial_position = init, silent = true
         )
-        @test state.memory.fill.position == 20
-        @test state.memory.mem_x[1:20] == init
+        @test state.memory.fill.position == 24
+        @test state.memory.mem_x[1:24] == init
 
         _, state_small = AbstractMCMC.step(
             rng, wrapped_model, spl;
             n_chains = n_chains, initial_position = init[1:5], silent = true
         )
-        @test state_small.memory.fill.position == 2 * n_chains
+        @test state_small.memory.fill.position == 10 * 2
 
         _, state_set = AbstractMCMC.step(
             rng, wrapped_model, spl;
             n_chains = n_chains, initial_position = init, N₀ = 8, silent = true
         )
         @test state_set.memory.fill.position == 8
-        @test state_set.memory.mem_x[1:8] == init[13:20]
+        @test state_set.memory.mem_x[1:8] == init[17:24]
     end
 end

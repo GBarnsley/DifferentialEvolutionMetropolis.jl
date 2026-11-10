@@ -28,10 +28,10 @@ _generic_de_kwargs_1 = """
 """
 _generic_de_kwargs_2 = """
 - `N₀`: Initial memory size for memory-based samplers. Should be ≥ `n_chains + n_hot_chains`.
-  Defaults to `2 * (n_chains + n_hot_chains)`, or to the number of supplied `initial_position` entries if that is larger.
+  Defaults to `10` times the number of parameters rounded up to a multiple of `n_chains + n_hot_chains`, or to the number of supplied `initial_position` entries if that is larger.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Overwrites memory options given at initialization, generally should only be of use if calling `step` directly.
 - `memory_refill`: Whether to refill memory when full instead of extending the memory, will replace from the start. Defaults to `false`.
-- `memory_size`: Maximum number of positions preallocated per chain in memory. The effective number stored positions is `memory_size * (n_chains + n_hot_chains)`. Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. If `memory_refill = true` this is the maximum number stored before refilling, if  `memory_refill = false` once the memory is full, the array is extended by another `memory_size` worth of positions. Set with consideration of available RAM and expected run length.
+- `memory_size`: Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. If `memory_refill = true`, memory holds at most `memory_size` iterations (i.e. one for each chain) worth of positions, which must be at least `N₀ + n_chains + n_hot_chains`, before refilling from the start. If `memory_refill = false`, memory starts with room for `N₀ + memory_size * (n_chains + n_hot_chains)` positions and is extended by another `memory_size` iterations worth each time it is full. Set with consideration of available RAM and expected run length.
 - `memory_thin_interval`: Thinning interval for memory updates. If > 0, only every `memory_thin_interval`-th
   position is stored in memory.
 ## Parallel Tempering and Simulated Annealing Arguments

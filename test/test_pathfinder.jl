@@ -37,7 +37,7 @@ LogDensityProblems.capabilities(::Type{<:PathfinderBimodalModel}) = LogDensityPr
         @test isempty(intersect(state.x, state.memory.mem_x[1:20]))
 
         state_default = initialise(pf_left)
-        @test state_default.memory.fill.position == 2 * n_chains
+        @test state_default.memory.fill.position == 10 * LogDensityProblems.dimension(model)
         @test state_default.memory.mem_x[1:n_chains] == state_default.x
 
         state_memoryless = initialise(pf_left; memory = false)
