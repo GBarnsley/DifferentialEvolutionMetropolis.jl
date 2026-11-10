@@ -35,3 +35,13 @@ using MCMCDiagnosticTools
         @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 end
+
+@testset "Float32 default stopping threshold" begin
+    model = AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(Float32, 2)))
+    result = deMCzs(
+        model, 4, 1; rng = backwards_compat_rng(42), T = Float32,
+        n_chains = 4, warmup_epochs = 0, silent = true, progress = false
+    )
+    @test eltype(result.samples) === Float32
+    @test all(isfinite, result.ld)
+end

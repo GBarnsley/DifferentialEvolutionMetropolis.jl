@@ -64,7 +64,7 @@ function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, A, L, M, V, VV},
         iteration::Int;
         check_every::Int = 1000,
-        maximum_R̂::T = 1.2,
+        maximum_R̂::T = T(1.2),
         maximum_iterations::Int = 100000,
         minimum_iterations::Int = 0,
         kwargs...
