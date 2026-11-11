@@ -1,6 +1,5 @@
 @testset "Test HMC correctness" begin
     rng = backwards_compat_rng(1234)
-    α = 0.05
 
     """
         warmed_up(rng, scheme, d; num_warmup = 200)
@@ -22,10 +21,11 @@
         "NUTS dense" => d -> setup_sampler_scheme(setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = d)),
         "NUTS + DE" => d -> setup_sampler_scheme(setup_hmc_update(NUTS(0.8); n_dims = d), setup_de_update(; n_dims = d)),
     ]
+    @test length(hmc_updates) == N_CORRECTNESS_UPDATES.hmc
 
     @testset "$name" for (name, update) in hmc_updates
         test_update_correctness(
-            rng, d -> warmed_up(rng, update(d), d), α;
+            rng, d -> warmed_up(rng, update(d), d), CORRECTNESS_TEST_LEVEL;
             memory = false, n_hot_chains = 0, n_tries = 1, gradient = true
         )
     end

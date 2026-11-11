@@ -4,6 +4,8 @@ mutable struct DEMMultiTryBuffers{
     }
     const forward::Array{V, 2}
     const forward_ld::Array{T, 2}
+    "log Hastings correction of each forward trial"
+    const forward_offset::Array{T, 2}
     "crossover probability of each forward trial, for adaptive subspace warm-up"
     const forward_cr::Array{T, 2}
     "cumulative selection weights of the forward trials"
@@ -11,14 +13,17 @@ mutable struct DEMMultiTryBuffers{
     const forward_log_weight::Vector{T}
     const reference::Array{V, 2}
     const reference_ld::Array{T, 2}
+    const reference_offset::Array{T, 2}
     "selected forward trial, 0 if every forward trial has zero weight"
     const selected::Vector{Int}
     "per-chain columns of the arrays above"
     const forward_view::Vector{WV}
     const forward_ld_view::Vector{W}
+    const forward_offset_view::Vector{W}
     const forward_weight_view::Vector{W}
     const reference_view::Vector{WV}
     const reference_ld_view::Vector{W}
+    const reference_offset_view::Vector{W}
 end
 
 function DEMMultiTryBuffers(
@@ -27,23 +32,29 @@ function DEMMultiTryBuffers(
     n_chains = length(x)
     forward = [similar(first(x)) for _ in 1:n_tries, _ in 1:n_chains]
     forward_ld = Array{T, 2}(undef, n_tries, n_chains)
+    forward_offset = Array{T, 2}(undef, n_tries, n_chains)
     forward_weight = Array{T, 2}(undef, n_tries, n_chains)
     reference = [similar(first(x)) for _ in 1:(n_tries - 1), _ in 1:n_chains]
     reference_ld = Array{T, 2}(undef, n_tries - 1, n_chains)
+    reference_offset = Array{T, 2}(undef, n_tries - 1, n_chains)
     return DEMMultiTryBuffers(
         forward,
         forward_ld,
+        forward_offset,
         Array{T, 2}(undef, n_tries, n_chains),
         forward_weight,
         Vector{T}(undef, n_chains),
         reference,
         reference_ld,
+        reference_offset,
         zeros(Int, n_chains),
         collect(eachcol(forward)),
         collect(eachcol(forward_ld)),
+        collect(eachcol(forward_offset)),
         collect(eachcol(forward_weight)),
         collect(eachcol(reference)),
-        collect(eachcol(reference_ld))
+        collect(eachcol(reference_ld)),
+        collect(eachcol(reference_offset))
     )
 end
 
@@ -70,9 +81,16 @@ sampler_supports_multitry(sampler::AbstractDEMCompositeSampler) = any(update -> 
 trial_cr(proposal) = NaN
 trial_cr(proposal::NamedTuple{(:offset, :cr)}) = proposal.cr
 
+# Log weight of a trial y proposed from x with offset log(q(x | y) / q(y | x))
+trial_log_weight(ld::Real, offset::Real, t::Real) = ld / t + offset / 2
+trial_log_weight(lds::AbstractVector, offsets::AbstractVector, t::Real) =
+    logsumexp(trial_log_weight(ld, offset, t) for (ld, offset) in zip(lds, offsets))
+
 # Trials with zero weight cannot be selected as the cumulative weight does not increase at them
-function select_trial!(weights::AbstractVector{T}, rng::AbstractRNG, lds::AbstractVector{T}, t::Real, log_weight::Real) where {T <: Real}
-    weights .= exp.(lds ./ t .- log_weight)
+function select_trial!(
+        weights::AbstractVector{T}, rng::AbstractRNG, lds::AbstractVector{T}, offsets::AbstractVector{T}, t::Real, log_weight::Real
+    ) where {T <: Real}
+    weights .= exp.(trial_log_weight.(lds, offsets, t) .- log_weight)
     cumsum!(weights, weights)
     return findfirst(>(rand(rng) * last(weights)), weights)
 end
@@ -104,11 +122,12 @@ function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Boo
     return nothing
 end
 
+# The log densities are initialised to the offsets so trials with an offset of -Inf are not evaluated
 function propose_forward!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, i::Int)
-    forward_ld = buffers.forward_ld_view[i]
     for (j, xₜ) in enumerate(buffers.forward_view[i])
         proposal = proposal!(xₜ, state.x[i], state, sampler, i)
-        forward_ld[j], = proposal
+        buffers.forward_offset[j, i] = proposal.offset
+        buffers.forward_ld[j, i] = proposal.offset
         buffers.forward_cr[j, i] = trial_cr(proposal)
     end
     return nothing
@@ -117,25 +136,36 @@ end
 function propose_reference!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, i::Int)
     t = get_temperature(state.temperature_ladder, i)
     forward_ld = buffers.forward_ld_view[i]
-    log_weight = logsumexp(ld / t for ld in forward_ld)
+    forward_offset = buffers.forward_offset_view[i]
+    log_weight = trial_log_weight(forward_ld, forward_offset, t)
     buffers.forward_log_weight[i] = log_weight
     if log_weight == -Inf
         buffers.selected[i] = 0
         fill!(buffers.reference_ld_view[i], -Inf)
+        fill!(buffers.reference_offset_view[i], -Inf)
         return nothing
     end
-    j = select_trial!(buffers.forward_weight_view[i], state.rngs[i], forward_ld, t, log_weight)
+    j = select_trial!(buffers.forward_weight_view[i], state.rngs[i], forward_ld, forward_offset, t, log_weight)
     buffers.selected[i] = j
     xⱼ = buffers.forward[j, i]
-    map!(xₜ -> first(proposal!(xₜ, xⱼ, state, sampler, i)), buffers.reference_ld_view[i], buffers.reference_view[i])
+    reference_ld = buffers.reference_ld_view[i]
+    reference_offset = buffers.reference_offset_view[i]
+    for (k, xₜ) in enumerate(buffers.reference_view[i])
+        reference_offset[k] = proposal!(xₜ, xⱼ, state, sampler, i).offset
+        reference_ld[k] = reference_offset[k]
+    end
     return nothing
 end
 
+# The current position is the final reference trial, its offset is the reverse of the selected trial's
 function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     j = buffers.selected[i]
     if j > 0
         t = get_temperature(state.temperature_ladder, i)
-        reference_log_weight = logaddexp(logsumexp(ld / t for ld in buffers.reference_ld_view[i]), state.ld[i] / t)
+        reference_log_weight = logaddexp(
+            trial_log_weight(buffers.reference_ld_view[i], buffers.reference_offset_view[i], t),
+            trial_log_weight(state.ld[i], -buffers.forward_offset[j, i], t)
+        )
         if log(rand(state.rngs[i])) < buffers.forward_log_weight[i] - reference_log_weight
             copyto!(state.xₚ[i], buffers.forward[j, i])
             state.ldₚ[i] = buffers.forward_ld[j, i]

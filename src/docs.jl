@@ -18,9 +18,9 @@ _generic_de_kwargs_1 = """
 - `parallel`: Whether to update chains, and evaluate initial log-densities, in parallel. Useful for expensive models.
   Most updates require either `memory = true` or multi-try updates to take advantage of multithreading. Defaults to `false`.
 - `n_tries`: Number of multiple-try proposals per chain each step.
-  Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering), then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
+  Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering) times the square root of its Hastings ratio, then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
   This needs up to `(n_chains + n_hot_chains) * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
-  Only symmetric updates use multiple tries ([`setup_de_update`](@ref) and [`setup_subspace_sampling`](@ref)), other updates in a scheme take a single proposal. Defaults to 1 (no multiple tries).
+  The differential evolution, snooker and subspace updates use multiple tries, other updates in a scheme (e.g. [`setup_swap_update`](@ref)) take a single proposal. Defaults to 1 (no multiple tries).
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3. Consider increasing it if you implement your own proposal that calls `pick_chains` with more than 3 indices.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.

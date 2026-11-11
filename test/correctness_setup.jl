@@ -103,12 +103,12 @@ function friedman_statistic(sum_of_rank_of_ranks, attempts, n_chains)
 end
 
 """
-    sequential_testing(rng, update, model, α; n = 1000, L = 100, k = 7, setup...)
+    sequential_testing(rng, update, model, α; n = 2500, L = 100, k = 7, setup...)
 
 Sequential rank-uniformity test across iterations, then a Friedman test for rank uniformity
 between the chains. Returns `true` if neither test rejects at level `α`.
 """
-function sequential_testing(rng, update, model, α; n = 1000, L = 100, k = 7, setup...)
+function sequential_testing(rng, update, model, α; n = 2500, L = 100, k = 7, setup...)
     d = LogDensityProblems.dimension(model)
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
     n_chains = kwargs.n_chains
@@ -156,11 +156,11 @@ function sequential_testing(rng, update, model, α; n = 1000, L = 100, k = 7, se
 end
 
 """
-    normal_moments_check(rng, update; n = 1000, n_samples = 1000, setup...)
+    normal_moments_check(rng, update; n = 2000, n_samples = 1000, setup...)
 
 p-values that the first four moments of a long run on a standard normal match `0, 1, 0, 3`.
 """
-function normal_moments_check(rng, update; n = 1000, n_samples = 1000, setup...)
+function normal_moments_check(rng, update; n = 2000, n_samples = 1000, setup...)
     model = IsotropicNormalModel([0.0])
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
     estimates = zeros(n, 4)
@@ -175,12 +175,12 @@ function normal_moments_check(rng, update; n = 1000, n_samples = 1000, setup...)
 end
 
 """
-    one_step_covariance_testing(rng, update; n = 10_000, setup...)
+    one_step_covariance_testing(rng, update; n = 20_000, setup...)
 
 p-values that, after one step on a standard normal, the average pairwise covariance between
 chains is 0 and the average squared cross moment is 1.
 """
-function one_step_covariance_testing(rng, update; n = 10_000, setup...)
+function one_step_covariance_testing(rng, update; n = 20_000, setup...)
     model = IsotropicNormalModel([0.0])
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
     n_chains = kwargs.n_chains
@@ -197,12 +197,12 @@ function one_step_covariance_testing(rng, update; n = 10_000, setup...)
 end
 
 """
-    short_run_marginal_stationarity(rng, update; n = 10_000, n_steps = 4, setup...)
+    short_run_marginal_stationarity(rng, update; n = 20_000, n_steps = 4, setup...)
 
 p-value that, after `n_steps` steps on Uniform(0, 1), the mean squared deviation of the chains
 from 0.5 is 1/12.
 """
-function short_run_marginal_stationarity(rng, update; n = 10_000, n_steps = 4, setup...)
+function short_run_marginal_stationarity(rng, update; n = 20_000, n_steps = 4, setup...)
     model = UnitIntervalModel()
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
     deviation = zeros(n)
@@ -217,20 +217,30 @@ end
 """
     test_update_correctness(rng, update, α; setup...)
 
-Run every correctness check on `update(d)`, a function of the target dimension `d`: the
-sequential rank test on a 3D standard normal at level `α`, and the one-step covariance, short-run
-Uniform stationarity and long-run normal moment checks with a Bonferroni correction over their
-p-values.
+Run every correctness check on `update(d)`, a function of the target dimension `d`, each test at
+level `α`: the sequential rank test on a 3D standard normal, and the one-step covariance,
+short-run Uniform stationarity and long-run normal moment checks. Pass `CORRECTNESS_TEST_LEVEL`,
+the Bonferroni-corrected level over every correctness test. Memoryless short-run checks use
+`50_000` replicates, since refilling the initial memory dominates their cost with memory.
 """
 function test_update_correctness(rng, update, α; setup...)
     @test sequential_testing(rng, update(3), IsotropicNormalModel(zeros(3)), α; setup...)
-    covariance_p, cross_moment_p = one_step_covariance_testing(rng, update(1); setup...)
-    uniform_p = short_run_marginal_stationarity(rng, update(1); setup...)
+    n_short_run = setup[:memory] ? 20_000 : 50_000
+    covariance_p, cross_moment_p = one_step_covariance_testing(rng, update(1); n = n_short_run, setup...)
+    uniform_p = short_run_marginal_stationarity(rng, update(1); n = n_short_run, setup...)
     moment_ps = normal_moments_check(rng, update(1); setup...)
-    α_corrected = α / (3 + length(moment_ps))
-    @test covariance_p > α_corrected
-    @test cross_moment_p > α_corrected
-    @test uniform_p > α_corrected
-    @test minimum(moment_ps) > α_corrected
+    @test covariance_p > α
+    @test cross_moment_p > α
+    @test uniform_p > α
+    @test minimum(moment_ps) > α
     return nothing
 end
+
+# Updates checked in test_correct.jl and test_correct_hmc.jl.
+const N_CORRECTNESS_UPDATES = (; demc = 14, hmc = 3)
+
+# Per update: the two sequential tests, covariance, cross moment, Uniform stationarity and four moments.
+const N_CORRECTNESS_TESTS_PER_UPDATE = 9
+
+# Bonferroni-corrected level for a family-wise level of 0.05 over every correctness test.
+const CORRECTNESS_TEST_LEVEL = 0.05 / (sum(N_CORRECTNESS_UPDATES) * N_CORRECTNESS_TESTS_PER_UPDATE)
