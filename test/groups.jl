@@ -25,6 +25,7 @@ const GROUPS = (;
             "test_show.jl",
             "test_memory_accounting.jl",
             "test_correct.jl",
+            "test_correct_invalid.jl",
             "test_no_extensions.jl",
             "test_templates.jl",
             "test_logdensity.jl",

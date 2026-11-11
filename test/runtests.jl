@@ -1,7 +1,7 @@
 include("groups.jl")
 
 # Slow tests run only in the all group, which CI runs on every Julia version.
-const ALL_ONLY_FILES = ["test_correct.jl", "test_correct_hmc.jl"]
+const ALL_ONLY_FILES = ["test_correct.jl", "test_correct_invalid.jl", "test_correct_hmc.jl"]
 
 const TEST_GROUP = Symbol(get(ENV, "TEST_GROUP", "all"))
 const TEST_DOWNGRADE = parse(Bool, get(ENV, "TEST_DOWNGRADE", "false"))
