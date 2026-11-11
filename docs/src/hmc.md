@@ -80,6 +80,16 @@ nothing # hide
 
 Both styles produce the same kind of update; the example below uses the `NUTS()` form.
 
+`HMC` and `HMCDA` work the same way and keep their AdvancedHMC adaptation: during warm-up `NUTS` tunes the step size and mass matrix, `HMCDA` tunes only the step size, and `HMC` tunes nothing.
+A symbol integrator (the default) has its step size found on the first warm-up step, while an explicit step size is kept by `HMC` and is where `NUTS` and `HMCDA` start dual averaging, as in AdvancedHMC.
+Without warm-up (`adapt = false` or `num_warmup = 0`) the update runs the sampler as built, so give it an explicit step size:
+
+```@example HMC
+fixed_hmc_update = setup_hmc_update(HMC(0.1, 10); n_dims = D)
+fixed_nuts_update = setup_hmc_update(NUTS(0.8; integrator = Leapfrog(0.1)); n_dims = D)
+nothing # hide
+```
+
 ### Estimating the metric from the memory archive
 
 <!-- panache-ignore-start -->
@@ -94,7 +104,7 @@ By default the HMC update tunes its mass matrix the usual AdvancedHMC way: every
 That already pools across the whole population, but it only ever sees the *current* window's draws.
 Because this package also keeps a historical archive when `memory = true`, the metric can instead be estimated from that much larger pool.
 Passing [`memory_metric`](@ref) as the `metric_strategy` replaces the windowed adaptor with a covariance computed in one batch over the memory archive (thousands of past positions), recomputed wholesale every `every` HMC steps rather than accumulated online.
-Because the archive keeps growing, the metric is recomputed on that cadence throughout **both warm-up and sampling**, so it never goes stale (changing the mass matrix between trajectories is valid — each HMC step is correct for whatever metric it uses); the step size adapts through dual averaging during warm-up and is then fixed.
+Because the archive keeps growing, the metric is recomputed on that cadence throughout **both warm-up and sampling**, so it never goes stale (changing the mass matrix between trajectories is valid — each HMC step is correct for whatever metric it uses); the step size adapts through dual averaging during warm-up (for `NUTS` and `HMCDA`) and is then fixed.
 
 Because it reads the archive, [`memory_metric`](@ref) **requires `memory = true`** and is **incompatible with parallel tempering** (there the archive interleaves hot-chain positions, so the covariance would mix temperatures); both raise an error on the first warm-up step.
 Annealing is fine — its chains all cool to the cold target, so the archive ends up a clean cold-target sample.

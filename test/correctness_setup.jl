@@ -237,7 +237,7 @@ function test_update_correctness(rng, update, α; setup...)
 end
 
 # Updates checked in test_correct.jl and test_correct_hmc.jl.
-const N_CORRECTNESS_UPDATES = (; demc = 14, hmc = 3)
+const N_CORRECTNESS_UPDATES = (; demc = 14, hmc = 5)
 
 # Per update: the two sequential tests, covariance, cross moment, Uniform stationarity and four moments.
 const N_CORRECTNESS_TESTS_PER_UPDATE = 9
