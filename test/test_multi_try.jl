@@ -15,16 +15,17 @@
         @test length(state.chain_models) == 18
         @test size(state.multi_try.reference) == (2, 6)
         @test_throws ErrorException initial_state(setup_de_update(); n_tries = 0)
-        state = @test_logs (:warn, r"n_tries > 1") initial_state(setup_snooker_update(); n_tries = 3)
+        state = @test_logs (:warn, r"n_tries > 1") initial_state(setup_swap_update(); n_hot_chains = 2, memory = false, n_tries = 3)
         @test isnothing(state.multi_try)
         @test length(state.chain_models) == length(state.x)
-        scheme = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
-        @test DEM.n_tries(initial_state(scheme; n_tries = 3).multi_try) == 3
+        @test DEM.n_tries(initial_state(setup_snooker_update(); n_tries = 3).multi_try) == 3
+        scheme = setup_sampler_scheme(setup_swap_update(), setup_snooker_update())
+        @test DEM.n_tries(initial_state(scheme; n_hot_chains = 2, memory = false, n_tries = 3).multi_try) == 3
         @test !DEM.sampler_supports_multitry(setup_swap_update())
     end
 
     @testset "threaded matches serial" begin
-        updates = (setup_de_update(), setup_subspace_sampling(), setup_sampler_scheme(setup_de_update(), setup_snooker_update()))
+        updates = (setup_de_update(), setup_snooker_update(), setup_subspace_sampling(), setup_sampler_scheme(setup_de_update(), setup_snooker_update()))
         @testset "$(nameof(typeof(update))), memory = $memory" for update in updates, memory in (false, true)
             run(parallel) = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING, MEMORYLESS_PARALLEL_WARNING) do
                 sample(
@@ -67,13 +68,18 @@
     @testset "weights" begin
         weights = zeros(3)
         rng = backwards_compat_rng(1)
-        selected = [DEM.select_trial!(weights, rng, [0.0, -Inf, log(3.0)], 1.0, log(4.0)) for _ in 1:10_000]
+        selected = [DEM.select_trial!(weights, rng, [0.0, -Inf, log(3.0)], zeros(3), 1.0, log(4.0)) for _ in 1:10_000]
+        @test !any(==(2), selected)
+        @test isapprox(mean(==(3), selected), 0.75; atol = 0.02)
+        lds, offsets = [0.0, 0.0, 0.0], [0.0, -Inf, 2 * log(3.0)]
+        @test DEM.trial_log_weight(lds, offsets, 1.0) ≈ log(4.0)
+        selected = [DEM.select_trial!(weights, rng, lds, offsets, 1.0, log(4.0)) for _ in 1:10_000]
         @test !any(==(2), selected)
         @test isapprox(mean(==(3), selected), 0.75; atol = 0.02)
     end
 
     @testset "Gaussian moments" begin
-        @testset "$(nameof(typeof(update))), hot chains = $n_hot, memory = $memory" for update in (setup_de_update(n_dims = 3), setup_subspace_sampling()),
+        @testset "$(nameof(typeof(update))), hot chains = $n_hot, memory = $memory" for update in (setup_de_update(n_dims = 3), setup_snooker_update(), setup_subspace_sampling()),
                 n_hot in (0, 3), memory in (false, true)
             output = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
                 sample(

@@ -85,14 +85,14 @@ function proposal!(
     x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂
         xₚ .= x₁
-        return (offset = -Inf)
+        return (; offset = -Inf)
     else
         rng = state.rngs[current_state]
         (β,) = chain_buffers(sampler.scratch, eltype(x₁), current_state)
         γ = rand(rng, sampler.γ_spl)
         rand!(rng, sampler.β_spl, β)
         xₚ .= x .+ (γ .* (x₁ .- x₂)) .+ β
-        return (offset = zero(eltype(x₁)))
+        return (; offset = zero(eltype(x₁)))
     end
 end
 

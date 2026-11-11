@@ -1,4 +1,4 @@
-struct DEMSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSingleTry}
+struct DEMSnookerSampler{G <: Sampleable{Univariate, <:Union{Continuous, Discrete}}} <: AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}
     γ_spl::G
     scratch::DEMProposalScratch{2}
 end
@@ -72,7 +72,7 @@ function proposal!(
 
     if xₐ == x || x₁ == x₂
         xₚ .= x₁
-        return (offset = -Inf)
+        return (; offset = -Inf)
     else
         e, x_diff = chain_buffers(sampler.scratch, eltype(x), current_state)
         e .= xₐ .- x
@@ -82,7 +82,7 @@ function proposal!(
         xₚ .= x .+ rand(state.rngs[current_state], sampler.γ_spl) .* dot(x_diff, e) .* e
         x_diff .= xₐ .- xₚ
 
-        return (offset = (length(x) - 1) * (log(norm(x_diff)) - log(norm_current)))
+        return (; offset = (length(x) - 1) * (log(norm(x_diff)) - log(norm_current)))
     end
 end
 

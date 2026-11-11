@@ -100,6 +100,7 @@ Default output is `DEMOutput` (`samples[iter, chain, param]`, `ld[iter, chain]`)
 - Keep the test log free of warnings: wrap setups that deliberately trigger a warning not under test in `suppress_warnings(f, patterns...)`, passing only the expected message patterns (e.g. `NO_SWAP_WARNING`).
 - `test_correct.jl` (DE-MC updates) and `test_correct_hmc.jl` (HMC updates, memoryless, no parallel tempering) are slow simulation-based correctness tests (sequential rank-uniformity, one-step covariance, short-run Uniform stationarity and long-run Normal moments, looped over updates); they only run in the `all` group.
   Their shared checks live in `test/correctness_setup.jl`, which `runtests.jl` includes once for the `all` group.
+  Every test runs at `CORRECTNESS_TEST_LEVEL`, a Bonferroni correction over all tests in both files; update `N_CORRECTNESS_UPDATES` when adding or removing an update.
 - `Aqua.test_all` runs ambiguity/piracy checks.
 - Extension test files load their trigger packages themselves; the `core` environment has no weakdeps installed, so core tests check behaviour without extensions.
 - A test that needs an extension goes in that extension's group, not in a core file.

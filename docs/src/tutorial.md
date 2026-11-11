@@ -193,7 +193,7 @@ When there are more threads than chains, `n_tries` gives each chain several cand
 With `parallel = true` all candidates across all chains are evaluated in one threaded loop.
 With `memory = false` chains are updated in turn, so only the candidates of one chain are evaluated in parallel.
 This increases the number of log-density evaluations per step to up to `(n_chains + n_hot_chains) * (2 * n_tries - 1)`, so it is only worthwhile when evaluations are expensive and threads would otherwise be idle.
-Only the differential evolution and subspace updates use multiple tries, other updates in a scheme take a single proposal.
+The differential evolution, snooker and subspace updates use multiple tries, other updates in a scheme take a single proposal.
 
 ```julia
 sample(model, setup_de_update(), 1000; n_chains = 8, n_tries = 4, parallel = true)

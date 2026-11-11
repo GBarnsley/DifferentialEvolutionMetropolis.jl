@@ -66,7 +66,7 @@
     @testset "Multiple-try (adapt = $adapt)" for adapt in (true, false)
         rng = backwards_compat_rng(1234)
         @test DEM.sampler_supports_multitry(setup_fixed_order_scheme(setup_snooker_update(), setup_de_update()))
-        @test !DEM.sampler_supports_multitry(setup_fixed_order_scheme(setup_snooker_update(), setup_swap_update()))
+        @test !DEM.sampler_supports_multitry(setup_fixed_order_scheme(setup_swap_update(), setup_swap_update()))
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 3)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false, adapt = adapt, n_tries = 3)
         @test DEM.n_tries(state.multi_try) == 3

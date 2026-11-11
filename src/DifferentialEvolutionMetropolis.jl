@@ -59,7 +59,7 @@ struct DEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
 """
     DEMSamplerMultipleTry
 
-Try mode of an update that supports `n_tries > 1`, which requires a symmetric proposal with zero Hastings correction.
+Try mode of an update that supports `n_tries > 1`, using the `offset` returned by [`DifferentialEvolutionMetropolis.proposal!`](@ref) as the log Hastings correction of each trial.
 """
 struct DEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
 
@@ -103,7 +103,8 @@ Every update must implement this.
 Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
 
 # Returns
-- A named tuple with at least `offset`, the log Hastings correction (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
+- A named tuple with at least `offset`, the log Hastings correction `log(q(x | xₚ) / q(xₚ | x))` (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
+  It may be conditional on draws that do not depend on `x`, such as the chains picked by `pick_chains`.
 """
 function proposal! end
 

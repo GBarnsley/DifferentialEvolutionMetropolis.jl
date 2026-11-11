@@ -81,7 +81,8 @@ The two type parameters declare the update's capabilities.
 As a rule of thumb, any update that uses other chains in the ensemble should be marked `DEMSamplerSerial` if it uses other chains positions (i.e. `pick_chains`) and marked `DEMSamplerMultiThread` if it only uses it own position.
 
 `AbstractDEMSamplerTryMode` indicates if the updates supports multi-try evaluation, **not** if it actually uses it.
-Any update implemented via the `proposal!` interface that are symmetrical should be labelled with `DEMSamplerMultipleTry`, otherwise `DEMSamplerSingleTry`.
+Any update implemented via the `proposal!` interface can be labelled with `DEMSamplerMultipleTry`, as the multiple-try weights include the `offset` it returns.
+Use `DEMSamplerSingleTry` for updates that do not use `proposal!` for a Metropolis-Hastings step (e.g. the swap update), or to keep an update to a single proposal.
 
 The method signature for the proposal is:
 
@@ -103,7 +104,7 @@ function proposal!(
 
 The function should write the proposed position into `xₚ` (proposing from `x`) and return a named tuple with at least `(offset = hastings_correction,)` where:
 
-- `offset`: Hastings ratio correction in log-space (typically 0.0 for symmetric proposals)
+- `offset`: Hastings ratio correction in log-space, `log(q(x | xₚ) / q(xₚ | x))` (typically 0.0 for symmetric proposals)
 
 ### Chains Required for Memoryless Sampling
 
