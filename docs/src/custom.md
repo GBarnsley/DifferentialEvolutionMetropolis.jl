@@ -77,12 +77,13 @@ result = sample(
 Define a custom update by subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler{<:AbstractDEMSamplerExecutionMode, <:AbstractDEMSamplerTryMode}` and implementing `DifferentialEvolutionMetropolis.proposal!`.
 The two type parameters declare the update's capabilities.
 
-`AbstractDEMSamplerExecutionMode` indicates if an update supports multi-threading (`DEMSamplerMultiThread`), by default all update, even those marked as `DEMSamplerSerial` support multithreaded across log-density evaluations when `memory = true`, execution mode refers to multithreading when `memory = false`.
-As a rule of thumb, any update that uses other chains in the ensemble should be marked `DEMSamplerSerial` if it uses other chains positions (i.e. `pick_chains`) and marked `DEMSamplerMultiThread` if it only uses it own position.
+`AbstractDEMSamplerExecutionMode` indicates if an update supports multi-threading (`DEMSamplerMultiThread`).
+By default all updates, even those marked as `DEMSamplerSerial`, support multithreading across log-density evaluations when `memory = true`; execution mode refers to multithreading when `memory = false`.
+As a rule of thumb, an update should be marked `DEMSamplerSerial` if it uses other chains' positions (i.e. via `pick_chains`) and marked `DEMSamplerMultiThread` if it only uses its own position.
 
-`AbstractDEMSamplerTryMode` indicates if the updates supports multi-try evaluation, **not** if it actually uses it.
+`AbstractDEMSamplerTryMode` indicates if the update is compatible with multi-try evaluation, **not** if it actually uses it.
 Any update implemented via the `proposal!` interface can be labelled with `DEMSamplerMultipleTry`, as the multiple-try weights include the `offset` it returns.
-Use `DEMSamplerSingleTry` for updates that do not use `proposal!` for a Metropolis-Hastings step (e.g. the swap update), or to keep an update to a single proposal.
+Use `DEMSamplerSingleTry` for updates that do not use `proposal!` for a Metropolis-Hastings step, or to keep an update to a single proposal.
 
 The method signature for the proposal is:
 
@@ -98,7 +99,7 @@ function proposal!(
 
 - `xₚ`: The vector to write the proposed position into
 - `x`: The position to propose from
-- `state`: The current state containing all chain positions, log-densities, and chain specific rngs
+- `state`: The current state containing all chain positions, log-densities, and chain-specific rngs
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
@@ -109,7 +110,7 @@ The function should write the proposed position into `xₚ` (proposing from `x`)
 ### Chains Required for Memoryless Sampling
 
 When memoryless sampling is used (`memory = false`), the sampler validates that the number of parallel chains is sufficient for the sampler's proposals (since they cannot be drawn from the memory database).
-By default, custom updates subtyping `DifferentialEvolutionMetropolis.AbstractDEMSampler` require at least 3 chains.
+By default, updates are assumed to require at least 3 chains.
 If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function.
 For example:
 
@@ -125,7 +126,9 @@ using DifferentialEvolutionMetropolis, Distributions, Random
 
 # Define the struct for the sampler
 struct MetropolisHastingsUpdate <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
+    # doesn't need to evaluate sequentially
     DifferentialEvolutionMetropolis.DEMSamplerMultiThread,
+    # can be used with multiple-try updates (when `n_tries` > 1)
     DifferentialEvolutionMetropolis.DEMSamplerMultipleTry,
 }
     proposal_distribution::MvNormal
@@ -141,22 +144,27 @@ function DifferentialEvolutionMetropolis.proposal!(
 ) where {V <: AbstractVector}
     # Propose a new point using a random walk
     xₚ .= x .+ rand(state.rngs[current_state], sampler.proposal_distribution)
+    # we assign the proposal to `xₚ`, a pre-allocated vector
+    # we propose from the current position `x`
+    # we use the chain-specific rng stream `state.rngs[current_state]`
 
     # The proposal is symmetric, so no Hastings correction needed
     return (offset = 0.0,)
 end
 
+# simple random walk, only needs one chain
 DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
 
 ```
 
 ### Avoiding Allocations with Scratch Buffers
 
-The example above allocates a new vector for every proposal.
-This is usually negligible next to the cost of the log density, so it is the recommended starting point.
-To avoid allocations, an update can hold a `DEMProposalScratch{N}`, which gives each chain `N` preallocated vectors of the positions' element type the length of the parameter vector.
+The example above allocates a new vector for every proposal (the `rand` call).
+This is usually negligible next to the cost of the log density, so it's normally fine.
+To avoid any allocations, an update can hold a `DEMProposalScratch{N}`, which gives each chain `N` preallocated vectors of the positions' element type the length of the parameter vector.
 The buffers are sized by `prepare_scratch!` before chains are updated, and only reallocated when the element type, number of chains or parameters changes.
-Only use the buffers belonging to `current_state`, as chains may be updated in parallel.
+This means that the scratch can be used for any log-density and only allocates when used on a log-density of a different dimension or type.
+Only use the buffers belonging to `current_state` to avoid races, as chains may be updated in parallel.
 
 ```@example MHSampler
 struct ScratchMetropolisHastingsUpdate{D <: MvNormal} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
@@ -184,10 +192,11 @@ function DifferentialEvolutionMetropolis.proposal!(
     current_state::Int
 ) where {V <: AbstractVector}
     # Draw the random walk step into this chain's buffer rather than a new vector
-    # We pass the type of the state (here Float64) to make `chain_buffers` type stable
-    # `scratch` itself if a mutable struct that can hold vectors of any type, allowing seem-less reuse of buffers
+    # We pass the type of the state to make `chain_buffers` type stable
+    # `scratch` itself is a mutable struct that can hold vectors of any type, allowing seamless reuse of buffers
     # across logdensities of different dimensions and types
     (jump,) = DifferentialEvolutionMetropolis.chain_buffers(sampler.scratch, eltype(x), current_state)
+    # write the random draw directly into the buffer
     rand!(state.rngs[current_state], sampler.proposal_distribution, jump)
     xₚ .= x .+ jump
     return (offset = 0.0,)
@@ -199,9 +208,10 @@ DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdat
 ### Adaptive Proposals with step_warmup
 
 For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well.
-This is called during the warm-up phase.
+This is called for the first `num_warmup` steps, so adaptation stops when the sampling phase begins.
+To keep adapting while sampling, set `num_warmup` to the warm-up steps plus the sampling steps that should adapt, and `discard_initial` to the warm-up steps alone.
 
-You'll also need to define adaptive state structures and methods.
+You'll also need to define adaptive state structures and methods for your sampler.
 Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
@@ -209,13 +219,14 @@ using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, 
 import AbstractMCMC: step, step_warmup
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState{T}
+    #values needed for the adaption process
     proposal_cov::Matrix{T}
     adaptation_count::Int
     running_mean::Vector{T}
     running_cov::Matrix{T}
 end
 
-# Define the adaptive sampler
+# Define the adaptive sampler itself
 struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.AbstractDEMSampler{
     DifferentialEvolutionMetropolis.DEMSamplerMultiThread,
     DifferentialEvolutionMetropolis.DEMSamplerMultipleTry,
@@ -226,7 +237,7 @@ struct AdaptiveMetropolisUpdate{T<:Real} <: DifferentialEvolutionMetropolis.Abst
     adapt_scale::T
 end
 
-# Constructor
+# Constructor for the Float64 version
 function AdaptiveMetropolisUpdate(
     n_params::Int;
     initial_std::Float64 = 0.1,
@@ -249,7 +260,7 @@ function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::Adap
     )
 end
 
-# Fix sampler (convert adaptive to non-adaptive)
+# Fix sampler (convert adaptive to non-adaptive), here we convert our RW with adaptive proposal covariance to a RW with fixed proposal covariance
 function DifferentialEvolutionMetropolis.fix_sampler(sampler::AdaptiveMetropolisUpdate{T}, adaptive_state::AdaptiveMetropolisState{T}) where {T}
     return MetropolisHastingsUpdate(MvNormal(zeros(T, size(adaptive_state.proposal_cov, 1)), adaptive_state.proposal_cov))
 end

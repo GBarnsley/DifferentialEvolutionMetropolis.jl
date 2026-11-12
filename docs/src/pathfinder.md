@@ -2,7 +2,7 @@
 
 [Pathfinder.jl](https://github.com/mlcolab/Pathfinder.jl) fits a multivariate normal approximation to a target by following an L-BFGS optimisation path.
 It is cheap relative to MCMC, and its draws make good starting points.
-This is recommended over the default `randn` initialisation method.
+This is recommended over the default `randn` initialisation method, though it requires derivatives of the log density (these can be calculated with AD packages like `ForwardDiff`).
 
 When `Pathfinder` is loaded, any sampler in this package accepts a Pathfinder result as `initial_position`.
 The pathfinder object is used to generate the starting position of every chain and, for memory-based samplers, to populate the initial memory.
@@ -13,7 +13,7 @@ The pathfinder object is used to generate the starting position of every chain a
 using DifferentialEvolutionMetropolis, Pathfinder, AbstractMCMC, ForwardDiff
 using LogDensityProblems, Distributions, LinearAlgebra, Random
 
-# specify a gaussian far from the origin that the normal `randn` initial positions would be far form
+# specify a Gaussian far from the default `randn` initial positions
 struct FarGaussian end
 LogDensityProblems.dimension(::FarGaussian) = 10
 LogDensityProblems.capabilities(::Type{FarGaussian}) = LogDensityProblems.LogDensityOrder{0}()
@@ -29,13 +29,13 @@ result = deMCzs(
 extrema(result.samples)
 ```
 
-The number of pathfinder draws don't need to match the number of positions used in DEMCMC sampler.
-These draws become starting positions for both hot chains (if used), cold chains and fill the initial memory (specified by `N₀`).
+The number of Pathfinder draws doesn't need to match the number of positions used by the sampler.
+New draws are taken from the fitted distribution for the cold chains, the hot chains (if used), and the initial memory (sized by `N₀`).
 
 ## Multimodal targets
 
 A single Pathfinder run converges to a single mode.
-For multimodal targets `multipathfinder`, whose runs start from different points, can land in different modes:
+For multimodal targets, `multipathfinder`, whose runs start from different points, *can* land in different modes:
 
 ```@example pathfinder
 struct Bimodal end
@@ -56,10 +56,10 @@ mean(result.samples[:, :, 1] .> 0)
 By default, chain starting positions are stratified across the mixture components: chain `i` starts from a draw of component `((i - 1) mod K) + 1`, where `K` is the number of components.
 Every component gets at least one chain whenever `n_chains + n_hot_chains ≥ K`.
 
-Memory positions are plain draws from the mixture, importance-resampled when `importance = true` (sampling without replacement, via `resample` should be used if Pareto shape diagnostics are poor, to improve initial position diversity).
-
+Memory positions are taken in random order from the `multipathfinder` draws (`mpf.draws`), then topped up with draws from the mixture if `N₀` is larger.
+With `importance = true` (the default) `multipathfinder` importance-resamples its draws with replacement, so they can contain duplicates when its Pareto shape diagnostic is poor.
 Stratification ignores the mixture weights.
-With `stratify_initial_position = false` starting positions from the mixture as well:
+With `stratify_initial_position = false` starting positions are drawn directly from the mixture:
 
 ```@example pathfinder
 result = DREAMz(
@@ -71,7 +71,7 @@ mean(result.samples[:, :, 1] .> 0)
 ```
 
 The share of draws in each mode reflects how many runs landed in that mode, not the mode's posterior mass.
-This does not bias the sampler, after burn-in either the chain positions will no longer be dominated by the initial positions or the memory will largely be sample positions rather than pathfinder positions.
+This does not bias the sampler: after burn-in, the chain positions will no longer be dominated by the initial positions and the memory will largely hold sampled positions rather than Pathfinder draws.
 However, a mode that is not found by `multipathfinder` will not be represented and will have to be uncovered through the MCMC sampling process.
 
 Separately obtained results can also be combined.
