@@ -92,12 +92,14 @@ mutable struct CountingNaNAtModel
     count::Int
     nan_at::Int
     value::Float64
+    invalid::Float64
 end
+CountingNaNAtModel(count, nan_at, value) = CountingNaNAtModel(count, nan_at, value, NaN)
 LogDensityProblems.dimension(::CountingNaNAtModel) = 1
 LogDensityProblems.capabilities(::CountingNaNAtModel) = LogDensityProblems.LogDensityOrder{0}()
 function LogDensityProblems.logdensity(model::CountingNaNAtModel, x)
     model.count += 1
-    return model.count == model.nan_at ? NaN : model.value
+    return model.count == model.nan_at ? model.invalid : model.value
 end
 
 struct IntervalModel

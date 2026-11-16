@@ -38,31 +38,36 @@ end
     options = (; n_chains = 4, memory = false, silent = true, progress = false, chain_type = DEMOutput)
     sampler = setup_de_update()
 
-    @testset "initial" begin
-        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 1, 0.0))
+    @testset "initial $invalid" for invalid in (NaN, Inf)
+        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 1, 0.0, invalid))
         @test_throws DomainError sample(
             backwards_compat_rng(42), model, sampler, 2; options...
         )
     end
 
-    @testset "$stage" for (stage, nan_at, n_tries) in (
-            ("proposal", 1, 1), ("forward trial", 1, 2), ("reference trial", 3, 2),
-        )
+    @testset "$name $stage $invalid" for (name, update) in (
+                ("de", setup_de_update()), ("snooker", setup_snooker_update()),
+            ),
+            (stage, nan_at, n_tries) in (
+                ("proposal", 1, 1), ("forward trial", 1, 2), ("reference trial", 3, 2),
+            ),
+            invalid in (NaN, Inf)
+
         rng = backwards_compat_rng(42)
-        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, 0.0))
-        _, state = AbstractMCMC.step(rng, model, sampler; n_tries = n_tries, options...)
+        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, 0.0, invalid))
+        _, state = AbstractMCMC.step(rng, model, update; n_tries = n_tries, options...)
         for chain_model in state.chain_models
             chain_model.count = 0
             chain_model.nan_at = nan_at
         end
-        @test_throws DomainError AbstractMCMC.step(rng, model, sampler, state)
+        @test_throws DomainError AbstractMCMC.step(rng, model, update, state)
     end
 
-    @testset "undefined ratio at $value" for value in (-Inf, Inf)
-        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, value))
+    @testset "undefined ratio at -Inf" begin
+        model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, -Inf))
         output = sample(backwards_compat_rng(42), model, sampler, 2; options...)
         @test output.samples[2, :, :] == output.samples[1, :, :]
-        @test all(==(value), output.ld)
+        @test all(==(-Inf), output.ld)
     end
 
     @testset "zero-density support" begin
@@ -85,15 +90,17 @@ end
 
     @testset "infinite-density region" begin
         model = AbstractMCMC.LogDensityModel(IntervalModel(Inf))
-        output = sample(
+        @test_throws DomainError sample(
             backwards_compat_rng(42), model, sampler, 100;
             initial_position = [[0.1], [0.3], [0.7], [0.9]], options...
         )
-        @test all(iszero, output.ld[1, :])
-        @test all(==(Inf), output.ld[end, :])
-        for densities in eachcol(output.ld)
-            first_infinite = findfirst(isinf, densities)
-            @test all(==(Inf), densities[first_infinite:end])
-        end
+        _, state = AbstractMCMC.step(
+            backwards_compat_rng(42), model, sampler;
+            initial_position = [[0.1], [0.3], [0.7], [0.9]], options...
+        )
+        state.xₚ[1] .= 2.0
+        @test_throws DomainError DifferentialEvolutionMetropolis.update_chain!(
+            state.chain_models[1], state, 0.0, 1
+        )
     end
 end
