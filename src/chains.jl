@@ -205,6 +205,7 @@ end
 function checked_logdensity(model, x)
     value = logdensity(model, x)
     isnan(value) && throw(DomainError(value, "Log density must not be NaN"))
+    value == Inf && throw(DomainError(value, "Log density must not be +Inf"))
     return value
 end
 
