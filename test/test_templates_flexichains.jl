@@ -37,4 +37,16 @@ using FlexiChains
         @test size(FlexiChains.extras(meta_chain[1]), 1) == 1   # ld
         @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DEMState})
     end
+
+    @testset "double ensemble merges ensembles into the chain dimension" begin
+        run(chain_type) = deMC(
+            ld, 20; rng = backwards_compat_rng(1), n_chains = 3, memory = false,
+            double_ensemble = true, parallel = true, progress = false, chain_type
+        )
+        output = run(DEMOutput)
+        chains = run(VNChain)
+        @test size(chains) == (20, 6)
+        @test Array(chains[FlexiChains.Parameter(:param_1)]) == reshape(output.samples, 20, 6, 2)[:, :, 1]
+        @test Array(chains[FlexiChains.Extra(:ld)]) == reshape(output.ld, 20, 6)
+    end
 end

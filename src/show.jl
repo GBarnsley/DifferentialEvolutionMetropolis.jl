@@ -185,21 +185,28 @@ function Base.show(io::IO, s::DEMSample)
     )
 end
 
+n_output_ensembles(o::DEMOutput) = ndims(o.samples) == 4 ? size(o.samples, 3) : 1
+
 function Base.show(io::IO, o::DEMOutput{T}) where {T}
-    n_iter, n_chains, n_params = size(o.samples)
+    n_iter, n_chains, n_params = size(o.samples, 1), size(o.samples, 2), size(o.samples, ndims(o.samples))
+    n_ensembles = n_output_ensembles(o)
     return print(
         io, "DEMOutput{", T, "}(", n_iter, " iterations, ",
-        n_chains, " chains, ", n_params, " parameters)"
+        n_chains, " chains, ", n_ensembles > 1 ? "$n_ensembles ensembles, " : "",
+        n_params, " parameters)"
     )
 end
 
 function Base.show(io::IO, ::MIME"text/plain", o::DEMOutput{T}) where {T}
-    n_iter, n_chains, n_params = size(o.samples)
+    n_iter, n_chains, n_params = size(o.samples, 1), size(o.samples, 2), size(o.samples, ndims(o.samples))
     fields = [
         "iterations" => string(n_iter),
         "chains" => string(n_chains),
         "parameters" => string(n_params),
     ]
+    if n_output_ensembles(o) > 1
+        insert!(fields, 3, "ensembles" => string(n_output_ensembles(o)))
+    end
     if !isempty(o.ld)
         push!(fields, "log density" => "mean $(round(StatsBase.mean(o.ld); sigdigits = 5)), range $(round.(extrema(o.ld); sigdigits = 5))")
     end

@@ -19,7 +19,7 @@ _generic_de_kwargs_1 = """
   Most updates require either `memory = true`, `double_ensemble = true` or multi-try updates to take advantage of multithreading. Defaults to `false`.
 - `double_ensemble`: Run `2 * (n_chains + n_hot_chains)` chains split into two ensembles, the odd and the even chains.
   The ensembles update in turn, each proposing from the other, so with `parallel = true` the chains within an ensemble update in parallel without memory.
-  Each ensemble has the full temperature ladder (a supplied `temperature_ladder` gives the temperatures of one ensemble) and the output contains the chains of both ensembles.
+  Each ensemble has the full temperature ladder (a supplied `temperature_ladder` gives the temperatures of one ensemble) and `DEMOutput` has an extra ensemble dimension, `samples[iteration, chain, ensemble, parameter]`, while MCMCChains and FlexiChains outputs concatenate the ensembles in the chain dimension.
   A memoryless update needs `chains_required - 1` chains per ensemble rather than `chains_required` chains. Requires `memory = false`. Defaults to `false`.
 - `n_tries`: Number of multiple-try proposals per chain each step.
   Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering) times the square root of its Hastings ratio, then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.

@@ -102,6 +102,7 @@ Metric strategies: stock Stan adaptor, or experimental archive-based strategies 
 `MCMCChainsExt` / `FlexiChainsExt` handle output bundling to those chain types.
 `MCMCDiagnosticToolsExt` implements `r̂_stopping_criteria` (`src/convergence.jl` stubs it) and the epoch-based template methods `deMC(model, epoch_size, epoch_limit)` etc. `PathfinderExt` adds `resolve_initial_position` methods so Pathfinder results supply chain starting positions and initial memory.
 Default output is `DEMOutput` (`samples[iter, chain, param]`, `ld[iter, chain]`), assembled by `bundle_samples` / `chainsstack` in `src/utilities.jl`.
+With `double_ensemble = true` it has an ensemble dimension (`samples[iter, chain, ensemble, param]`, `ld[iter, chain, ensemble]`); `ensemble_major` reorders the interleaved state chains so `Chains`/`VNChain` concatenate the ensembles in the chain dimension.
 
 ### Templates (`src/templates.jl`)
 

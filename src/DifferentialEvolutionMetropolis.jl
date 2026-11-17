@@ -224,12 +224,11 @@ end
 Container for differential evolution MCMC sampling results.
 
 # Fields
-- `samples::Array{T, 3}`: Three-dimensional array of parameter samples with dimensions
-  (iterations, chains, parameters). Each sample represents a point in parameter space
-  from the MCMC chain.
-- `ld::Matrix{T}`: Two-dimensional matrix of log-density values with dimensions
-  (iterations, chains). Contains the log-probability density evaluated at each
-  corresponding sample point.
+- `samples::Array{T}`: Array of parameter samples with dimensions (iterations, chains, parameters),
+  or (iterations, chains, ensembles, parameters) with `double_ensemble = true`.
+- `ld::Array{T}`: Array of log-density values with dimensions (iterations, chains),
+  or (iterations, chains, ensembles) with `double_ensemble = true`.
+  Contains the log-probability density evaluated at each corresponding sample point.
 
 # Type Parameters
 - `T <: Real`: Numeric type for the samples and log-density values (typically `Float64`).
@@ -243,12 +242,20 @@ log_densities = output.ld          # Shape: (n_samples, n_chains)
 
 # Extract samples for a specific chain
 chain_1_samples = output.samples[:, 1, :]  # All samples from chain 1
+
+# With double_ensemble = true, extract samples for chain 1 of the second ensemble
+output.samples[:, 1, 2, :]
+
+# Merge the ensembles into the chain dimension, as is done for MCMCChains and FlexiChains
+reshape(output.samples, size(output.samples, 1), :, size(output.samples, 4))
 ```
 """
-struct DEMOutput{T <: Real}
-    samples::Array{T, 3}
-    ld::Matrix{T}
+struct DEMOutput{T <: Real, S <: Array{T}, L <: Array{T}}
+    samples::S
+    ld::L
 end
+
+DEMOutput{T}(samples::Array{T}, ld::Array{T}) where {T <: Real} = DEMOutput(samples, ld)
 
 include("docs.jl")
 include("hmc.jl")

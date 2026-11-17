@@ -49,4 +49,16 @@ using MCMCChains
         @test size(meta_chain[1]) == (n_samples, n_dims + 1, n_total_chains)
         @test isa(meta_chain[2], Vector{<:DifferentialEvolutionMetropolis.DEMState})
     end
+
+    @testset "double ensemble merges ensembles into the chain dimension" begin
+        run(chain_type) = deMC(
+            ld, 20; rng = backwards_compat_rng(1), n_chains = 3, memory = false,
+            double_ensemble = true, parallel = true, progress = false, chain_type
+        )
+        output = run(DEMOutput)
+        chains = run(Chains)
+        @test size(chains) == (20, 3, 6)
+        @test chains.value.data[:, 1:2, :] == permutedims(reshape(output.samples, 20, 6, 2), (1, 3, 2))
+        @test chains.value.data[:, 3, :] == reshape(output.ld, 20, 6)
+    end
 end

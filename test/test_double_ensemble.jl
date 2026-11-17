@@ -80,15 +80,46 @@
             )
         end
         output = run(true)
-        @test size(output.samples) == (50, 8, 2)
+        @test size(output.samples) == (50, 4, 2, 2)
+        @test size(output.ld) == (50, 4, 2)
         @test output.samples == run(false).samples
+    end
+
+    @testset "output has an ensemble dimension" begin
+        run(chain_type) = sample(
+            backwards_compat_rng(3), model, setup_de_update(), 20;
+            n_chains = 3, n_hot_chains = 1, progress = false, chain_type, kwargs...
+        )
+        raw = suppress_warnings(NO_SWAP_WARNING) do
+            run(Any)
+        end
+        output = suppress_warnings(NO_SWAP_WARNING) do
+            run(DEMOutput)
+        end
+        @test size(output.samples) == (20, 3, 2, 2)
+        @test size(output.ld) == (20, 3, 2)
+        @test all(
+            output.samples[i, k, e, :] == raw[i].x[2 * (k - 1) + e] && output.ld[i, k, e] == raw[i].ld[2 * (k - 1) + e]
+                for i in 1:20, k in 1:3, e in 1:2
+        )
+        @test repr(output) == "DEMOutput{Float64}(20 iterations, 3 chains, 2 ensembles, 2 parameters)"
+        @test occursin("ensembles:   2", repr(MIME("text/plain"), output))
+
+        stacked = suppress_warnings(NO_SWAP_WARNING) do
+            sample(
+                backwards_compat_rng(3), model, setup_de_update(), MCMCSerial(), 20, 2;
+                n_chains = 3, progress = false, chain_type = DEMOutput, kwargs...
+            )
+        end
+        @test size(stacked.samples) == (20, 6, 2, 2)
+        @test size(stacked.ld) == (20, 6, 2)
     end
 
     @testset "templates" begin
         output = deMC(model, 100; n_chains = 4, progress = false, kwargs...)
-        @test size(output.samples) == (100, 8, 2)
+        @test size(output.samples) == (100, 4, 2, 2)
         output = DREAMz(model, 100; n_chains = 4, progress = false, kwargs...)
-        @test size(output.samples) == (100, 8, 2)
+        @test size(output.samples) == (100, 4, 2, 2)
         @test_throws r"requires `memory = false`" deMCzs(model, 100; n_chains = 4, progress = false, kwargs..., memory = true)
     end
 end

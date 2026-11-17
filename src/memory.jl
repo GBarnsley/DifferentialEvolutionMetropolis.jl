@@ -19,6 +19,10 @@ chain_groups(state::DEMState) = chain_groups(state.memory, state.x)
 chain_groups(::AbstractDEMMemory, x) = (eachindex(x),)
 chain_groups(::DEMDoubleEnsemble, x) = (1:2:length(x), 2:2:length(x))
 
+n_ensembles(state::DEMState) = n_ensembles(state.memory)
+n_ensembles(::AbstractDEMMemory) = 1
+n_ensembles(::DEMDoubleEnsemble) = 2
+
 #abstract memory-full type
 abstract type AbstractDEMMemoryFormat{
     T, VV <: AbstractVector{<:AbstractVector{T}},

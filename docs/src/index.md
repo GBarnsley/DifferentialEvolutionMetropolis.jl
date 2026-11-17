@@ -95,6 +95,7 @@ The output format can be modified with `chain_type`; the supported options are `
 If `save_final_state = true` the format will be `(sample::requested format, final_state)`.
 If run in parallel using `sample(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for the `Chains`, `VNChain`, and `DEMOutput`.
 If the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
+With `double_ensemble = true`, `DEMOutput` has an extra ensemble dimension (`samples[iteration, chain, ensemble, parameter]`, `ld[iteration, chain, ensemble]`), while `Chains` and `VNChain` concatenate the ensembles in the chain dimension.
 
 Note that support for `FlexiChains` is a bit underutilized as all samplers currently require all parameters to have the same type.
 

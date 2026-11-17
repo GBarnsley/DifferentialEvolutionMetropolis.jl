@@ -78,5 +78,8 @@
         @test repr(output) == "DEMOutput{Float64}(5 iterations, 3 chains, 2 parameters)"
         @test plain(output) == "DEMOutput{Float64}\n  iterations:  5\n  chains:      3\n  parameters:  2\n  log density: mean -1.0, range (-1.0, -1.0)"
         @test !occursin("log density", plain(DEMOutput(zeros(0, 3, 2), zeros(0, 3))))
+        output = DEMOutput(zeros(5, 3, 2, 4), fill(-1.0, 5, 3, 2))
+        @test repr(output) == "DEMOutput{Float64}(5 iterations, 3 chains, 2 ensembles, 4 parameters)"
+        @test plain(output) == "DEMOutput{Float64}\n  iterations:  5\n  chains:      3\n  ensembles:   2\n  parameters:  4\n  log density: mean -1.0, range (-1.0, -1.0)"
     end
 end

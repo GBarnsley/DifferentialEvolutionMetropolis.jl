@@ -38,9 +38,15 @@ end
 # Cold chains come first in the initial positions, and number `n_chains` per ensemble
 n_cold_chains(kwargs) = (kwargs.double_ensemble ? 2 : 1) * kwargs.n_chains
 
+# Merges a double ensemble back into the interleaved chain order of the initial positions
+interleave_ensembles(output) = ndims(output.ld) == 2 ? output : (;
+        samples = reshape(permutedims(output.samples, (1, 3, 2, 4)), size(output.samples, 1), :, size(output.samples, 4)),
+        ld = reshape(permutedims(output.ld, (1, 3, 2)), size(output.ld, 1), :),
+    )
+
 run_sampler(rng, target, update, n_samples, initial_positions, kwargs) =
     suppress_warnings(NO_SWAP_WARNING) do
-    sample(rng, target, update, n_samples; initial_position = initial_positions, kwargs...)
+    interleave_ensembles(sample(rng, target, update, n_samples; initial_position = initial_positions, kwargs...))
 end
 
 """

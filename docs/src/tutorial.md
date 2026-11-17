@@ -242,7 +242,8 @@ HMC updates (and any custom update that does not depend on the positions of the 
 
 Alternatively, `double_ensemble = true` runs twice the number of chains as two ensembles, the odd and the even chains.
 The odd chains update in parallel, proposing from the even chains, then the even chains update in parallel, proposing from the updated odd chains.
-Both ensembles are returned in the output.
+In `DEMOutput` the ensemble is an extra dimension, `samples[iteration, chain, ensemble, parameter]` and `ld[iteration, chain, ensemble]`.
+`Chains` and `VNChain` outputs concatenate the ensembles in the chain dimension, all chains of the first ensemble and then all chains of the second.
 
 ```julia
 using AbstractMCMC, DifferentialEvolutionMetropolis
