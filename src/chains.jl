@@ -266,16 +266,24 @@ function propose_and_update_chain!(state, sampler, i)
     return nothing
 end
 
-function propose_and_update_chains!(state, sampler)
-    for i in eachindex(state.x)
+function propose_and_update_chains!(state, sampler, chains)
+    for i in chains
         propose_and_update_chain!(state, sampler, i)
     end
     return nothing
 end
 
 function update_chains!(state, sampler, parallel::Bool)
-    foreach_ensemble(state) do chains
-        foreach_chain(i -> propose_and_update_chain!(state, sampler, i), chains, parallel)
+    if parallel
+        for chains in chain_ensembles(state.memory)
+            Threads.@threads for i in chains
+                propose_and_update_chain!(state, sampler, i)
+            end
+        end
+    else
+        for chains in chain_ensembles(state.memory)
+            propose_and_update_chains!(state, sampler, chains)
+        end
     end
     return nothing
 end
@@ -285,7 +293,7 @@ function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
         sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
     )
-    propose_and_update_chains!(state, sampler)
+    propose_and_update_chains!(state, sampler, eachindex(state.x))
 
     return nothing
 end
@@ -736,7 +744,7 @@ function step(
         end
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
-            true_memory, memory_method, memory_refill, memory_increment,
+            (1:n_true_chains,), true_memory, memory_method, memory_refill, memory_increment,
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
         )

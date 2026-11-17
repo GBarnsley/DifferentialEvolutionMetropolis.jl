@@ -95,19 +95,6 @@ function select_trial!(
     return findfirst(>(rand(rng) * last(weights)), weights)
 end
 
-function foreach_chain(f, chains, parallel::Bool)
-    if parallel
-        Threads.@threads for i in chains
-            f(i)
-        end
-    else
-        for i in chains
-            f(i)
-        end
-    end
-    return nothing
-end
-
 trial_logdensity(model, x, ld) = ld > -Inf ? checked_logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
@@ -117,8 +104,26 @@ function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Boo
             lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
         end
     else
-        lds .= trial_logdensity.(Ref(chain_models[1]), xs, lds)
+        evaluate_trials!(lds, xs, chain_models[1])
     end
+    return nothing
+end
+
+function evaluate_trials!(lds::AbstractArray{T}, xs, model) where {T <: Real}
+    lds .= trial_logdensity.(Ref(model), xs, lds)
+    return nothing
+end
+
+function propose_and_evaluate_forward!(buffers::DEMMultiTryBuffers, state, sampler, i::Int)
+    propose_forward!(buffers, state, sampler, i)
+    evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], state.chain_models[i])
+    return nothing
+end
+
+function propose_evaluate_and_accept_reference!(buffers::DEMMultiTryBuffers, state, sampler, i::Int)
+    propose_reference!(buffers, state, sampler, i)
+    evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], state.chain_models[i])
+    accept_trial!(buffers, state, i)
     return nothing
 end
 
@@ -177,20 +182,28 @@ function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     return false
 end
 
-# Forward and reference trials of each ensemble of chains are each evaluated in one loop over every (trial, chain)
+# Each chain proposes and evaluates its forward trials, then its reference trials, with the chains of an ensemble in parallel
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
-    chain_models = reshape(state.chain_models, size(buffers.forward_ld))
-    foreach_ensemble(state) do chains
-        models = view(chain_models, :, chains)
-        foreach_chain(i -> propose_forward!(buffers, state, sampler, i), chains, parallel)
-        evaluate_trials!(view(buffers.forward_ld, :, chains), view(buffers.forward, :, chains), models, parallel)
-        foreach_chain(i -> propose_reference!(buffers, state, sampler, i), chains, parallel)
-        evaluate_trials!(view(buffers.reference_ld, :, chains), view(buffers.reference, :, chains), models, parallel)
-        foreach_chain(i -> accept_trial!(buffers, state, i), chains, parallel)
+    if parallel
+        for chains in chain_ensembles(state.memory)
+            Threads.@threads for i in chains
+                propose_and_evaluate_forward!(buffers, state, sampler, i)
+            end
+            Threads.@threads for i in chains
+                propose_evaluate_and_accept_reference!(buffers, state, sampler, i)
+            end
+        end
+    else
+        for chains in chain_ensembles(state.memory)
+            for i in chains
+                propose_and_evaluate_forward!(buffers, state, sampler, i)
+                propose_evaluate_and_accept_reference!(buffers, state, sampler, i)
+            end
+        end
     end
     return nothing
 end

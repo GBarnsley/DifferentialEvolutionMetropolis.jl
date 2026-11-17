@@ -182,7 +182,7 @@ function step_warmup(
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))
 
-        foreach_ensemble(state) do chains
+        for chains in chain_ensembles(state.memory)
             Threads.@threads for i in chains
                 prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
                 accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
@@ -202,7 +202,7 @@ function step_warmup(
             end
         end
     else
-        foreach_ensemble(state) do chains
+        for chains in chain_ensembles(state.memory)
             for i in chains
                 prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
                 accepted = update_chain!(model, state, prop.offset, i)

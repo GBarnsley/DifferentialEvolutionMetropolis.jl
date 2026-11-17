@@ -17,15 +17,10 @@ struct DEMDoubleEnsemble{T} <: AbstractDEMMemoryless{T}
 end
 
 # Ensembles of chains that are updated in turn, chains within an ensemble can be updated in parallel
-chain_ensembles(memory::AbstractDEMMemoryless) = memory.chain_ensembles
+chain_ensembles(memory::AbstractDEMMemory) = memory.chain_ensembles
 
 n_ensembles(::AbstractDEMMemory) = 1
 n_ensembles(memory::DEMDoubleEnsemble) = 2
-
-# Memory-based states update all chains together, memoryless states update each ensemble in turn
-foreach_ensemble(f, state) = f(eachindex(state.x))
-foreach_ensemble(f, state::DEMState{<:Any, <:Any, <:Any, <:AbstractDEMMemoryless}) =
-    foreach(f, chain_ensembles(state.memory))
 
 #abstract memory-full type
 abstract type AbstractDEMMemoryFormat{
@@ -39,6 +34,7 @@ abstract type AbstractDEMMemoryFillMethod end
 #full memory, refreshing from the start
 struct DEMMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
     AbstractDEMMemoryFormat{T, VV}
+    chain_ensembles::Tuple{UnitRange{Int}}
     mem_x::VV
     fill::F
     #for preallocation only for internal use
@@ -64,6 +60,7 @@ end
 #non-full memory, filling up to a max size then extending or refilling
 struct DEMMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
     AbstractDEMMemoryFormat{T, VV}
+    chain_ensembles::Tuple{UnitRange{Int}}
     mem_x::VV
     fill::F
     refill::Bool
@@ -85,7 +82,7 @@ function update_memory!!(
 
     if memory.fill.position == length(memory.mem_x)
         if memory.refill
-            memory = DEMMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
+            memory = DEMMemoryRefill(memory.chain_ensembles, memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
             memory.fill.position = 0
         else
             #increase memory size
