@@ -114,16 +114,11 @@ function evaluate_trials!(lds::AbstractArray{T}, xs, model) where {T <: Real}
     return nothing
 end
 
-function propose_and_evaluate_forward!(buffers::DEMMultiTryBuffers, state, sampler, i::Int)
-    propose_forward!(buffers, state, sampler, i)
-    evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], state.chain_models[i])
-    return nothing
-end
-
-function propose_evaluate_and_accept_reference!(buffers::DEMMultiTryBuffers, state, sampler, i::Int)
-    propose_reference!(buffers, state, sampler, i)
-    evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], state.chain_models[i])
-    accept_trial!(buffers, state, i)
+# Evaluates every (trial, chain) pair of the given chains in parallel
+function evaluate_trials!(lds::AbstractMatrix{T}, xs, chain_models, chains::AbstractRange) where {T <: Real}
+    Threads.@threads for m in CartesianIndices((axes(lds, 1), chains))
+        lds[m] = trial_logdensity(chain_models[LinearIndices(lds)[m]], xs[m], lds[m])
+    end
     return nothing
 end
 
@@ -182,7 +177,7 @@ function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     return false
 end
 
-# Each chain proposes and evaluates its forward trials, then its reference trials, with the chains of an ensemble in parallel
+# For each ensemble, the forward and reference trials are each evaluated in one parallel loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
@@ -191,18 +186,24 @@ function update_chains!(
     if parallel
         for chains in chain_ensembles(state.memory)
             Threads.@threads for i in chains
-                propose_and_evaluate_forward!(buffers, state, sampler, i)
+                propose_forward!(buffers, state, sampler, i)
             end
+            evaluate_trials!(buffers.forward_ld, buffers.forward, state.chain_models, chains)
             Threads.@threads for i in chains
-                propose_evaluate_and_accept_reference!(buffers, state, sampler, i)
+                propose_reference!(buffers, state, sampler, i)
+            end
+            evaluate_trials!(buffers.reference_ld, buffers.reference, state.chain_models, chains)
+            Threads.@threads for i in chains
+                accept_trial!(buffers, state, i)
             end
         end
     else
-        for chains in chain_ensembles(state.memory)
-            for i in chains
-                propose_and_evaluate_forward!(buffers, state, sampler, i)
-                propose_evaluate_and_accept_reference!(buffers, state, sampler, i)
-            end
+        for chains in chain_ensembles(state.memory), i in chains
+            propose_forward!(buffers, state, sampler, i)
+            evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], state.chain_models[i])
+            propose_reference!(buffers, state, sampler, i)
+            evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], state.chain_models[i])
+            accept_trial!(buffers, state, i)
         end
     end
     return nothing
