@@ -80,7 +80,6 @@ The two type parameters declare the update's capabilities.
 `AbstractDEMSamplerExecutionMode` indicates if an update supports multi-threading (`DEMSamplerMultiThread`).
 By default all updates, even those marked as `DEMSamplerSerial`, support multithreading across log-density evaluations when `memory = true`; execution mode refers to multithreading when `memory = false`.
 As a rule of thumb, an update should be marked `DEMSamplerSerial` if it uses other chains' positions (i.e. via `pick_chains`) and marked `DEMSamplerMultiThread` if it only uses its own position.
-Read other chains only through `pick_chains`, which also draws from the correct ensemble and positions when `double_ensemble = true`.
 
 `AbstractDEMSamplerTryMode` indicates if the update is compatible with multi-try evaluation, **not** if it actually uses it.
 Any update implemented via the `proposal!` interface can be labelled with `DEMSamplerMultipleTry`, as the multiple-try weights include the `offset` it returns.
@@ -113,7 +112,6 @@ The function should write the proposed position into `xₚ` (proposing from `x`)
 When memoryless sampling is used (`memory = false`), the sampler validates that the number of parallel chains is sufficient for the sampler's proposals (since they cannot be drawn from the memory database).
 By default, updates are assumed to require at least 3 chains.
 If your custom sampler has a different requirement, you should implement the `chains_required(sampler)` trait function.
-With `double_ensemble = true` each ensemble needs `chains_required(sampler) - 1` chains, as the current chain is in the other ensemble.
 For example:
 
 ```julia

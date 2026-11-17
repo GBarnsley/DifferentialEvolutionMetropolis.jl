@@ -111,20 +111,6 @@ end
 trial_logdensity(model, x, ld) = ld > -Inf ? checked_logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
-function evaluate_trials!(lds::AbstractMatrix{T}, xs::AbstractMatrix, chain_models, parallel::Bool, chains) where {T <: Real}
-    trials = view(LinearIndices(lds), :, chains)
-    if parallel
-        Threads.@threads for m in trials
-            lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
-        end
-    else
-        for m in trials
-            lds[m] = trial_logdensity(chain_models[1], xs[m], lds[m])
-        end
-    end
-    return nothing
-end
-
 function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Bool) where {T <: Real}
     if parallel
         Threads.@threads for m in eachindex(xs)
@@ -197,11 +183,13 @@ function update_chains!(
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
+    chain_models = reshape(state.chain_models, size(buffers.forward_ld))
     for chains in chain_groups(state)
+        models = view(chain_models, :, chains)
         foreach_chain(i -> propose_forward!(buffers, state, sampler, i), chains, parallel)
-        evaluate_trials!(buffers.forward_ld, buffers.forward, state.chain_models, parallel, chains)
+        evaluate_trials!(view(buffers.forward_ld, :, chains), view(buffers.forward, :, chains), models, parallel)
         foreach_chain(i -> propose_reference!(buffers, state, sampler, i), chains, parallel)
-        evaluate_trials!(buffers.reference_ld, buffers.reference, state.chain_models, parallel, chains)
+        evaluate_trials!(view(buffers.reference_ld, :, chains), view(buffers.reference, :, chains), models, parallel)
         foreach_chain(i -> accept_trial!(buffers, state, i), chains, parallel)
     end
     return nothing

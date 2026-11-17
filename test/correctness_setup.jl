@@ -5,8 +5,7 @@ Sampler keyword arguments, a buffer of initial positions (chains, then hot chain
 temperature each initial position is drawn at and the `LogDensityModel` to sample, wrapping
 `model` in a ForwardDiff gradient when `gradient` is set. Uses 3 chains, or the minimum a
 memoryless `update` requires if larger. With memory, the sampler fills an initial memory of
-`N₀ = 3000` positions itself, so the memory is not drawn from the target. A double ensemble
-uses that many chains per ensemble, updated with `parallel = true`.
+`N₀ = 3000` positions itself, so the memory is not drawn from the target.
 """
 function correctness_setup(model, update; memory, n_hot_chains, n_tries, double_ensemble = false, gradient = false)
     d = LogDensityProblems.dimension(model)

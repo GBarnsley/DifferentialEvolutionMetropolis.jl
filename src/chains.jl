@@ -666,20 +666,13 @@ function step(
         end
     end
 
-    if double_ensemble
-        if n_true_chains ÷ 2 < chains_required(sampler) - 1
-            error("Double ensemble scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler) - 1) chains per ensemble, but only $(n_true_chains ÷ 2) were provided (including hot chains).")
-        end
-        if n_true_chains ÷ 2 < dimension(model)
-            @warn "In a double ensemble the number of chains per ensemble should be greater than or equal to the number of parameters"
-        end
-    else
-        if !memory && n_true_chains < chains_required(sampler)
-            error("Memoryless scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler)) chains, but only $n_true_chains were provided (including hot chains).")
-        end
-        if length(x) < dimension(model) && !memory
-            @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
-        end
+    n_ensemble_chains = double_ensemble ? n_true_chains ÷ 2 : n_true_chains
+    if !memory && n_ensemble_chains < chains_required(sampler)
+        error("Memoryless scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler)) chains, but only $n_ensemble_chains were provided (including hot chains).")
+    end
+
+    if n_ensemble_chains < dimension(model) && !memory
+        @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
 
     chain_models = [deepcopy(model) for _ in 1:(length(x) * n_tries)]
@@ -758,6 +751,7 @@ function step(
         )
     elseif double_ensemble
         memory = DEMDoubleEnsemble{T}(
+            (1:2:n_true_chains, 2:2:n_true_chains),
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains],
         )

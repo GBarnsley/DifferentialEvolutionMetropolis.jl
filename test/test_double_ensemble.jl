@@ -43,12 +43,13 @@
     @testset "errors and warnings" begin
         rng = backwards_compat_rng(1)
         @test_throws r"requires `memory = false`" AbstractMCMC.step(rng, model, setup_de_update(); kwargs..., memory = true)
-        @test_throws r"requires at least 3 chains per ensemble" AbstractMCMC.step(rng, model, setup_snooker_update(); n_chains = 2, kwargs...)
-        @test_logs AbstractMCMC.step(rng, model, setup_snooker_update(); n_chains = 3, kwargs...)
-        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); n_chains = 2, kwargs...)
+        @test_throws r"requires at least 4 chains, but only 3" AbstractMCMC.step(rng, model, setup_snooker_update(); n_chains = 3, kwargs...)
+        @test_throws r"requires at least 3 chains, but only 2" AbstractMCMC.step(rng, model, setup_de_update(); n_chains = 2, kwargs...)
+        @test_logs AbstractMCMC.step(rng, model, setup_snooker_update(); n_chains = 4, kwargs...)
+        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); n_chains = 3, kwargs...)
         @test_logs (:warn, DOUBLE_ENSEMBLE_SERIAL_WARNING) AbstractMCMC.step(rng, model, setup_de_update(); kwargs..., parallel = false)
-        @test_logs (:warn, r"number of chains per ensemble should be greater") AbstractMCMC.step(
-            rng, AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(3))), setup_de_update(); n_chains = 2, kwargs...
+        @test_logs (:warn, r"number of chains should be greater") AbstractMCMC.step(
+            rng, AbstractMCMC.LogDensityModel(IsotropicNormalModel(zeros(4))), setup_de_update(); n_chains = 3, kwargs...
         )
         @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(rng, model, setup_de_update(); kwargs..., double_ensemble = false)
     end
