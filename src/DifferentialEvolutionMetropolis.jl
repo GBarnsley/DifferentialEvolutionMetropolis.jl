@@ -245,9 +245,6 @@ chain_1_samples = output.samples[:, 1, :]  # All samples from chain 1
 
 # With double_ensemble = true, extract samples for chain 1 of the second ensemble
 output.samples[:, 1, 2, :]
-
-# Merge the ensembles into the chain dimension, as is done for MCMCChains and FlexiChains
-reshape(output.samples, size(output.samples, 1), :, size(output.samples, 4))
 ```
 """
 struct DEMOutput{T <: Real, S <: Array{T}, L <: Array{T}}

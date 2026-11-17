@@ -274,18 +274,9 @@ function propose_and_update_chains!(state, sampler)
 end
 
 function update_chains!(state, sampler, parallel::Bool)
-    for chains in chain_groups(state)
-        if parallel
-            Threads.@threads for i in chains
-                propose_and_update_chain!(state, sampler, i)
-            end
-        else
-            for i in chains
-                propose_and_update_chain!(state, sampler, i)
-            end
-        end
+    foreach_ensemble(state) do chains
+        foreach_chain(i -> propose_and_update_chain!(state, sampler, i), chains, parallel)
     end
-
     return nothing
 end
 
@@ -757,6 +748,7 @@ function step(
         )
     else
         memory = DEMMemoryless{T}(
+            (1:n_true_chains,),
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
         )

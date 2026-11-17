@@ -182,7 +182,7 @@ function step_warmup(
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))
 
-        for chains in chain_groups(state)
+        foreach_ensemble(state) do chains
             Threads.@threads for i in chains
                 prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
                 accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
@@ -202,18 +202,20 @@ function step_warmup(
             end
         end
     else
-        for chains in chain_groups(state), i in chains
-            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
-            accepted = update_chain!(model, state, prop.offset, i)
+        foreach_ensemble(state) do chains
+            for i in chains
+                prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
+                accepted = update_chain!(model, state, prop.offset, i)
 
-            if variance_ready && i in cold_chains
-                cr_index = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_index] += 1
-                if accepted
-                    adaptive_state.Δ[cr_index] += sum(
-                        (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                            adaptive_state.variance
-                    )
+                if variance_ready && i in cold_chains
+                    cr_index = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
+                    adaptive_state.L[cr_index] += 1
+                    if accepted
+                        adaptive_state.Δ[cr_index] += sum(
+                            (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
+                                adaptive_state.variance
+                        )
+                    end
                 end
             end
         end

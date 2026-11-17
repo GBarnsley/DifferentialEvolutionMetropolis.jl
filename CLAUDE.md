@@ -50,7 +50,7 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 - `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state; on an adaptive state it calls `fix_sampler_state` and delegates.
   It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` and `update_chain!` (log density + tempered MH accept/reject).
 - `update_chains!` threads over chains when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
-  Chains are updated in the groups given by `chain_groups(state)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
+  Chains are updated in the groups given by `foreach_ensemble(state)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
 - `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` (unexported, documented with the rest of the custom sampler API in `docs/src/custom.md`) freeze adapted parameters.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
 - `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless), chains of the other ensemble (double ensemble) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).

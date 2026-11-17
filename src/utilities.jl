@@ -93,7 +93,7 @@ function bundle_samples(
         save_final_state::Bool = false,
         kwargs...
     ) where {T, T2 <: Real, V <: AbstractVector{T2}, VV <: AbstractVector{V}}
-    samples_ = convert(T, samples, n_ensembles(state))
+    samples_ = convert(T, samples, n_ensembles(state.memory))
     if save_final_state
         return (
             samples_,

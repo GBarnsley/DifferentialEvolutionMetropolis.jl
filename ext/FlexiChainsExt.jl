@@ -13,7 +13,7 @@ function AbstractMCMC.bundle_samples(
         save_final_state::Bool = false,
         kwargs...
     ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
-    samples_ = DME.convert(VNChain, DME.ensemble_major(samples, DME.n_ensembles(state)))
+    samples_ = DME.convert(VNChain, DME.ensemble_major(samples, DME.n_ensembles(state.memory)))
     if save_final_state
         return (
             samples_,

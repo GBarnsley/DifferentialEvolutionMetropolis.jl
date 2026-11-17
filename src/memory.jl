@@ -2,6 +2,7 @@ abstract type AbstractDEMMemoryless{T} <: AbstractDEMMemory{T} end
 
 #no memory
 struct DEMMemoryless{T} <: AbstractDEMMemoryless{T}
+    chain_ensembles::Tuple{UnitRange{Int}}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
@@ -9,20 +10,22 @@ end
 
 #no memory, odd and even chains form two ensembles that each propose from the other
 struct DEMDoubleEnsemble{T} <: AbstractDEMMemoryless{T}
-    chain_groups::NTuple{2, StepRange{Int, Int}}
+    chain_ensembles::NTuple{2, StepRange{Int, Int}}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
 end
 
-# Groups of chains that are updated in turn, chains within a group can be updated in parallel
-chain_groups(state::DEMState) = chain_groups(state.memory, state.x)
-chain_groups(::AbstractDEMMemory, x) = (eachindex(x),)
-chain_groups(memory::DEMDoubleEnsemble, x) = memory.chain_groups
+# Ensembles of chains that are updated in turn, chains within an ensemble can be updated in parallel
+chain_ensembles(memory::AbstractDEMMemoryless) = memory.chain_ensembles
 
-n_ensembles(state::DEMState) = n_ensembles(state.memory)
 n_ensembles(::AbstractDEMMemory) = 1
-n_ensembles(memory::DEMDoubleEnsemble) = length(memory.chain_groups)
+n_ensembles(memory::DEMDoubleEnsemble) = 2
+
+# Memory-based states update all chains together, memoryless states update each ensemble in turn
+foreach_ensemble(f, state) = f(eachindex(state.x))
+foreach_ensemble(f, state::DEMState{<:Any, <:Any, <:Any, <:AbstractDEMMemoryless}) =
+    foreach(f, chain_ensembles(state.memory))
 
 #abstract memory-full type
 abstract type AbstractDEMMemoryFormat{

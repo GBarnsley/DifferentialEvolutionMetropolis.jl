@@ -177,14 +177,14 @@ function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     return false
 end
 
-# Forward and reference trials of each group of chains are each evaluated in one loop over every (trial, chain)
+# Forward and reference trials of each ensemble of chains are each evaluated in one loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
     chain_models = reshape(state.chain_models, size(buffers.forward_ld))
-    for chains in chain_groups(state)
+    foreach_ensemble(state) do chains
         models = view(chain_models, :, chains)
         foreach_chain(i -> propose_forward!(buffers, state, sampler, i), chains, parallel)
         evaluate_trials!(view(buffers.forward_ld, :, chains), view(buffers.forward, :, chains), models, parallel)

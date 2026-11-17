@@ -8,7 +8,7 @@
         @test state.memory isa DEM.DEMDoubleEnsemble
         @test length(state.x) == 6
         @test length(sample.x) == 6
-        @test DEM.chain_groups(state) == (1:2:6, 2:2:6)
+        @test DEM.chain_ensembles(state.memory) == (1:2:6, 2:2:6)
         @test repr(state.memory) == "none (double ensemble)"
 
         _, state = AbstractMCMC.step(
