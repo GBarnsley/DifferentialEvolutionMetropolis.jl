@@ -1,9 +1,23 @@
+abstract type AbstractDEMMemoryless{T} <: AbstractDEMMemory{T} end
+
 #no memory
-struct DEMMemoryless{T} <: AbstractDEMMemory{T}
+struct DEMMemoryless{T} <: AbstractDEMMemoryless{T}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
 end
+
+#no memory, odd and even chains form two ensembles that each propose from the other
+struct DEMDoubleEnsemble{T} <: AbstractDEMMemoryless{T}
+    #for preallocation only for internal use
+    indices_INTERNAL::Vector{Vector{Int}}
+    ordered_indices_INTERNAL::Vector{Vector{Int}}
+end
+
+# Groups of chains that are updated in turn, chains within a group can be updated in parallel
+chain_groups(state::DEMState) = chain_groups(state.memory, state.x)
+chain_groups(::AbstractDEMMemory, x) = (eachindex(x),)
+chain_groups(::DEMDoubleEnsemble, x) = (1:2:length(x), 2:2:length(x))
 
 #abstract memory-full type
 abstract type AbstractDEMMemoryFormat{

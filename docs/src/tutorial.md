@@ -240,6 +240,10 @@ This setting makes multiple proposals for each update and picks one weighted by 
 Since these occur within one update, each log-density can be evaluated in parallel.
 HMC updates (and any custom update that does not depend on the positions of the other chains) do not read the other chains and still run in parallel regardless of `memory`.
 
+Alternatively, `double_ensemble = true` runs twice the number of chains as two ensembles, the odd and the even chains.
+The odd chains update in parallel, proposing from the even chains, then the even chains update in parallel, proposing from the updated odd chains.
+Both ensembles are returned in the output.
+
 ```julia
 using AbstractMCMC, DifferentialEvolutionMetropolis
 

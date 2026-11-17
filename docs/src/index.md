@@ -39,7 +39,6 @@ The precision and draw-type behavior of all distributions depend on Distribution
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
 
 - Diagnostics accounting for inter-chain dependence
-- Double ensemble mode, an alternative for multi-try that allows parallel evaluations when `memory = false`
 - Implement delayed rejection DREAM
 - Kalman filtering for warmup (requires additions to the LD interface)
 - Investigate implementations with Gibbs/particle-filtering to support the sampling of discrete parameters

@@ -454,7 +454,7 @@ end
 
 # The two state-level requirements shared by every memory-archive strategy.
 function require_memory_untempered(state, who::AbstractString)
-    state.memory isa DEM.DEMMemoryless && error(
+    state.memory isa DEM.AbstractDEMMemoryless && error(
         "$who estimates the HMC mass matrix from the memory archive, but this scheme runs " *
             "memoryless. Enable memory, or use the default stock-adaptor metric."
     )

@@ -95,13 +95,13 @@ function select_trial!(
     return findfirst(>(rand(rng) * last(weights)), weights)
 end
 
-function foreach_chain(f, n_chains::Int, parallel::Bool)
+function foreach_chain(f, chains, parallel::Bool)
     if parallel
-        Threads.@threads for i in 1:n_chains
+        Threads.@threads for i in chains
             f(i)
         end
     else
-        for i in 1:n_chains
+        for i in chains
             f(i)
         end
     end
@@ -111,6 +111,20 @@ end
 trial_logdensity(model, x, ld) = ld > -Inf ? checked_logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
+function evaluate_trials!(lds::AbstractMatrix{T}, xs::AbstractMatrix, chain_models, parallel::Bool, chains) where {T <: Real}
+    trials = view(LinearIndices(lds), :, chains)
+    if parallel
+        Threads.@threads for m in trials
+            lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
+        end
+    else
+        for m in trials
+            lds[m] = trial_logdensity(chain_models[1], xs[m], lds[m])
+        end
+    end
+    return nothing
+end
+
 function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Bool) where {T <: Real}
     if parallel
         Threads.@threads for m in eachindex(xs)
@@ -177,18 +191,19 @@ function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     return false
 end
 
-# Forward and reference trials are each evaluated in one loop over every (trial, chain)
+# Forward and reference trials of each group of chains are each evaluated in one loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
-    n_chains = length(state.x)
-    foreach_chain(i -> propose_forward!(buffers, state, sampler, i), n_chains, parallel)
-    evaluate_trials!(buffers.forward_ld, buffers.forward, state.chain_models, parallel)
-    foreach_chain(i -> propose_reference!(buffers, state, sampler, i), n_chains, parallel)
-    evaluate_trials!(buffers.reference_ld, buffers.reference, state.chain_models, parallel)
-    foreach_chain(i -> accept_trial!(buffers, state, i), n_chains, parallel)
+    for chains in chain_groups(state)
+        foreach_chain(i -> propose_forward!(buffers, state, sampler, i), chains, parallel)
+        evaluate_trials!(buffers.forward_ld, buffers.forward, state.chain_models, parallel, chains)
+        foreach_chain(i -> propose_reference!(buffers, state, sampler, i), chains, parallel)
+        evaluate_trials!(buffers.reference_ld, buffers.reference, state.chain_models, parallel, chains)
+        foreach_chain(i -> accept_trial!(buffers, state, i), chains, parallel)
+    end
     return nothing
 end
 

@@ -24,6 +24,7 @@ const FIXED_CROSSOVER_WARNING = r"sampler already has a fixed crossover probabil
 const MEMORYLESS_PARALLEL_WARNING = r"None of the provided samplers can evaluate in parallel"
 const MEMORY_SIZE_WARNING = r"warm-up steps the memory will store"
 const MEMORY_REFILL_WARNING = r"With `memory_refill = true` the memory stores at most"
+const DOUBLE_ENSEMBLE_SERIAL_WARNING = r"`double_ensemble = true` but `parallel = false`"
 
 struct WarningFilter{L <: AbstractLogger} <: AbstractLogger
     logger::L

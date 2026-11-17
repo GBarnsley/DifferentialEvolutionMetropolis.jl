@@ -133,6 +133,7 @@ function Base.show(io::IO, l::DEMAnnealingTemperatureLadder)
 end
 
 Base.show(io::IO, ::DEMMemoryless) = print(io, "none")
+Base.show(io::IO, ::DEMDoubleEnsemble) = print(io, "none (double ensemble)")
 
 fill_method(::DEMMemoryFillEvery) = "every iteration"
 fill_method(f::DEMMemoryFillThin) = "every $(f.max_count) iterations"
