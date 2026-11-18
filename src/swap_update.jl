@@ -47,12 +47,10 @@ function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
         sampler::DEMSwapSampler,
-        state::DEMState{
-            T, DEMAdaptiveStatic{T},
-        };
+        state::DEMState;
         update_memory::Bool = true,
         kwargs...
-    ) where {T <: Real}
+    )
     for i in eachindex(state.x)
         copyto!(state.xₚ[i], state.x[i])
     end
@@ -60,12 +58,9 @@ function step(
 
     swap_adjacent_temperatures!(rng, state, state.temperature_ladder)
 
-    return create_sample(state),
-        update_state(
-            state;
-            swap_positions = Val(true),
-            update_memory = update_memory
-        )
+    sample = create_sample(state)
+    update_state!(state; update_memory = update_memory)
+    return sample, state
 end
 
 swap_adjacent_temperatures!(rng, state, ::DEMNullTemperatureLadder) = nothing

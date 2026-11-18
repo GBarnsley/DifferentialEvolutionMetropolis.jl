@@ -7,7 +7,7 @@ import AdvancedHMC: AbstractHMCSampler, AbstractMetric, AbstractIntegrator,
 const AHMCAdapt = AdvancedHMC.Adaptation
 import AdvancedHMC.Adaptation: AbstractAdaptor
 import AbstractMCMC
-import AbstractMCMC: LogDensityModel, step, step_warmup
+import AbstractMCMC: LogDensityModel, step
 import LinearAlgebra: diagind
 import LogDensityProblems
 import Random
@@ -37,36 +37,31 @@ once in `setup_hmc_update` and then discarded.
 
 Immutable, like every sampler in this package. The pieces are built at their final size in
 `setup_hmc_update` (which is why it needs `n_dims`); a symbol integrator gets a zero step size,
-found at the ensemble on the first warmup step. `fix_sampler` returns another
-`DEMHMCSampler` carrying the *adapted* pieces, which is how the adapted
-metric/`κ` reach the post-warmup `step`. That fixed sampler also carries the live
-`DEMHMCAdaptiveState` (`astate`), so the memory-based strategies keep tracking the growing
-archive during sampling. Without warmup `astate` is `nothing` and `step` runs the pieces as
-built, which needs an integrator with an explicit step size.
+found at the ensemble on the update's first step. When `adapt = true` the HMC steps use the
+pieces in the update's `DEMHMCAdaptiveState`, adapted during warm-up, so the memory-based
+strategies keep tracking the growing archive during sampling. When `adapt = false` `step` runs
+the pieces as built, which needs an integrator with an explicit step size.
 """
 struct DEMHMCSampler{
         MS <: AbstractDEMMetricStrategy,
         M <: AbstractMetric, I <: AbstractIntegrator,
-        K <: AbstractMCMCKernel, A <: AbstractAdaptor, AST,
+        K <: AbstractMCMCKernel, A <: AbstractAdaptor,
     } <: DEM.AbstractDEMSampler{DEM.DEMSamplerMultiThread, DEM.DEMSamplerSingleTry}
     metric_strategy::MS
     metric::M
     integrator::I
     κ::K
     adaptor::A
-    # Per-chain metric slots; cold/hot are the chains HMC advances / carries over unchanged.
+    # Per-chain metric slots for stepping with `adapt = false`.
     chain_metrics::Vector{M}
-    cold::Vector{Int}
-    hot::Vector{Int}
-    astate::AST
 end
 
 """
     DEMHMCAdaptiveState{T}
 
 The shared, evolving HMC pieces — one set per HMC update, NOT one per chain. This lives in
-the sampler *state* (`state.adaptive_state`); the immutable sampler holds it only by reference,
-threaded through `fix_sampler` so memory-based strategies keep mutating it during sampling.
+the sampler *state* and is passed to each HMC step as the update's adaptive state, so
+memory-based strategies keep mutating it during sampling.
 Concretely parametrised on the AdvancedHMC piece types, which `renew`/`update` preserve across
 adaptation.
 
@@ -81,32 +76,33 @@ mutable struct DEMHMCAdaptiveState{
     metric::M
     integrator::I
     κ::K
-    adaptor::A
+    const adaptor::A
     initialized::Bool
-    # Per-chain metric slots; cold/hot chain indices (empty until resolved on the first warmup step).
-    chain_metrics::Vector{M}
-    cold::Vector{Int}
-    hot::Vector{Int}
-    # Previous cluster centres (D×K), warm-starting the clustering strategies; D×0 otherwise.
-    prev_centers::Matrix{T}
+    # Per-chain metric slots; cold/hot chain indices (empty until resolved on the update's first step).
+    const chain_metrics::Vector{M}
+    const cold::Vector{Int}
+    const hot::Vector{Int}
+    # Previous cluster centres, warm-starting the clustering strategies; empty otherwise.
+    const prev_centers::Vector{Vector{T}}
     # HMC steps taken (warmup and sampling), driving the metric-recompute cadence.
     metric_steps::Int
     # Per-cluster metrics (length K ≥ 1) for the per-cluster strategy; empty until first recompute.
-    cluster_metrics::Vector{M}
-    # Centres (D×K) aligned with `cluster_metrics`, for relabelling chains to their nearest mode
-    # before every HMC step; D×0 until the first recompute.
-    cluster_centers::Matrix{T}
+    const cluster_metrics::Vector{M}
+    # Centres aligned with `cluster_metrics`, relabelling chains to their nearest mode before every HMC step.
+    const cluster_centers::Vector{Vector{T}}
+    # Acceptance rate of each cold chain in the last HMC step, for `adapt!`.
+    const acceptance::Vector{T}
 end
 
 # `T` has no field, so it cannot be inferred; take it explicitly and infer the piece types.
 function DEMHMCAdaptiveState{T}(
         metric::M, integrator::I, κ::K, adaptor::A, initialized::Bool,
-        chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Matrix{T},
-        metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Matrix{T}
+        chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Vector{Vector{T}},
+        metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Vector{Vector{T}}, acceptance::Vector{T}
     ) where {T <: Real, M <: AbstractMetric, I <: AbstractIntegrator, K <: AbstractMCMCKernel, A <: AbstractAdaptor}
     return DEMHMCAdaptiveState{T, M, I, K, A}(
         metric, integrator, κ, adaptor, initialized, chain_metrics, cold, hot, prev_centers,
-        metric_steps, cluster_metrics, cluster_centers
+        metric_steps, cluster_metrics, cluster_centers, acceptance
     )
 end
 
@@ -135,13 +131,11 @@ function DEM.setup_hmc_update(
     κ = AdvancedHMC.make_kernel(sampler, integrator)
     adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
     validate_adaptor(adaptor)
-    return DEMHMCSampler(
-        metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[], Int[], Int[], nothing
-    )
+    return DEMHMCSampler(metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[])
 end
 
 """
-    initialize_adaptive_state(::DEMHMCSampler, model_wrapper, n_chains, T)
+    initialize_adaptive_state(::DEMHMCSampler, model_wrapper, n_chains, n_tries, T)
 
 Build a fresh `DEMHMCAdaptiveState` for this run from copies of the sampler's pieces (the
 metric and adaptor carry mutable adaptation state, so each run needs its own). Enforce that
@@ -152,10 +146,10 @@ target, so we fail loudly if the model is order-0 rather than silently assuming 
 carries a gradient.
 """
 function DEM.initialize_adaptive_state(
-        sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
+        sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int,
         ::Type{T}
     ) where {T <: Real}
-    d = validate_target(sampler, model_wrapper.logdensity)
+    validate_target(sampler, model_wrapper.logdensity)
     if eltype(sampler.metric) !== T
         @error "HMC metric element type $(eltype(sampler.metric)) does not match position element type $T. Construct NUTS with a target acceptance of the position type (e.g. NUTS(0.8f0) for Float32); otherwise AdvancedHMC may fail during sampling. For hand-built HMC samplers, use matching metric and integrator types."
     end
@@ -164,8 +158,7 @@ function DEM.initialize_adaptive_state(
     resize_chain_metrics!(chain_metrics, metric, n_chains)
     return DEMHMCAdaptiveState{T}(
         metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
-        Matrix{T}(undef, d, 0)
+        false, chain_metrics, Int[], Int[], Vector{T}[], 0, typeof(metric)[], Vector{T}[], T[]
     )
 end
 
@@ -189,23 +182,6 @@ function validate_target(sampler::DEMHMCSampler, ℓ)
             "$d parameters; pass the matching `n_dims`."
     )
     return d
-end
-
-"""
-    fix_sampler(::DEMHMCSampler, ::DEMHMCAdaptiveState)
-
-Return a `DEMHMCSampler` carrying the adaptive state's current pieces by
-reference (they are immutable, so no copy), plus the live `astate` itself. The sampling
-`step` reads the pieces, and — for memory-based strategies — keeps mutating `astate` to track
-the growing archive (the stock strategy leaves it frozen). An adaptive state that never took a
-warmup step leaves the sampler unchanged, so `step` runs its pieces as built.
-"""
-function DEM.fix_sampler(sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState)
-    astate.initialized || return sampler
-    return DEMHMCSampler(
-        sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor,
-        astate.chain_metrics, astate.cold, astate.hot, astate
-    )
 end
 
 # -----------------------------------------------------------------------------
@@ -325,17 +301,15 @@ function run_trajectory!(state, metric, κ, i::Int, model)
     return t.stat.acceptance_rate
 end
 
-# Chains HMC advances (cold) vs carries over (hot). Running the untempered kernel on hot chains would
-# move them by the cold posterior; they mix through the tempered DE updates instead. Resolved once,
-# as concrete `Vector{Int}`s for type stability; `hot` is empty without tempering.
-cold_chain_indices(state) = cold_chain_indices(state.temperature_ladder, state)
-cold_chain_indices(::DEM.DEMNullTemperatureLadder, state) = collect(eachindex(state.x))
-cold_chain_indices(ladder::DEM.AbstractDEMTemperatureLadder, state) = copy(ladder.cold_chains)
+# HMC only advances cold chains, as its untempered kernel would move hot chains by the cold posterior
+cold_chain_indices(state::DEM.DEMState{<:Any, <:Any, <:DEM.DEMNullTemperatureLadder}) = collect(eachindex(state.x))
+cold_chain_indices(state) = copy(state.temperature_ladder.cold_chains)
 hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, state, κ::AbstractMCMCKernel,
-        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, parallel::Bool
+        rng::AbstractRNG, state, κ::AbstractMCMCKernel,
+        chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, α::AbstractVector,
+        parallel::Bool
     )
     # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
     for i in cold
@@ -346,22 +320,16 @@ function run_trajectories!(
         state.xₚ[i] .= state.x[i]
         state.ldₚ[i] = state.ld[i]
     end
-    ncold = length(cold)
-    α = Vector{eltype(state.ld)}(undef, ncold)
-    if parallel
-        Threads.@threads for k in 1:ncold
-            i = cold[k]
-            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
-        end
-    else
-        ℓ = model_wrapper.logdensity
-        for k in 1:ncold
-            i = cold[k]
-            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, ℓ)
-        end
+    DEM.foreach_threaded(eachindex(cold), parallel) do k
+        i = cold[k]
+        α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
     end
-    return α
+    return nothing
 end
+
+# Acceptance rates of the cold chains, kept in the adaptive state for `adapt!`
+acceptance_rates(astate::DEMHMCAdaptiveState, state, cold) = resize!(astate.acceptance, length(cold))
+acceptance_rates(::DEM.AbstractDEMAdaptiveState, state, cold) = similar(state.ld, length(cold))
 
 """
     pooled_adapt!(adaptor, Xₚ, α)
@@ -403,12 +371,9 @@ end
 pooled_adapt!(adaptor::Union{AHMCAdapt.NesterovDualAveraging, AHMCAdapt.NoAdaptation}, Xₚ, α) =
     step_size_only_adapt!(adaptor, α)
 
-function adapt_metric!(
-        ::DEMStockAdaptorMetric, model_wrapper::LogDensityModel, state,
-        astate::DEMHMCAdaptiveState, α
-    )
-    pooled_adapt!(astate.adaptor, state.xₚ_smpl_view, α)
-    refresh_pieces_from_adaptor!(astate, model_wrapper.logdensity)
+function DEM.adapt!(astate::DEMHMCAdaptiveState, ::DEMHMCSampler{<:DEMStockAdaptorMetric}, state::DEM.DEMState)
+    pooled_adapt!(astate.adaptor, state.x_smpl_view, astate.acceptance)
+    refresh_pieces_from_adaptor!(astate, first(state.chain_models))
     return nothing
 end
 
@@ -454,11 +419,11 @@ end
 
 # The two state-level requirements shared by every memory-archive strategy.
 function require_memory_untempered(state, who::AbstractString)
-    state.memory isa DEM.DEMMemoryless && error(
+    state.memory isa DEM.AbstractDEMMemoryless && error(
         "$who estimates the HMC mass matrix from the memory archive, but this scheme runs " *
             "memoryless. Enable memory, or use the default stock-adaptor metric."
     )
-    has_hot_chains(state.temperature_ladder, state) && error(
+    has_hot_chains(state) && error(
         "$who is incompatible with parallel tempering: the memory archive interleaves hot-chain " *
             "positions, so the estimated covariance would mix temperatures. Use the default " *
             "stock-adaptor metric with parallel tempering. (Pure annealing — every chain cooling " *
@@ -476,17 +441,13 @@ validate_metric_state(::AbstractDEMMetricStrategy, state) = nothing
 validate_metric_state(::DEMMemoryMetric, state) =
     require_memory_untempered(state, "memory_metric")
 
-# Any chain that does not finish cold ⇒ parallel tempering (including annealing into hot chains).
-has_hot_chains(::DEM.DEMNullTemperatureLadder, state) = false
-has_hot_chains(ladder::DEM.AbstractDEMTemperatureLadder, state) =
-    length(ladder.cold_chains) < length(state.x)
+# Any chain that does not finish cold is parallel tempering, including annealing into hot chains
+has_hot_chains(state::DEM.DEMState{<:Any, <:Any, <:DEM.DEMNullTemperatureLadder}) = false
+has_hot_chains(state) = length(state.temperature_ladder.cold_chains) < length(state.x)
 
-# Positions for the covariance estimate: the memory archive (validated present and untempered).
-informative_positions(state) = informative_positions(state.memory, state)
-informative_positions(mem::DEM.DEMMemoryRefill, state) = mem.mem_x
-function informative_positions(mem::DEM.DEMMemoryFill, state)
-    return view(mem.mem_x, 1:mem.fill.position)   # only the filled prefix is initialised
-end
+# The filled positions of the memory archive
+informative_positions(state::DEM.DEMState{<:Any, <:Any, <:Any, <:DEM.DEMMemoryFill}) =
+    view(state.memory.mem_x, 1:state.memory.fill.stored)
 
 # Floor each variance at this fraction of the mean variance, bounding the condition number.
 const VARIANCE_FLOOR_FRACTION = 1.0e-6
@@ -540,8 +501,8 @@ function dense_inverse_metric(positions, shrinkage::Real)
         Σ .*= (1 .- λ)
         Σ_diag .+= λ .* v̄
     end
-    ridge = T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)   # keeps Σ PD even at λ = 0
-    Σ_diag .+= ridge
+    # floatmin keeps Σ positive definite even at λ = 0
+    Σ_diag .+= T(VARIANCE_FLOOR_FRACTION) * v̄ + floatmin(T)
     return Σ
 end
 
@@ -657,10 +618,11 @@ function multimodal_gate(positions)
     return false
 end
 
-function column_sqdist(p, centers, j)
-    s = zero(eltype(centers))
+function center_sqdist(p, centers, j)
+    c = centers[j]
+    s = zero(eltype(c))
     for d in eachindex(p)
-        s += abs2(p[d] - centers[d, j])
+        s += abs2(p[d] - c[d])
     end
     return s
 end
@@ -671,33 +633,33 @@ function farthest_first_centers(positions, k)
     T = eltype(first(positions))
     D = length(first(positions))
     M = length(positions)
-    centers = Matrix{T}(undef, D, k)
+    centers = [Vector{T}(undef, D) for _ in 1:k]
     μ = zeros(T, D)
     for p in positions
         μ .+= p
     end
     μ ./= M
     i1 = argmax(i -> sum(abs2, positions[i] .- μ), 1:M)
-    centers[:, 1] .= positions[i1]
-    nearest = [column_sqdist(positions[i], centers, 1) for i in 1:M]
+    centers[1] .= positions[i1]
+    nearest = [center_sqdist(positions[i], centers, 1) for i in 1:M]
     for j in 2:k
         ij = argmax(nearest)
-        centers[:, j] .= positions[ij]
+        centers[j] .= positions[ij]
         for i in 1:M
-            nearest[i] = min(nearest[i], column_sqdist(positions[i], centers, j))
+            nearest[i] = min(nearest[i], center_sqdist(positions[i], centers, j))
         end
     end
     return centers
 end
 
 function assign_labels!(positions, centers, labels)
-    k = size(centers, 2)
+    k = length(centers)
     changed = false
     for i in eachindex(positions)
         best = 1
-        bestd = column_sqdist(positions[i], centers, 1)
+        bestd = center_sqdist(positions[i], centers, 1)
         for j in 2:k
-            dj = column_sqdist(positions[i], centers, j)
+            dj = center_sqdist(positions[i], centers, j)
             if dj < bestd
                 bestd = dj
                 best = j
@@ -712,17 +674,17 @@ function assign_labels!(positions, centers, labels)
 end
 
 function update_centers!(positions, centers, labels)
-    k = size(centers, 2)
+    k = length(centers)
     counts = zeros(Int, k)
-    fill!(centers, 0)
+    foreach(c -> fill!(c, 0), centers)
     for i in eachindex(positions)
         z = labels[i]
         counts[z] += 1
-        view(centers, :, z) .+= positions[i]
+        centers[z] .+= positions[i]
     end
     for j in 1:k
         counts[j] == 0 && continue
-        view(centers, :, j) ./= counts[j]
+        centers[j] ./= counts[j]
     end
     return counts
 end
@@ -731,16 +693,15 @@ end
 function reseed_empty!(positions, centers, labels, counts)
     for j in eachindex(counts)
         counts[j] == 0 || continue
-        worst = argmax(i -> column_sqdist(positions[i], centers, labels[i]), eachindex(positions))
-        centers[:, j] .= positions[worst]
+        worst = argmax(i -> center_sqdist(positions[i], centers, labels[i]), eachindex(positions))
+        centers[j] .= positions[worst]
     end
     return nothing
 end
 
 # Lloyd's k-means; warm-starts from `warm` when it matches the requested `k`, else seeds afresh.
 function kmeans(positions, k, warm)
-    D = length(first(positions))
-    centers = (size(warm) == (D, k)) ? copy(warm) : farthest_first_centers(positions, k)
+    centers = length(warm) == k ? map(copy, warm) : farthest_first_centers(positions, k)
     labels = ones(Int, length(positions))
     for _ in 1:KMEANS_MAXITER
         changed = assign_labels!(positions, centers, labels)
@@ -769,14 +730,14 @@ total_variance_trace(positions, μ) =
     sum(p -> sum(abs2, p .- μ), positions)
 
 function between_variance_trace(labels, centers, μ)
-    K = size(centers, 2)
+    K = length(centers)
     counts = zeros(Int, K)
     for z in labels
         counts[z] += 1
     end
-    s = zero(eltype(centers))
+    s = zero(eltype(μ))
     for j in 1:K
-        s += counts[j] * sum(abs2, view(centers, :, j) .- μ)
+        s += counts[j] * sum(abs2, centers[j] .- μ)
     end
     return s
 end
@@ -786,10 +747,9 @@ end
 # adds negligible between-mode variance, so BIC-style over-splitting (which shrinks the pooled
 # metric below the true within-mode covariance) is avoided.
 function cluster_archive(positions, kmax, warm)
-    D = length(first(positions))
     μ = global_mean(positions)
     best_labels = ones(Int, length(positions))
-    best_centers = reshape(copy(μ), D, 1)
+    best_centers = [copy(μ)]
     total = total_variance_trace(positions, μ)
     total == 0 && return best_labels, best_centers
     kcap = min(kmax, length(positions))
@@ -807,17 +767,17 @@ end
 
 # Severity diagnostic η: the largest per-axis between-mode share of the total variance.
 function between_variance_fraction(positions, labels, centers)
-    size(centers, 2) == 1 && return 0.0
+    length(centers) == 1 && return 0.0
     T = eltype(first(positions))
     D = length(first(positions))
     μ = global_mean(positions)
-    counts = zeros(Int, size(centers, 2))
+    counts = zeros(Int, length(centers))
     for z in labels
         counts[z] += 1
     end
     between = zeros(T, D)
-    for j in 1:size(centers, 2)
-        between .+= counts[j] .* abs2.(view(centers, :, j) .- μ)
+    for j in eachindex(centers)
+        between .+= counts[j] .* abs2.(centers[j] .- μ)
     end
     total = zeros(T, D)
     for p in positions
@@ -833,7 +793,7 @@ end
 # Pool the within-cluster deviations through Stage 2's estimator (the (M−K) vs (M−1)
 # denominator difference is negligible for an archive of hundreds of points).
 function within_cluster_inverse_metric(metric, positions, labels, centers, shrinkage)
-    centered = [positions[i] .- view(centers, :, labels[i]) for i in eachindex(positions)]
+    centered = [positions[i] .- centers[labels[i]] for i in eachindex(positions)]
     return memory_inverse_metric(metric, centered, shrinkage)
 end
 
@@ -844,7 +804,7 @@ end
 function gated_clustering(ms, astate, positions)
     multimodal_gate(positions) || return Int[], astate.prev_centers, true
     labels, centers = cluster_archive(positions, ms.kmax, astate.prev_centers)
-    astate.prev_centers = centers
+    copy!(astate.prev_centers, centers)
     gated = between_variance_fraction(positions, labels, centers) < BETWEEN_VARIANCE_THRESHOLD
     return labels, centers, gated
 end
@@ -913,7 +873,7 @@ min_cluster_points(metric::AdvancedHMC.DenseEuclideanMetric) = size(metric, 1) +
 # One metric over the whole archive (the K = 1 / gated-off fall-through), with its single centre.
 function pooled_cluster_metric(ms::DEMPerClusterMetric, astate, positions)
     M⁻¹ = memory_inverse_metric(astate.metric, positions, ms.shrinkage)
-    centers = reshape(global_mean(positions), length(first(positions)), 1)
+    centers = [global_mean(positions)]
     return [AdvancedHMC.renew(astate.metric, M⁻¹)], centers
 end
 
@@ -925,7 +885,7 @@ function per_cluster_inverse_metrics(ms::DEMPerClusterMetric, astate, positions)
     labels, centers, gated = gated_clustering(ms, astate, positions)
     gated && return pooled_cluster_metric(ms, astate, positions)
     floor_pts = min_cluster_points(astate.metric)
-    metrics = map(1:size(centers, 2)) do k
+    metrics = map(eachindex(centers)) do k
         pts = [positions[i] for i in eachindex(positions) if labels[i] == k]
         src = length(unique(pts)) ≥ floor_pts ? pts : positions
         AdvancedHMC.renew(astate.metric, memory_inverse_metric(astate.metric, src, ms.shrinkage))
@@ -933,7 +893,7 @@ function per_cluster_inverse_metrics(ms::DEMPerClusterMetric, astate, positions)
     return metrics, centers
 end
 
-nearest_center(θ, centers) = argmin(j -> column_sqdist(θ, centers, j), 1:size(centers, 2))
+nearest_center(θ, centers) = argmin(j -> center_sqdist(θ, centers, j), eachindex(centers))
 
 # Assign each chain its current mode's metric by nearest centre. Diagonal/unit share the cluster
 # metric object (read-only across threads); dense copies into the per-chain scratch (its own `_temp`
@@ -962,8 +922,8 @@ end
 # `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
 function refresh_memory_metric!(ms::DEMPerClusterMetric, astate::DEMHMCAdaptiveState, state)
     metrics, centers = per_cluster_inverse_metrics(ms, astate, informative_positions(state))
-    astate.cluster_metrics = metrics
-    astate.cluster_centers = centers
+    copy!(astate.cluster_metrics, metrics)
+    copy!(astate.cluster_centers, centers)
     return nothing
 end
 
@@ -1000,91 +960,70 @@ function fill_chain_metrics!(::DEMPerClusterMetric, astate::DEMHMCAdaptiveState,
     return nothing
 end
 
-function adapt_metric!(
-        ms::DEMArchiveMetricStrategy, model_wrapper::LogDensityModel, state,
-        astate::DEMHMCAdaptiveState, α
-    )
-    step_size_only_adapt!(astate.adaptor, α)
-    astate.κ = AdvancedHMC.update(astate.κ, astate.adaptor)
-    astate.integrator = astate.κ.τ.integrator
-    advance_memory_metric!(ms, astate, state)
+function DEM.adapt!(astate::DEMHMCAdaptiveState, ::DEMHMCSampler{<:DEMArchiveMetricStrategy}, state::DEM.DEMState)
+    step_size_only_adapt!(astate.adaptor, astate.acceptance)
+    set_step_size!(astate, astate.adaptor)
     return nothing
 end
 
-function step_warmup(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
-        state::DEM.DEMState{T, <:DEMHMCAdaptiveState};
-        parallel::Bool = false, update_memory::Bool = true,
-        num_warmup::Int = 1000, kwargs...
-    ) where {T <: Real}
-    astate = state.adaptive_state
-    if !astate.initialized
-        validate_metric_state(sampler.metric_strategy, state)
-        astate.cold = cold_chain_indices(state)
-        astate.hot = hot_chain_indices(state, astate.cold)
-        refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
-    end
-    fill_chain_metrics!(sampler.metric_strategy, astate, state)
-    α = run_trajectories!(
-        rng, model_wrapper, state, astate.κ, astate.chain_metrics,
-        astate.cold, astate.hot, parallel
-    )
-    adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
-    return DEM.create_sample(state),
-        DEM.update_state(
-            state; swap_positions = Val(true),
-            adaptive_state = astate, update_memory = update_memory
-        )
-end
-
-track_sampling_metric!(::AbstractDEMMetricStrategy, ::Nothing, state) = nothing
-track_sampling_metric!(::DEMStockAdaptorMetric, ::DEMHMCAdaptiveState, state) = nothing
-track_sampling_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState, state) =
+# Archive strategies recompute the metric on their cadence before every HMC step, in warm-up and sampling
+advance_metric!(::AbstractDEMMetricStrategy, astate, state) = nothing
+advance_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState, state) =
     advance_memory_metric!(ms, astate, state)
 
-# Fill the trajectory slots and return the kernel + slots for a sampling step. Once warmed these
-# come from the live adaptive state (so sampling-phase recomputes/reassignments are seen); without
-# warmup they come from the sampler's own pieces, with slots sized to the state's chains. Dispatched
-# on the carried adaptive state, whose concrete type is known, so it stays type-stable.
-function prepare_sampling_metrics!(sampler::DEMHMCSampler, ::Nothing, state)
+# Set up the adaptive state on the update's first step: cold/hot chains, the initial step size and the adaptor schedule
+function initialize_hmc!(rng, model_wrapper, sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState, state, num_warmup::Int)
+    astate.initialized && return nothing
+    validate_metric_state(sampler.metric_strategy, state)
+    copy!(astate.cold, cold_chain_indices(state))
+    copy!(astate.hot, hot_chain_indices(state, astate.cold))
+    refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
+    return nothing
+end
+
+# When `adapt = false` the sampler runs as built, which needs an explicit step size
+function initialize_hmc!(rng, model_wrapper, sampler::DEMHMCSampler, ::DEM.AbstractDEMAdaptiveState, state, num_warmup::Int)
+    validate_target(sampler, model_wrapper.logdensity)
+    has_step_size(sampler.integrator) || error(
+        "setup_hmc_update: this HMC update has no step size. A symbol integrator's step " *
+            "size is found on the update's first step, so sample with `adapt = true` (the " *
+            "default), or give the sampler an integrator with an explicit step size, e.g. " *
+            "`HMC(0.1, 10)` or `NUTS(0.8; integrator = Leapfrog(0.1))`."
+    )
+    return nothing
+end
+
+# The kernel and filled per-chain metric slots for an HMC step: the adaptive state's, or the sampler's own when `adapt = false`
+function prepare_metrics!(sampler::DEMHMCSampler, ::DEM.AbstractDEMAdaptiveState, state)
     resize_chain_metrics!(sampler.chain_metrics, sampler.metric, length(state.x))
     prepare_chain_metrics!(sampler.chain_metrics, sampler.metric)
     return sampler.κ, sampler.chain_metrics
 end
-function prepare_sampling_metrics!(
-        sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState, state
-    )
+function prepare_metrics!(sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState, state)
     fill_chain_metrics!(sampler.metric_strategy, astate, state)
     return astate.κ, astate.chain_metrics
 end
 
-# Cold/hot chains for a sampling step: resolved during warmup, or from the state without it.
-function sampling_chains(::DEMHMCSampler, ::Nothing, state)
+# Cold/hot chains for an HMC step: resolved on the adaptive state's first step, or from the state when `adapt = false`
+function trajectory_chains(::DEM.AbstractDEMAdaptiveState, state)
     cold = cold_chain_indices(state)
     return cold, hot_chain_indices(state, cold)
 end
-sampling_chains(sampler::DEMHMCSampler, ::DEMHMCAdaptiveState, state) = sampler.cold, sampler.hot
+trajectory_chains(astate::DEMHMCAdaptiveState, state) = astate.cold, astate.hot
 
 function step(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
-        state::DEM.DEMState{T, DEM.DEMAdaptiveStatic{T}};
-        parallel::Bool = false, update_memory::Bool = true, kwargs...
-    ) where {T <: Real}
-    if sampler.astate === nothing
-        validate_target(sampler, model_wrapper.logdensity)
-        has_step_size(sampler.integrator) || error(
-            "setup_hmc_update: this HMC update has no step size. A symbol integrator's step " *
-                "size is found during warmup, so run with `adapt = true` (the default) and " *
-                "`num_warmup ≥ 1` / `n_burnin ≥ 1`, or give the sampler an integrator with an " *
-                "explicit step size, e.g. `HMC(0.1, 10)` or `NUTS(0.8; integrator = Leapfrog(0.1))`."
-        )
-    end
-    track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
-    κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
-    cold, hot = sampling_chains(sampler, sampler.astate, state)
-    run_trajectories!(rng, model_wrapper, state, κ, chain_metrics, cold, hot, parallel)
-    return DEM.create_sample(state),
-        DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler, state::DEM.DEMState;
+        adaptive_state::DEM.AbstractDEMAdaptiveState = state.adaptive_state,
+        parallel::Bool = false, update_memory::Bool = true, num_warmup::Int = 1000, kwargs...
+    )
+    initialize_hmc!(rng, model_wrapper, sampler, adaptive_state, state, num_warmup)
+    advance_metric!(sampler.metric_strategy, adaptive_state, state)
+    κ, chain_metrics = prepare_metrics!(sampler, adaptive_state, state)
+    cold, hot = trajectory_chains(adaptive_state, state)
+    run_trajectories!(rng, state, κ, chain_metrics, cold, hot, acceptance_rates(adaptive_state, state, cold), parallel)
+    sample = DEM.create_sample(state)
+    DEM.update_state!(state; update_memory = update_memory)
+    return sample, state
 end
 
 DEM.chains_required(::DEMHMCSampler) = 1

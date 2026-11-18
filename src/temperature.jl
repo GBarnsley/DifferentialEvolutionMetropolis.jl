@@ -37,11 +37,7 @@ function setup_temperature_struct(ladder::Vector{Vector{T}}) where {T <: Real}
             return DEMStaticTemperatureLadder{T}(ladder[1], cold_chains)
         end
     else
-        return DEMAnnealingTemperatureLadder{T}(
-            ladder[1],
-            view(ladder, 1:n_steps),
-            cold_chains
-        )
+        return DEMAnnealingTemperatureLadder{T}(copy(ladder[1]), ladder, 1, cold_chains)
     end
 end
 
@@ -54,9 +50,7 @@ function get_temperature(ladder::AbstractDEMTemperatureLadder, current_chain::In
     return ladder.temperature[current_chain]
 end
 
-function update_ladder!!(ladder::AbstractDEMTemperatureLadder)
-    return ladder
-end
+update_ladder!(ladder::AbstractDEMTemperatureLadder) = nothing
 
 struct DEMNullTemperatureLadder{T <: Real} <:
     AbstractDEMTemperatureLadder{T}
@@ -83,32 +77,21 @@ struct DEMStaticTemperatureLadder{T <: Real} <:
 end
 
 #for annealing
-struct DEMAnnealingTemperatureLadder{T <: Real} <:
+mutable struct DEMAnnealingTemperatureLadder{T <: Real} <:
     AbstractDEMTemperatureLadder{T}
     "temperature for each chain"
-    temperature::Vector{T}
-    "view of the temperature ladder"
-    temperature_ladder::SubArray{Vector{T}, 1, Vector{Vector{T}}}
+    const temperature::Vector{T}
+    "temperatures at each annealing step"
+    const temperature_ladder::Vector{Vector{T}}
+    "current annealing step"
+    step::Int
     "indicator for cold chains"
-    cold_chains::Vector{Int}
+    const cold_chains::Vector{Int}
 end
 
-function update_ladder!!(ladder::DEMAnnealingTemperatureLadder{T}) where {
-        T <:
-        Real,
-    }
-    n_steps = length(ladder.temperature_ladder)
-    if n_steps == 1
-        if length(ladder.cold_chains) == length(ladder.temperature)
-            return DEMNullTemperatureLadder{T}()
-        else
-            return DEMStaticTemperatureLadder{T}(ladder.temperature, ladder.cold_chains)
-        end
-    else
-        return DEMAnnealingTemperatureLadder{T}(
-            ladder.temperature_ladder[2],
-            view(ladder.temperature_ladder, 2:n_steps),
-            ladder.cold_chains
-        )
-    end
+# Advances to the next annealing step in place, staying at the final temperatures once annealing ends
+function update_ladder!(ladder::DEMAnnealingTemperatureLadder)
+    ladder.step = min(ladder.step + 1, length(ladder.temperature_ladder))
+    copyto!(ladder.temperature, ladder.temperature_ladder[ladder.step])
+    return nothing
 end

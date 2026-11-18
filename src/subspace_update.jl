@@ -187,13 +187,18 @@ prepare_scratch!(sampler::AbstractDEMSubspaceSampler, state) = prepare_scratch!(
 
 function proposal!(
         xₚ::V, x::V, state::DEMState,
-        sampler::AbstractDEMSubspaceSampler, current_state::Int
+        sampler::AbstractDEMSubspaceSampler, ::DEMAdaptiveStatic, current_state::Int
     ) where {V <: AbstractVector}
+    return subspace_proposal!(xₚ, x, state, sampler, sampler.cr_spl, current_state)
+end
+
+# The subspace proposal with crossover probabilities drawn from `cr_spl`, the sampler's own or the adapted ones
+function subspace_proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSubspaceSampler, cr_spl, current_state::Int)
     rng = state.rngs[current_state]
     u, e, ϵ = chain_buffers(sampler.scratch, eltype(x), current_state)
 
     #determine how many dimensions to update, those with u < cr
-    cr = rand(rng, sampler.cr_spl)
+    cr = rand(rng, cr_spl)
     rand!(rng, u)
     d = count(<(cr), u)
 

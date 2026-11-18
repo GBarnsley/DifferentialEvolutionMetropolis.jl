@@ -1,5 +1,5 @@
 """
-    correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false)
+    correctness_setup(model, update; memory, n_hot_chains, n_tries, double_ensemble = false, gradient = false)
 
 Sampler keyword arguments, a buffer of initial positions (chains, then hot chains), the
 temperature each initial position is drawn at and the `LogDensityModel` to sample, wrapping
@@ -7,17 +7,18 @@ temperature each initial position is drawn at and the `LogDensityModel` to sampl
 memoryless `update` requires if larger. With memory, the sampler fills an initial memory of
 `N₀ = 3000` positions itself, so the memory is not drawn from the target.
 """
-function correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false)
+function correctness_setup(model, update; memory, n_hot_chains, n_tries, double_ensemble = false, gradient = false)
     d = LogDensityProblems.dimension(model)
     n_chains = memory ? 3 : max(3, DifferentialEvolutionMetropolis.chains_required(update))
     ladder = vcat(ones(n_chains), [1 + (2 * sqrt(d) - 1) * h / n_hot_chains for h in 1:n_hot_chains])
     N₀ = memory ? 3000 : 0
     kwargs = (;
         memory, N₀, n_chains, n_hot_chains, n_tries, temperature_ladder = [ladder],
+        double_ensemble, parallel = double_ensemble,
         progress = false, adapt = false, chain_type = DEMOutput, silent = true,
     )
-    initial_positions = [Vector{Float64}(undef, d) for _ in 1:(n_chains + n_hot_chains)]
-    temperatures = ladder
+    temperatures = double_ensemble ? repeat(ladder; inner = 2) : ladder
+    initial_positions = [Vector{Float64}(undef, d) for _ in temperatures]
     target = AbstractMCMC.LogDensityModel(gradient ? ADgradient(:ForwardDiff, model) : model)
     return kwargs, initial_positions, temperatures, target
 end
@@ -33,9 +34,18 @@ function draw_from_target!(rng, initial_positions, model, temperatures)
     return initial_positions
 end
 
+# Cold chains come first in the initial positions, and number `n_chains` per ensemble
+n_cold_chains(kwargs) = (kwargs.double_ensemble ? 2 : 1) * kwargs.n_chains
+
+# Merges a double ensemble back into the interleaved chain order of the initial positions
+interleave_ensembles(output) = ndims(output.ld) == 2 ? output : (;
+        samples = reshape(permutedims(output.samples, (1, 3, 2, 4)), size(output.samples, 1), :, size(output.samples, 4)),
+        ld = reshape(permutedims(output.ld, (1, 3, 2)), size(output.ld, 1), :),
+    )
+
 run_sampler(rng, target, update, n_samples, initial_positions, kwargs) =
     suppress_warnings(NO_SWAP_WARNING) do
-    sample(rng, target, update, n_samples; initial_position = initial_positions, kwargs...)
+    interleave_ensembles(sample(rng, target, update, n_samples; initial_position = initial_positions, kwargs...))
 end
 
 """
@@ -55,7 +65,7 @@ function test_for_correctness!(
         M_sampler, initial_positions, temperatures, complete_chain, ordinal_ranks
     )
     d = LogDensityProblems.dimension(model)
-    n_chains = kwargs.n_chains
+    n_chains = n_cold_chains(kwargs)
     for attempt in 1:n
         M = rand(rng, M_sampler)
         draw_from_target!(rng, initial_positions, model, temperatures)
@@ -111,7 +121,7 @@ between the chains. Returns `true` if neither test rejects at level `α`.
 function sequential_testing(rng, update, model, α; n = 2500, L = 100, k = 7, setup...)
     d = LogDensityProblems.dimension(model)
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
-    n_chains = kwargs.n_chains
+    n_chains = n_cold_chains(kwargs)
 
     M_sampler = Distributions.sampler(DiscreteUniform(1, L))
     complete_chain = Array{Float64, 3}(undef, L, n_chains, d + 1)
@@ -183,7 +193,7 @@ chains is 0 and the average squared cross moment is 1.
 function one_step_covariance_testing(rng, update; n = 20_000, setup...)
     model = IsotropicNormalModel([0.0])
     kwargs, initial_positions, temperatures, target = correctness_setup(model, update; setup...)
-    n_chains = kwargs.n_chains
+    n_chains = n_cold_chains(kwargs)
     pairs = [(i, j) for i in 1:n_chains for j in (i + 1):n_chains]
     covariance = zeros(n)
     cross_moment = zeros(n)
@@ -244,7 +254,7 @@ end
 
 # Valid updates checked in test_correct.jl and test_correct_hmc.jl. The intentionally
 # invalid negative control is excluded: its rejections are expected, not type-I errors.
-const N_CORRECTNESS_UPDATES = (; demc = 14, hmc = 5)
+const N_CORRECTNESS_UPDATES = (; demc = 20, hmc = 5)
 
 # Per update: the two sequential tests, covariance, cross moment, Uniform stationarity and four moments.
 const N_CORRECTNESS_TESTS_PER_UPDATE = 9

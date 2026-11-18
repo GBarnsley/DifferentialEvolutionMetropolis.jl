@@ -207,16 +207,21 @@ using LinearAlgebra: diag
         @test threaded == serial
     end
 
-    @testset "a symbol integrator errors when never warmed up" begin
+    @testset "a symbol integrator errors when adapt = false and finds its step size otherwise" begin
         for sampler in (NUTS(0.8), HMC(10), HMCDA(0.8, 1.0)), adapt in (false, true)
             scheme = setup_sampler_scheme(setup_hmc_update(sampler; n_dims = length(μ)))
             _, state = AbstractMCMC.step(
                 backwards_compat_rng(1234), model, scheme;
                 n_chains = 6, num_warmup = 0, memory = false, adapt, silent = true
             )
-            @test_throws ErrorException AbstractMCMC.step(
-                backwards_compat_rng(1234), model, scheme, state
-            )
+            if adapt
+                _, state = AbstractMCMC.step(backwards_compat_rng(1234), model, scheme, state)
+                @test all(isfinite, state.ld)
+            else
+                @test_throws ErrorException AbstractMCMC.step(
+                    backwards_compat_rng(1234), model, scheme, state
+                )
+            end
         end
     end
 

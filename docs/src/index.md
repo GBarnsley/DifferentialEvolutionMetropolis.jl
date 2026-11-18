@@ -39,7 +39,6 @@ The precision and draw-type behavior of all distributions depend on Distribution
 A few plans for this package, feel free to suggest features or improvements via [issues](https://github.com/GBarnsley/DifferentialEvolutionMetropolis/issues):
 
 - Diagnostics accounting for inter-chain dependence
-- Double ensemble mode, an alternative for multi-try that allows parallel evaluations when `memory = false`
 - Implement delayed rejection DREAM
 - Kalman filtering for warmup (requires additions to the LD interface)
 - Investigate implementations with Gibbs/particle-filtering to support the sampling of discrete parameters
@@ -96,6 +95,7 @@ The output format can be modified with `chain_type`; the supported options are `
 If `save_final_state = true` the format will be `(sample::requested format, final_state)`.
 If run in parallel using `sample(model, sampler, parallel_option, n_its, n_meta_chains; n_chains = n_chains)` the meta chains and DE chains will be merged into one dimension for the `Chains`, `VNChain`, and `DEMOutput`.
 If the final state is saved it will be a vector of length `n_meta_chains` containing the final state for each.
+With `double_ensemble = true`, `DEMOutput` has an extra ensemble dimension (`samples[iteration, chain, ensemble, parameter]`, `ld[iteration, chain, ensemble]`), while `Chains` and `VNChain` concatenate the ensembles in the chain dimension.
 
 Note that support for `FlexiChains` is a bit underutilized as all samplers currently require all parameters to have the same type.
 

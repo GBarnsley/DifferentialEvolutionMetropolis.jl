@@ -60,9 +60,10 @@ using Random, AbstractMCMC, LogDensityProblems
         @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryFill)
         @test state.memory.fill.position == 4
 
-        # Taking 1 step: position goes from 4 to 8, which hits the length 8, and converts to Refill.
+        # Taking 1 step: position goes from 4 to 8, which hits the length 8, so it refills from the start.
         _, state = AbstractMCMC.step_warmup(rng, wrapped_model, spl, state; num_warmup = 2)
-        @test isa(state.memory, DifferentialEvolutionMetropolis.DEMMemoryRefill)
+        @test state.memory.fill.position == 0
+        @test state.memory.fill.stored == length(state.memory.mem_x) == 8
     end
 
     @testset "Temperature ladder advances" begin
@@ -83,21 +84,14 @@ using Random, AbstractMCMC, LogDensityProblems
             silent = true
         )
 
-        # Initially, length of ladder decreases by 1 across one step_warmup
-        l0 = length(state0.temperature_ladder.temperature_ladder)
-
+        # The ladder advances one annealing step across one step_warmup
+        @test state0.temperature_ladder.step == 1
         _, state1 = AbstractMCMC.step_warmup(rng, wrapped_model, spl, state0; num_warmup = 10)
-        l1 = length(state1.temperature_ladder.temperature_ladder)
-        @test l0 - l1 == 1
+        @test state1.temperature_ladder.step == 2
 
-        # Across one post-warmup step, length of ladder decreases by exactly 1
+        # and across one post-warmup step
         _, state2 = AbstractMCMC.step(rng, wrapped_model, spl, state1)
-        l2 = length(state2.temperature_ladder.temperature_ladder)
-        @test l1 - l2 == 1
-
-        # fix_sampler_state leaves it unchanged
-        fixed_spl, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(spl, state1)
-        @test length(fixed_state.temperature_ladder.temperature_ladder) == l1
+        @test state2.temperature_ladder.step == 3
     end
 
     @testset "memory_size allocation" begin

@@ -12,6 +12,7 @@ const GROUPS = (;
             "test_subspace_update.jl",
             "test_subspace_adaptive_update.jl",
             "test_multi_try.jl",
+            "test_double_ensemble.jl",
             "test_scratch.jl",
             "test_composite.jl",
             "test_fixed_order.jl",
