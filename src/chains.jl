@@ -99,9 +99,8 @@ end
         state::DEMState{T, A, L, M, Model, B, V, VV},
         current_state::Int,
         ::Val{N}
-    ) where {T, A, L, V, VV, Model, B, M <: AbstractDEMMemoryFormat{T, VV}, N}
+    ) where {T, A, L, V, VV, Model, B, M <: DEMMemoryFill{T, VV}, N}
     exprs = [:(mem_x[indices[$i]]) for i in 1:N]
-    limit_expr = M <: DEMMemoryFill ? :(memory.fill.position) : :(length(mem_x))
     return quote
         rng = state.rngs[current_state]
         memory = state.memory
@@ -111,7 +110,7 @@ end
         fast_sample_chains!(
             rng,
             mem_x,
-            $limit_expr,
+            memory.fill.stored,
             $N,
             indices,
             ordered_indices
@@ -120,14 +119,15 @@ end
     end
 end
 
-# The state for the next update: x and xₚ swapped, the ladder advanced and, when `update_memory`, the new positions added to memory
-function update_state(state::DEMState; update_memory::Bool = false)
-    memory = update_memory ? update_memory!!(state.memory, state.xₚ) : state.memory
-    return DEMState(
-        state.xₚ, state.ldₚ, state.rngs, state.adaptive_state, update_ladder!!(state.temperature_ladder), memory,
-        state.chain_models, state.multi_try, state.x, state.ld,
-        state.xₚ_smpl_view, state.ldₚ_smpl_view, state.x_smpl_view, state.ld_smpl_view, state.order_state
-    )
+# Swaps x and xₚ in place and advances the ladder and, when `update_memory`, the memory
+function update_state!(state::DEMState; update_memory::Bool = false)
+    update_memory && update_memory!(state.memory, state.xₚ)
+    for i in eachindex(state.x)
+        state.x[i], state.xₚ[i] = state.xₚ[i], state.x[i]
+        state.ld[i], state.ldₚ[i] = state.ldₚ[i], state.ld[i]
+    end
+    update_ladder!(state.temperature_ladder)
+    return nothing
 end
 
 # Sequential updates without multiple tries run one chain at a time even with `parallel = true`
@@ -256,12 +256,13 @@ function step(
     x = state.x
 
     prepare_scratch!(sampler, state)
-    prepare_scratch!(adaptive_state, state)
 
     # loop through chains running the update
     update_chains!(state, sampler, adaptive_state, parallel)
 
-    return create_sample(state), update_state(state; update_memory = update_memory)
+    sample = create_sample(state)
+    update_state!(state; update_memory = update_memory)
+    return sample, state
 end
 
 """
@@ -317,7 +318,7 @@ function step_warmup(
         kwargs...
     )
     sample, new_state = step(rng, model_wrapper, sampler, state; adaptive_state, kwargs...)
-    adapt!(adaptive_state, sampler, state)
+    adapt!(adaptive_state, sampler, new_state)
     return sample, new_state
 end
 
@@ -326,7 +327,7 @@ end
 
 Adapt `adaptive_state` in place after a warm-up step of `sampler`.
 
-`state` is the state the step started from, so `state.x` holds the positions before the step and `state.xₚ` the positions after it.
+`state` is the state after the step, so `state.x` holds the positions after the step and `state.xₚ` the positions before it.
 The fallback does nothing. An adaptive update defines a method for its own adaptive state.
 """
 adapt!(adaptive_state::AbstractDEMAdaptiveState, sampler::AbstractDEMMetaSampler, state) = nothing
@@ -337,22 +338,15 @@ adapt!(adaptive_state::AbstractDEMAdaptiveState, sampler::AbstractDEMMetaSampler
 Record what [`DifferentialEvolutionMetropolis.adapt!`](@ref) needs from `proposal`, the named tuple returned by [`DifferentialEvolutionMetropolis.proposal!`](@ref) for `current_state`.
 
 Called for every proposal a chain can move to, but not for the reference trials of multiple tries, and also after warm-up.
-Size any buffer indexed by `current_state` in a [`DifferentialEvolutionMetropolis.prepare_scratch!`](@ref) method for the adaptive state.
+`current_state` runs up to `n_chains * n_tries`, so size any buffer indexed by it in [`DifferentialEvolutionMetropolis.initialize_adaptive_state`](@ref).
 The fallback records nothing.
 """
 record_proposal!(adaptive_state::AbstractDEMAdaptiveState, proposal, current_state::Int) = nothing
 
-function initialize_adaptive_state(
-        sampler::AbstractDEMMetaSampler,
-        model_wrapper::LogDensityModel, n_chains::Int
-    )
-    return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
-end
-
 """
-    initialize_adaptive_state(sampler::AbstractDEMMetaSampler, model_wrapper::LogDensityModel, n_chains::Int, ::Type{T})
+    initialize_adaptive_state(sampler::AbstractDEMMetaSampler, model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int, ::Type{T})
 
-Create the adaptive state of `sampler` at the start of sampling, with `T` the position element type.
+Create the adaptive state of `sampler` at the start of sampling, for `n_chains` chains each proposing `n_tries` trials, with `T` the position element type.
 
 The fallback returns a static (non-adaptive) state.
 An adaptive update defines a method returning its own [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref),
@@ -360,7 +354,7 @@ a [`DifferentialEvolutionMetropolis.proposal!`](@ref) method for that state, and
 """
 function initialize_adaptive_state(
         sampler::AbstractDEMMetaSampler,
-        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+        model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int, ::Type{T}
     ) where {T <: Real}
     return DEMAdaptiveStatic{T}()
 end
@@ -483,7 +477,7 @@ function step(
     log = Vector{String}()
 
     if adapt
-        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
+        adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, n_tries, T)
     else
         adaptive_state = DEMAdaptiveStatic{T}()
     end
@@ -605,9 +599,7 @@ function step(
         #setup fill method
         if memory_thin_interval > 0
             push!(log, "   Using thinning interval of $memory_thin_interval for memory updates.")
-            memory_method = DEMMemoryFillThin(
-                N₀, n_true_chains, memory_thin_interval, memory_thin_interval
-            )
+            memory_method = DEMMemoryFillThin(N₀, n_true_chains, memory_thin_interval)
         else
             memory_method = DEMMemoryFillEvery(N₀, n_true_chains)
         end

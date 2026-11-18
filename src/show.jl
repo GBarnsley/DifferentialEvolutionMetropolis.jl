@@ -129,7 +129,7 @@ function Base.show(io::IO, l::DEMStaticTemperatureLadder)
 end
 
 function Base.show(io::IO, l::DEMAnnealingTemperatureLadder)
-    return print(io, "annealing (", length(l.temperature_ladder) - 1, " steps remaining)")
+    return print(io, "annealing (", length(l.temperature_ladder) - l.step, " steps remaining)")
 end
 
 Base.show(io::IO, ::DEMMemoryless) = print(io, "none")
@@ -139,15 +139,12 @@ fill_method(::DEMMemoryFillEvery) = "every iteration"
 fill_method(f::DEMMemoryFillThin) = "every $(f.max_count) iterations"
 
 function Base.show(io::IO, m::DEMMemoryFill)
+    if m.refill && m.fill.stored == length(m.mem_x)
+        return print(io, m.fill.stored, " stored positions (full, refilled ", fill_method(m.fill), ")")
+    end
     return print(
-        io, m.fill.position, " stored positions (filled ", fill_method(m.fill),
+        io, m.fill.stored, " stored positions (filled ", fill_method(m.fill),
         m.refill ? ", refills when full)" : ", grows when full)"
-    )
-end
-
-function Base.show(io::IO, m::DEMMemoryRefill)
-    return print(
-        io, length(m.mem_x), " stored positions (full, refilled ", fill_method(m.fill), ")"
     )
 end
 

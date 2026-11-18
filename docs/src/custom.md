@@ -220,7 +220,7 @@ To keep adapting while sampling, set `num_warmup` to the warm-up steps plus the 
 You'll also need to define an adaptive state for your sampler, returned by `initialize_adaptive_state`, and a `proposal!` method for it.
 This method is used during warm-up and afterwards, with the adapted values.
 `DEMAdaptiveStatic` still indicates no adaption and `adapt = false` indicates adaption is switched off.
-When the adaptation needs something from each proposal, such as a random draw, define `record_proposal!` to store it and `prepare_scratch!` for the adaptive state to size that storage.
+When the adaptation needs something from each proposal, such as a random draw, define `record_proposal!` to store it.
 Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
@@ -258,7 +258,7 @@ function AdaptiveMetropolisUpdate(
 end
 
 # Initialize adaptive state
-function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int, ::Type{T}) where {T<:Real}
+function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::AdaptiveMetropolisUpdate, model_wrapper::AbstractMCMC.LogDensityModel, n_chains::Int, n_tries::Int, ::Type{T}) where {T<:Real}
     n_params = LogDensityProblems.dimension(model_wrapper.logdensity)
     return AdaptiveMetropolisState{T}(
         Matrix{T}(sampler.initial_cov),
@@ -296,7 +296,7 @@ end
 
 DifferentialEvolutionMetropolis.chains_required(::AdaptiveMetropolisUpdate) = 1
 
-# Adapt after each warm-up step, `state` is the state the step started from
+# Adapt after each warm-up step, `state` is the state after the step
 function DifferentialEvolutionMetropolis.adapt!(
     adaptive_state::AdaptiveMetropolisState,
     sampler::AdaptiveMetropolisUpdate,
@@ -308,7 +308,7 @@ function DifferentialEvolutionMetropolis.adapt!(
     if adaptive_state.adaptation_count > sampler.adapt_after && adaptive_state.adaptation_count % sampler.adapt_every == 0
 
         # Compute empirical covariance from the positions after the step
-        positions = reduce(hcat, state.xₚ)'  # Convert to matrix
+        positions = reduce(hcat, state.x)'  # Convert to matrix
         empirical_cov = cov(positions)
 
         # Update proposal covariance with regularization in-place

@@ -16,14 +16,12 @@ using LinearAlgebra: diag, Diagonal
 # Internal helpers (gate, clustering, estimators, assignment) live in the package extension.
 const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCExt)
 
-# A light stand-in for the adaptive state: `per_cluster_inverse_metrics` reads `.metric` (which
-# estimator/`renew` to use) and reads/updates `.prev_centers` (the k-means warm start), so it must
-# be mutable.
-mutable struct FakeAState{M}
+# A stand-in for the adaptive state: `per_cluster_inverse_metrics` reads `.metric` and updates `.prev_centers` in place
+struct FakeAState{M}
     metric::M
-    prev_centers::Matrix{Float64}
+    prev_centers::Vector{Vector{Float64}}
 end
-fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1), 0))
+fake_astate(metric) = FakeAState(metric, Vector{Float64}[])
 
 @testset "HMC per-cluster metric (AdvancedHMCExt Stage 4)" begin
 
@@ -82,7 +80,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         @test HMCExt.multimodal_gate(archive) == false
         metrics, centers = HMCExt.per_cluster_inverse_metrics(per_cluster_metric(), astate, archive)
         @test length(metrics) == 1
-        @test size(centers, 2) == 1
+        @test length(centers) == 1
         @test metrics[1].M⁻¹ == HMCExt.memory_inverse_metric(astate.metric, archive, 0.0)
     end
 
@@ -96,7 +94,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         astate = fake_astate(DiagEuclideanMetric(2))
         metrics, centers = HMCExt.per_cluster_inverse_metrics(per_cluster_metric(), astate, archive)
         @test length(metrics) == 2
-        @test size(centers, 2) == 2
+        @test length(centers) == 2
         # Each separated cluster recovers the small within-mode variance, not the inflated pooled one.
         for m in metrics
             @test all(isapprox.(m.M⁻¹, within_sd^2; atol = 0.15))
@@ -121,7 +119,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
     end
 
     @testset "nearest_center and assign_chain_metrics! route each chain by current position" begin
-        centers = [0.0 10.0; 0.0 10.0]
+        centers = [[0.0, 0.0], [10.0, 10.0]]
         @test HMCExt.nearest_center([1.0, 1.0], centers) == 1
         @test HMCExt.nearest_center([9.0, 8.0], centers) == 2
 
@@ -183,14 +181,14 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         end
         a = hmc_adaptive_state(state)
         steps_after_warmup = a.metric_steps
-        clusters_after_warmup = a.cluster_metrics
+        clusters_after_warmup = copy(a.cluster_metrics)
         for _ in 1:60
             _, state = AbstractMCMC.step(rng, model, scheme, state)
         end
         a = hmc_adaptive_state(state)
         @test a.metric_steps == steps_after_warmup + 60
         # `every = 1` recomputes the cluster metrics from the growing archive on every step.
-        @test a.cluster_metrics !== clusters_after_warmup
+        @test a.cluster_metrics != clusters_after_warmup
     end
 
     @testset "the cluster metric set is recomputed on the cadence, not every HMC step" begin
@@ -206,16 +204,16 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
             _, state = AbstractMCMC.step_warmup(rng, model, scheme, state; num_warmup = 40)
         end
         a = hmc_adaptive_state(state)
-        clusters_before = a.cluster_metrics
-        centers_before = a.cluster_centers
+        clusters_before = copy(a.cluster_metrics)
+        centers_before = copy(a.cluster_centers)
         steps_before = a.metric_steps
         for _ in 1:10
             _, state = AbstractMCMC.step(rng, model, scheme, state)
         end
         a = hmc_adaptive_state(state)
         @test a.metric_steps == steps_before + 10        # the cadence counter still advances
-        @test a.cluster_metrics === clusters_before      # but no recompute fired
-        @test a.cluster_centers === centers_before
+        @test a.cluster_metrics == clusters_before      # but no recompute fired
+        @test a.cluster_centers == centers_before
     end
 
     @testset "chains are relabelled to their nearest mode before every HMC step" begin
@@ -224,12 +222,12 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         # recompute. Drive it directly with two fixed cluster metrics and a moving population.
         scheme = per_cluster_update(; every = 1000)
         ms = scheme.metric_strategy
-        astate = DifferentialEvolutionMetropolis.initialize_adaptive_state(scheme, model, 2)
+        astate = DifferentialEvolutionMetropolis.initialize_adaptive_state(scheme, model, 2, 1, Float64)
 
         m1 = AdvancedHMC.renew(astate.metric, [1.0, 1.0, 1.0])
         m2 = AdvancedHMC.renew(astate.metric, [5.0, 5.0, 5.0])
-        astate.cluster_metrics = [m1, m2]
-        astate.cluster_centers = [0.0 10.0; 0.0 10.0; 0.0 10.0]
+        copy!(astate.cluster_metrics, [m1, m2])
+        copy!(astate.cluster_centers, [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]])
 
         HMCExt.fill_chain_metrics!(ms, astate, (; x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]]))
         @test astate.chain_metrics[1] === m1
@@ -241,7 +239,7 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         @test astate.chain_metrics[2] === m1
 
         # Before the first recompute (no cluster metrics yet) it seeds every slot with the lone metric.
-        seed = DifferentialEvolutionMetropolis.initialize_adaptive_state(scheme, model, 2)
+        seed = DifferentialEvolutionMetropolis.initialize_adaptive_state(scheme, model, 2, 1, Float64)
         HMCExt.fill_chain_metrics!(ms, seed, (; x = [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]]))
         @test all(m -> m === seed.metric, seed.chain_metrics)
     end

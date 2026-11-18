@@ -58,7 +58,9 @@ function step(
 
     swap_adjacent_temperatures!(rng, state, state.temperature_ladder)
 
-    return create_sample(state), update_state(state; update_memory = update_memory)
+    sample = create_sample(state)
+    update_state!(state; update_memory = update_memory)
+    return sample, state
 end
 
 swap_adjacent_temperatures!(rng, state, ::DEMNullTemperatureLadder) = nothing

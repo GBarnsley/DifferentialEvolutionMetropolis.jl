@@ -51,10 +51,10 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
   It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` with that adaptive state and `update_chain!` (log density + tempered MH accept/reject).
 - `update_chains!` runs each chain's update through `foreach_chain`, which threads over chains with `foreach_threaded` (`utilities.jl`) when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
   Chains are updated in the ensembles given by `chain_ensembles(state.memory)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
-- `step_warmup` runs `step`, then `adapt!(adaptive_state, sampler, state)` with the state the step started from (`x` before, `xₚ` after); the fallback does nothing, so a static state (`adapt = false`) is not adapted.
-  Adaptations needing per-proposal values store them in `record_proposal!` (called for each proposal a chain can move to, keyed by `current_state`), sized by `prepare_scratch!(adaptive_state, state)`.
+- `step_warmup` runs `step`, then `adapt!(adaptive_state, sampler, state)` with the state after the step (`x` after, `xₚ` before); the fallback does nothing, so a static state (`adapt = false`) is not adapted.
+  Adaptations needing per-proposal values store them in `record_proposal!` (called for each proposal a chain can move to, keyed by `current_state`), sized for `n_chains * n_tries` states in `initialize_adaptive_state`.
   Sampler schemes pass each selected update its own `adaptive_state` and `order_state` as keywords, so the state passed down is the root state.
-- `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
+- `update_state!` swaps the `x`/`xₚ` and `ld`/`ldₚ` elements in place and advances memory and ladder in place, so `DEMState` is built once and each step returns the same state; memory and ladder never change type.
 - `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless), chains of the other ensemble (double ensemble) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
 ### Core types (`src/DifferentialEvolutionMetropolis.jl`)
@@ -84,12 +84,13 @@ Each implements `proposal!(xₚ, x, state, sampler, adaptive_state, i)`, dispatc
 
 `DEMMemoryless` picks from live chains.
 `DEMDoubleEnsemble` (`double_ensemble = true`, both subtypes of `AbstractDEMMemoryless`) splits the chains into odd and even ensembles that pick from each other, so each ensemble updates in parallel; the temperature ladder is repeated so paired chains share temperatures.
-`DEMMemoryFill` picks from a history archive `mem_x`, filled every step (`DEMMemoryFillEvery`) or thinned (`DEMMemoryFillThin`); when full it grows by `memory_size`, or with `memory_refill` becomes a `DEMMemoryRefill` that overwrites from the start.
+`DEMMemoryFill` picks from a history archive `mem_x`, filled every step (`DEMMemoryFillEvery`) or thinned (`DEMMemoryFillThin`); when full it grows by `memory_size`, or with `memory_refill` overwrites from the start; `fill.stored` counts the positions that can be picked.
 `check_memory_size!` warns when the archive will hold fewer positions than `target_memory_size` before sampling.
 
 ### Temperature (`src/temperature.jl`)
 
 Null, static (parallel tempering via `n_hot_chains`), and annealing ladders.
+The annealing ladder advances in place each step and stays at its final temperatures once annealing ends.
 `get_temperature(ladder, i)` scales the MH ratio; hot chains are excluded from output via the `*_smpl_view` views.
 
 ### HMC (`src/hmc.jl` + `ext/AdvancedHMCExt.jl`)

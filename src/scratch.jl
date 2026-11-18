@@ -46,15 +46,13 @@ end
 """
     prepare_scratch!(sampler::AbstractDEMMetaSampler, state)
     prepare_scratch!(scratch::DEMProposalScratch, state)
-    prepare_scratch!(adaptive_state::AbstractDEMAdaptiveState, state)
 
-Size the scratch buffers of `sampler`, or of the adaptive state it proposes with, for `state`, called before each step's chain updates since proposals may run in parallel and cannot resize safely.
+Size the scratch buffers of `sampler` for `state`, called before each step's chain updates since proposals may run in parallel and cannot resize safely.
 
-The fallbacks do nothing.
+The fallback does nothing.
 An update holding a [`DifferentialEvolutionMetropolis.DEMProposalScratch`](@ref) should define a method that calls the `DEMProposalScratch` method on it.
 """
 prepare_scratch!(sampler::AbstractDEMMetaSampler, state) = nothing
-prepare_scratch!(adaptive_state::AbstractDEMAdaptiveState, state) = nothing
 
 function prepare_scratch!(scratch::DEMProposalScratch, state)
     x = first(state.x)

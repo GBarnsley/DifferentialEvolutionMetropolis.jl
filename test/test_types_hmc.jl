@@ -6,9 +6,9 @@
         @testset "$T HMC type warning" begin
             model = AbstractMCMC.LogDensityModel(ADgradient(:ForwardDiff, ld.logdensity))
             mismatched = setup_hmc_update(NUTS(0.8); n_dims = 2)
-            @test_logs (:error, r"HMC metric element type Float64 does not match") DifferentialEvolutionMetropolis.initialize_adaptive_state(mismatched, model, 4, T)
+            @test_logs (:error, r"HMC metric element type Float64 does not match") DifferentialEvolutionMetropolis.initialize_adaptive_state(mismatched, model, 4, 1, T)
             matched = setup_hmc_update(NUTS(T(0.8)); n_dims = 2)
-            @test_logs DifferentialEvolutionMetropolis.initialize_adaptive_state(matched, model, 4, T)
+            @test_logs DifferentialEvolutionMetropolis.initialize_adaptive_state(matched, model, 4, 1, T)
         end
 
         @testset "$T HMC scheme $(keys(hmc_kw))" for hmc_kw in ((;), (; metric_strategy = memory_metric()))

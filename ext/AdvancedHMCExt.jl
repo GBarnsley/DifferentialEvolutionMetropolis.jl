@@ -76,30 +76,29 @@ mutable struct DEMHMCAdaptiveState{
     metric::M
     integrator::I
     κ::K
-    adaptor::A
+    const adaptor::A
     initialized::Bool
-    # Per-chain metric slots; cold/hot chain indices (empty until resolved on the first warmup step).
-    chain_metrics::Vector{M}
-    cold::Vector{Int}
-    hot::Vector{Int}
-    # Previous cluster centres (D×K), warm-starting the clustering strategies; D×0 otherwise.
-    prev_centers::Matrix{T}
+    # Per-chain metric slots; cold/hot chain indices (empty until resolved on the update's first step).
+    const chain_metrics::Vector{M}
+    const cold::Vector{Int}
+    const hot::Vector{Int}
+    # Previous cluster centres, warm-starting the clustering strategies; empty otherwise.
+    const prev_centers::Vector{Vector{T}}
     # HMC steps taken (warmup and sampling), driving the metric-recompute cadence.
     metric_steps::Int
     # Per-cluster metrics (length K ≥ 1) for the per-cluster strategy; empty until first recompute.
-    cluster_metrics::Vector{M}
-    # Centres (D×K) aligned with `cluster_metrics`, for relabelling chains to their nearest mode
-    # before every HMC step; D×0 until the first recompute.
-    cluster_centers::Matrix{T}
+    const cluster_metrics::Vector{M}
+    # Centres aligned with `cluster_metrics`, relabelling chains to their nearest mode before every HMC step.
+    const cluster_centers::Vector{Vector{T}}
     # Acceptance rate of each cold chain in the last HMC step, for `adapt!`.
-    acceptance::Vector{T}
+    const acceptance::Vector{T}
 end
 
 # `T` has no field, so it cannot be inferred; take it explicitly and infer the piece types.
 function DEMHMCAdaptiveState{T}(
         metric::M, integrator::I, κ::K, adaptor::A, initialized::Bool,
-        chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Matrix{T},
-        metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Matrix{T}, acceptance::Vector{T}
+        chain_metrics::Vector{M}, cold::Vector{Int}, hot::Vector{Int}, prev_centers::Vector{Vector{T}},
+        metric_steps::Int, cluster_metrics::Vector{M}, cluster_centers::Vector{Vector{T}}, acceptance::Vector{T}
     ) where {T <: Real, M <: AbstractMetric, I <: AbstractIntegrator, K <: AbstractMCMCKernel, A <: AbstractAdaptor}
     return DEMHMCAdaptiveState{T, M, I, K, A}(
         metric, integrator, κ, adaptor, initialized, chain_metrics, cold, hot, prev_centers,
@@ -136,7 +135,7 @@ function DEM.setup_hmc_update(
 end
 
 """
-    initialize_adaptive_state(::DEMHMCSampler, model_wrapper, n_chains, T)
+    initialize_adaptive_state(::DEMHMCSampler, model_wrapper, n_chains, n_tries, T)
 
 Build a fresh `DEMHMCAdaptiveState` for this run from copies of the sampler's pieces (the
 metric and adaptor carry mutable adaptation state, so each run needs its own). Enforce that
@@ -147,10 +146,10 @@ target, so we fail loudly if the model is order-0 rather than silently assuming 
 carries a gradient.
 """
 function DEM.initialize_adaptive_state(
-        sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int,
+        sampler::DEMHMCSampler, model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int,
         ::Type{T}
     ) where {T <: Real}
-    d = validate_target(sampler, model_wrapper.logdensity)
+    validate_target(sampler, model_wrapper.logdensity)
     if eltype(sampler.metric) !== T
         @error "HMC metric element type $(eltype(sampler.metric)) does not match position element type $T. Construct NUTS with a target acceptance of the position type (e.g. NUTS(0.8f0) for Float32); otherwise AdvancedHMC may fail during sampling. For hand-built HMC samplers, use matching metric and integrator types."
     end
@@ -159,8 +158,7 @@ function DEM.initialize_adaptive_state(
     resize_chain_metrics!(chain_metrics, metric, n_chains)
     return DEMHMCAdaptiveState{T}(
         metric, sampler.integrator, sampler.κ, deepcopy(sampler.adaptor),
-        false, chain_metrics, Int[], Int[], Matrix{T}(undef, d, 0), 0, typeof(metric)[],
-        Matrix{T}(undef, d, 0), T[]
+        false, chain_metrics, Int[], Int[], Vector{T}[], 0, typeof(metric)[], Vector{T}[], T[]
     )
 end
 
@@ -305,7 +303,7 @@ end
 
 # HMC only advances cold chains, as its untempered kernel would move hot chains by the cold posterior
 cold_chain_indices(state::DEM.DEMState{<:Any, <:Any, <:DEM.DEMNullTemperatureLadder}) = collect(eachindex(state.x))
-cold_chain_indices(state::DEM.DEMState) = copy(state.temperature_ladder.cold_chains)
+cold_chain_indices(state) = copy(state.temperature_ladder.cold_chains)
 hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
@@ -374,7 +372,7 @@ pooled_adapt!(adaptor::Union{AHMCAdapt.NesterovDualAveraging, AHMCAdapt.NoAdapta
     step_size_only_adapt!(adaptor, α)
 
 function DEM.adapt!(astate::DEMHMCAdaptiveState, ::DEMHMCSampler{<:DEMStockAdaptorMetric}, state::DEM.DEMState)
-    pooled_adapt!(astate.adaptor, state.xₚ_smpl_view, astate.acceptance)
+    pooled_adapt!(astate.adaptor, state.x_smpl_view, astate.acceptance)
     refresh_pieces_from_adaptor!(astate, first(state.chain_models))
     return nothing
 end
@@ -445,12 +443,11 @@ validate_metric_state(::DEMMemoryMetric, state) =
 
 # Any chain that does not finish cold is parallel tempering, including annealing into hot chains
 has_hot_chains(state::DEM.DEMState{<:Any, <:Any, <:DEM.DEMNullTemperatureLadder}) = false
-has_hot_chains(state::DEM.DEMState) = length(state.temperature_ladder.cold_chains) < length(state.x)
+has_hot_chains(state) = length(state.temperature_ladder.cold_chains) < length(state.x)
 
 # The filled positions of the memory archive
-informative_positions(state::DEM.DEMState{<:Any, <:Any, <:Any, <:DEM.DEMMemoryRefill}) = state.memory.mem_x
 informative_positions(state::DEM.DEMState{<:Any, <:Any, <:Any, <:DEM.DEMMemoryFill}) =
-    view(state.memory.mem_x, 1:state.memory.fill.position)
+    view(state.memory.mem_x, 1:state.memory.fill.stored)
 
 # Floor each variance at this fraction of the mean variance, bounding the condition number.
 const VARIANCE_FLOOR_FRACTION = 1.0e-6
@@ -621,10 +618,11 @@ function multimodal_gate(positions)
     return false
 end
 
-function column_sqdist(p, centers, j)
-    s = zero(eltype(centers))
+function center_sqdist(p, centers, j)
+    c = centers[j]
+    s = zero(eltype(c))
     for d in eachindex(p)
-        s += abs2(p[d] - centers[d, j])
+        s += abs2(p[d] - c[d])
     end
     return s
 end
@@ -635,33 +633,33 @@ function farthest_first_centers(positions, k)
     T = eltype(first(positions))
     D = length(first(positions))
     M = length(positions)
-    centers = Matrix{T}(undef, D, k)
+    centers = [Vector{T}(undef, D) for _ in 1:k]
     μ = zeros(T, D)
     for p in positions
         μ .+= p
     end
     μ ./= M
     i1 = argmax(i -> sum(abs2, positions[i] .- μ), 1:M)
-    centers[:, 1] .= positions[i1]
-    nearest = [column_sqdist(positions[i], centers, 1) for i in 1:M]
+    centers[1] .= positions[i1]
+    nearest = [center_sqdist(positions[i], centers, 1) for i in 1:M]
     for j in 2:k
         ij = argmax(nearest)
-        centers[:, j] .= positions[ij]
+        centers[j] .= positions[ij]
         for i in 1:M
-            nearest[i] = min(nearest[i], column_sqdist(positions[i], centers, j))
+            nearest[i] = min(nearest[i], center_sqdist(positions[i], centers, j))
         end
     end
     return centers
 end
 
 function assign_labels!(positions, centers, labels)
-    k = size(centers, 2)
+    k = length(centers)
     changed = false
     for i in eachindex(positions)
         best = 1
-        bestd = column_sqdist(positions[i], centers, 1)
+        bestd = center_sqdist(positions[i], centers, 1)
         for j in 2:k
-            dj = column_sqdist(positions[i], centers, j)
+            dj = center_sqdist(positions[i], centers, j)
             if dj < bestd
                 bestd = dj
                 best = j
@@ -676,17 +674,17 @@ function assign_labels!(positions, centers, labels)
 end
 
 function update_centers!(positions, centers, labels)
-    k = size(centers, 2)
+    k = length(centers)
     counts = zeros(Int, k)
-    fill!(centers, 0)
+    foreach(c -> fill!(c, 0), centers)
     for i in eachindex(positions)
         z = labels[i]
         counts[z] += 1
-        view(centers, :, z) .+= positions[i]
+        centers[z] .+= positions[i]
     end
     for j in 1:k
         counts[j] == 0 && continue
-        view(centers, :, j) ./= counts[j]
+        centers[j] ./= counts[j]
     end
     return counts
 end
@@ -695,16 +693,15 @@ end
 function reseed_empty!(positions, centers, labels, counts)
     for j in eachindex(counts)
         counts[j] == 0 || continue
-        worst = argmax(i -> column_sqdist(positions[i], centers, labels[i]), eachindex(positions))
-        centers[:, j] .= positions[worst]
+        worst = argmax(i -> center_sqdist(positions[i], centers, labels[i]), eachindex(positions))
+        centers[j] .= positions[worst]
     end
     return nothing
 end
 
 # Lloyd's k-means; warm-starts from `warm` when it matches the requested `k`, else seeds afresh.
 function kmeans(positions, k, warm)
-    D = length(first(positions))
-    centers = (size(warm) == (D, k)) ? copy(warm) : farthest_first_centers(positions, k)
+    centers = length(warm) == k ? map(copy, warm) : farthest_first_centers(positions, k)
     labels = ones(Int, length(positions))
     for _ in 1:KMEANS_MAXITER
         changed = assign_labels!(positions, centers, labels)
@@ -733,14 +730,14 @@ total_variance_trace(positions, μ) =
     sum(p -> sum(abs2, p .- μ), positions)
 
 function between_variance_trace(labels, centers, μ)
-    K = size(centers, 2)
+    K = length(centers)
     counts = zeros(Int, K)
     for z in labels
         counts[z] += 1
     end
-    s = zero(eltype(centers))
+    s = zero(eltype(μ))
     for j in 1:K
-        s += counts[j] * sum(abs2, view(centers, :, j) .- μ)
+        s += counts[j] * sum(abs2, centers[j] .- μ)
     end
     return s
 end
@@ -750,10 +747,9 @@ end
 # adds negligible between-mode variance, so BIC-style over-splitting (which shrinks the pooled
 # metric below the true within-mode covariance) is avoided.
 function cluster_archive(positions, kmax, warm)
-    D = length(first(positions))
     μ = global_mean(positions)
     best_labels = ones(Int, length(positions))
-    best_centers = reshape(copy(μ), D, 1)
+    best_centers = [copy(μ)]
     total = total_variance_trace(positions, μ)
     total == 0 && return best_labels, best_centers
     kcap = min(kmax, length(positions))
@@ -771,17 +767,17 @@ end
 
 # Severity diagnostic η: the largest per-axis between-mode share of the total variance.
 function between_variance_fraction(positions, labels, centers)
-    size(centers, 2) == 1 && return 0.0
+    length(centers) == 1 && return 0.0
     T = eltype(first(positions))
     D = length(first(positions))
     μ = global_mean(positions)
-    counts = zeros(Int, size(centers, 2))
+    counts = zeros(Int, length(centers))
     for z in labels
         counts[z] += 1
     end
     between = zeros(T, D)
-    for j in 1:size(centers, 2)
-        between .+= counts[j] .* abs2.(view(centers, :, j) .- μ)
+    for j in eachindex(centers)
+        between .+= counts[j] .* abs2.(centers[j] .- μ)
     end
     total = zeros(T, D)
     for p in positions
@@ -797,7 +793,7 @@ end
 # Pool the within-cluster deviations through Stage 2's estimator (the (M−K) vs (M−1)
 # denominator difference is negligible for an archive of hundreds of points).
 function within_cluster_inverse_metric(metric, positions, labels, centers, shrinkage)
-    centered = [positions[i] .- view(centers, :, labels[i]) for i in eachindex(positions)]
+    centered = [positions[i] .- centers[labels[i]] for i in eachindex(positions)]
     return memory_inverse_metric(metric, centered, shrinkage)
 end
 
@@ -808,7 +804,7 @@ end
 function gated_clustering(ms, astate, positions)
     multimodal_gate(positions) || return Int[], astate.prev_centers, true
     labels, centers = cluster_archive(positions, ms.kmax, astate.prev_centers)
-    astate.prev_centers = centers
+    copy!(astate.prev_centers, centers)
     gated = between_variance_fraction(positions, labels, centers) < BETWEEN_VARIANCE_THRESHOLD
     return labels, centers, gated
 end
@@ -877,7 +873,7 @@ min_cluster_points(metric::AdvancedHMC.DenseEuclideanMetric) = size(metric, 1) +
 # One metric over the whole archive (the K = 1 / gated-off fall-through), with its single centre.
 function pooled_cluster_metric(ms::DEMPerClusterMetric, astate, positions)
     M⁻¹ = memory_inverse_metric(astate.metric, positions, ms.shrinkage)
-    centers = reshape(global_mean(positions), length(first(positions)), 1)
+    centers = [global_mean(positions)]
     return [AdvancedHMC.renew(astate.metric, M⁻¹)], centers
 end
 
@@ -889,7 +885,7 @@ function per_cluster_inverse_metrics(ms::DEMPerClusterMetric, astate, positions)
     labels, centers, gated = gated_clustering(ms, astate, positions)
     gated && return pooled_cluster_metric(ms, astate, positions)
     floor_pts = min_cluster_points(astate.metric)
-    metrics = map(1:size(centers, 2)) do k
+    metrics = map(eachindex(centers)) do k
         pts = [positions[i] for i in eachindex(positions) if labels[i] == k]
         src = length(unique(pts)) ≥ floor_pts ? pts : positions
         AdvancedHMC.renew(astate.metric, memory_inverse_metric(astate.metric, src, ms.shrinkage))
@@ -897,7 +893,7 @@ function per_cluster_inverse_metrics(ms::DEMPerClusterMetric, astate, positions)
     return metrics, centers
 end
 
-nearest_center(θ, centers) = argmin(j -> column_sqdist(θ, centers, j), 1:size(centers, 2))
+nearest_center(θ, centers) = argmin(j -> center_sqdist(θ, centers, j), eachindex(centers))
 
 # Assign each chain its current mode's metric by nearest centre. Diagonal/unit share the cluster
 # metric object (read-only across threads); dense copies into the per-chain scratch (its own `_temp`
@@ -926,8 +922,8 @@ end
 # `astate.prev_centers`, which `gated_clustering` keeps at the real cluster centres even when gated.
 function refresh_memory_metric!(ms::DEMPerClusterMetric, astate::DEMHMCAdaptiveState, state)
     metrics, centers = per_cluster_inverse_metrics(ms, astate, informative_positions(state))
-    astate.cluster_metrics = metrics
-    astate.cluster_centers = centers
+    copy!(astate.cluster_metrics, metrics)
+    copy!(astate.cluster_centers, centers)
     return nothing
 end
 
@@ -979,8 +975,8 @@ advance_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState, state
 function initialize_hmc!(rng, model_wrapper, sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState, state, num_warmup::Int)
     astate.initialized && return nothing
     validate_metric_state(sampler.metric_strategy, state)
-    astate.cold = cold_chain_indices(state)
-    astate.hot = hot_chain_indices(state, astate.cold)
+    copy!(astate.cold, cold_chain_indices(state))
+    copy!(astate.hot, hot_chain_indices(state, astate.cold))
     refine_step_size!(rng, model_wrapper, astate, state; n_adapts = num_warmup)
     return nothing
 end
@@ -1025,7 +1021,9 @@ function step(
     κ, chain_metrics = prepare_metrics!(sampler, adaptive_state, state)
     cold, hot = trajectory_chains(adaptive_state, state)
     run_trajectories!(rng, state, κ, chain_metrics, cold, hot, acceptance_rates(adaptive_state, state, cold), parallel)
-    return DEM.create_sample(state), DEM.update_state(state; update_memory = update_memory)
+    sample = DEM.create_sample(state)
+    DEM.update_state!(state; update_memory = update_memory)
+    return sample, state
 end
 
 DEM.chains_required(::DEMHMCSampler) = 1

@@ -89,8 +89,8 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         metric = DiagEuclideanMetric(2)
 
         pooled = HMCExt.memory_inverse_metric(metric, archive, 0.0)
-        labels, centers = HMCExt.cluster_archive(archive, 10, Matrix{Float64}(undef, 2, 0))
-        @test size(centers, 2) == 2
+        labels, centers = HMCExt.cluster_archive(archive, 10, Vector{Float64}[])
+        @test length(centers) == 2
         within = HMCExt.within_cluster_inverse_metric(metric, archive, labels, centers, 0.0)
 
         # Within-mode variance ≈ within_sd^2; pooled is inflated by orders of magnitude.
@@ -104,7 +104,7 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         archive = [randn(rng, 2) for _ in 1:400]
         metric = DiagEuclideanMetric(2)
         # Lloyd on K = 1 puts the single centre at the mean, so within == pooled.
-        labels1, centers1 = HMCExt.cluster_archive(archive, 1, Matrix{Float64}(undef, 2, 0))
+        labels1, centers1 = HMCExt.cluster_archive(archive, 1, Vector{Float64}[])
         within = HMCExt.within_cluster_inverse_metric(metric, archive, labels1, centers1, 0.0)
         pooled = HMCExt.memory_inverse_metric(metric, archive, 0.0)
         @test isapprox(within, pooled; atol = 1.0e-8)
@@ -113,10 +113,10 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
     @testset "k-means reseeds a cluster emptied by a stale warm start" begin
         positions = [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1], [10.0, 10.0], [10.1, 10.0], [10.0, 10.1]]
         # The third warm centre is far from every point, so its cluster starts empty.
-        warm = [0.0 10.0 1000.0; 0.0 10.0 1000.0]
+        warm = [[0.0, 0.0], [10.0, 10.0], [1000.0, 1000.0]]
         labels, centers = HMCExt.kmeans(positions, 3, warm)
         @test sort(unique(labels)) == 1:3
-        @test all(c -> -1 <= c <= 11, centers)
+        @test all(c -> -1 <= c <= 11, Iterators.flatten(centers))
     end
 
     @testset "recovers a unimodal correlated Gaussian (gate stays closed)" begin

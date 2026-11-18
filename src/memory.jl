@@ -1,6 +1,6 @@
 abstract type AbstractDEMMemoryless{T} <: AbstractDEMMemory{T} end
 
-update_memory!!(memory::AbstractDEMMemoryless, x) = memory
+update_memory!(memory::AbstractDEMMemoryless, x) = nothing
 
 #no memory
 struct DEMMemoryless{T} <: AbstractDEMMemoryless{T}
@@ -24,44 +24,12 @@ chain_ensembles(memory::AbstractDEMMemory) = memory.chain_ensembles
 n_ensembles(::AbstractDEMMemory) = 1
 n_ensembles(memory::DEMDoubleEnsemble) = 2
 
-#abstract memory-full type
-abstract type AbstractDEMMemoryFormat{
-    T, VV <: AbstractVector{<:AbstractVector{T}},
-} <:
-AbstractDEMMemory{T} end
-
 #abstract type for methods of filling memory
 abstract type AbstractDEMMemoryFillMethod end
 
-#full memory, refreshing from the start
-struct DEMMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
-    AbstractDEMMemoryFormat{T, VV}
-    chain_ensembles::Tuple{UnitRange{Int}}
-    mem_x::VV
-    fill::F
-    #for preallocation only for internal use
-    indices_INTERNAL::Vector{Vector{Int}}
-    ordered_indices_INTERNAL::Vector{Vector{Int}}
-end
-
-function update_memory!!(
-        memory::DEMMemoryRefill{T, VV},
-        x::VV
-    ) where {T <: Real, VV <: AbstractVector{<:AbstractVector{T}}}
-    if update_position!(memory.fill)
-        for i in 1:memory.fill.n_chains
-            memory.mem_x[memory.fill.position - i + 1] .= x[i]
-        end
-    end
-    if memory.fill.position == length(memory.mem_x)
-        memory.fill.position = 0
-    end
-    return memory
-end
-
-#non-full memory, filling up to a max size then extending or refilling
+#history archive, filled up to its size then grown by `memory_size` or, when `refill`, overwritten from the start
 struct DEMMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
-    AbstractDEMMemoryFormat{T, VV}
+    AbstractDEMMemory{T}
     chain_ensembles::Tuple{UnitRange{Int}}
     mem_x::VV
     fill::F
@@ -72,7 +40,7 @@ struct DEMMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: Abstract
     ordered_indices_INTERNAL::Vector{Vector{Int}}
 end
 
-function update_memory!!(
+function update_memory!(
         memory::DEMMemoryFill{T, VV},
         x::VV
     ) where {T <: Real, V_elem <: AbstractVector{T}, VV <: AbstractVector{V_elem}}
@@ -80,11 +48,11 @@ function update_memory!!(
         for i in 1:memory.fill.n_chains
             memory.mem_x[memory.fill.position - i + 1] .= x[i]
         end
+        memory.fill.stored = max(memory.fill.stored, memory.fill.position)
     end
 
     if memory.fill.position == length(memory.mem_x)
         if memory.refill
-            memory = DEMMemoryRefill(memory.chain_ensembles, memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
             memory.fill.position = 0
         else
             #increase memory size
@@ -95,13 +63,16 @@ function update_memory!!(
             end
         end
     end
-    return memory
+    return nothing
 end
 
 mutable struct DEMMemoryFillEvery <:
     AbstractDEMMemoryFillMethod
     position::Int
-    n_chains::Int
+    "number of stored positions, the whole archive once it has been refilled"
+    stored::Int
+    const n_chains::Int
+    DEMMemoryFillEvery(position::Int, n_chains::Int) = new(position, position, n_chains)
 end
 
 function update_position!(method::DEMMemoryFillEvery)
@@ -112,9 +83,12 @@ end
 mutable struct DEMMemoryFillThin <:
     AbstractDEMMemoryFillMethod
     position::Int
-    n_chains::Int
+    "number of stored positions, the whole archive once it has been refilled"
+    stored::Int
+    const n_chains::Int
     count::Int
-    max_count::Int
+    const max_count::Int
+    DEMMemoryFillThin(position::Int, n_chains::Int, interval::Int) = new(position, position, n_chains, interval, interval)
 end
 
 function update_position!(method::DEMMemoryFillThin)

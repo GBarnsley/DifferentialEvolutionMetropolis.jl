@@ -1,25 +1,25 @@
 mutable struct DEMAdaptiveSubspace{T <: Real} <:
     AbstractDEMAdaptiveState{T}
     "adapted crossover probability holder"
-    p::Vector{T}
+    const p::Vector{T}
     "attempts for each crossover probability"
-    L::Vector{Int}
+    const L::Vector{Int}
     "squared normalised jumping distance for each crossover probability for each crossover probability"
-    Δ::Vector{T}
+    const Δ::Vector{T}
     "sampler for crossover probabilities, reweighted in place"
-    cr_spl::DEMCrossoverSampler{T}
+    const cr_spl::DEMCrossoverSampler{T}
     "running count for variance calculation"
     var_count::Int
     "running mean for each dimension"
-    var_mean::Vector{T}
+    const var_mean::Vector{T}
     "running M2 for variance calculation (Welford's algorithm)"
-    var_m2::Vector{T}
+    const var_m2::Vector{T}
     "preallocated delta for variance calculation"
-    delta::Vector{T}
+    const delta::Vector{T}
     "preallocated variance vector"
-    variance::Vector{T}
+    const variance::Vector{T}
     "crossover probability index of the last proposal for each `current_state`"
-    chain_cr::Vector{Int}
+    const chain_cr::Vector{Int}
 end
 
 # Squared jump from `x` to `xₚ` normalised by the running variance, without allocating
@@ -75,8 +75,6 @@ function record_proposal!(adaptive_state::DEMAdaptiveSubspace, proposal::NamedTu
     return nothing
 end
 
-prepare_scratch!(adaptive_state::DEMAdaptiveSubspace, state) = (resize!(adaptive_state.chain_cr, length(state.rngs)); nothing)
-
 # Records each cold chain's normalised squared jump against the crossover probability it used, then reweights the crossover probabilities
 function adapt!(adaptive_state::DEMAdaptiveSubspace, sampler::AbstractDEMSubspaceSampler, state::DEMState)
     if calculate_current_variance!(adaptive_state, sampler.min_variance_count)
@@ -88,7 +86,7 @@ function adapt!(adaptive_state::DEMAdaptiveSubspace, sampler::AbstractDEMSubspac
             adaptive_state.Δ[cr_index] += normalised_squared_jump(state.x[i], state.xₚ[i], adaptive_state.variance)
         end
     end
-    calculate_running_variance!(adaptive_state, state.xₚ_smpl_view)
+    calculate_running_variance!(adaptive_state, state.x_smpl_view)
     if all(>(0), adaptive_state.L) && any(>(0), adaptive_state.Δ)
         adapted_cr_probabilities!(adaptive_state, sampler.cr_uniform_weight)
         set_weights!(adaptive_state.cr_spl, adaptive_state.p)
@@ -98,7 +96,7 @@ end
 
 function initialize_adaptive_state(
         sampler::AbstractDEMSubspaceSampler,
-        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+        model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int, ::Type{T}
     ) where {T <: Real}
     n_cr = sampler.n_cr
     d = dimension(model_wrapper.logdensity)
@@ -124,7 +122,7 @@ function initialize_adaptive_state(
         delta = zeros(T, d)
         variance = ones(T, d)
         return DEMAdaptiveSubspace{T}(
-            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance, Int[]
+            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance, zeros(Int, n_chains * n_tries)
         )
     end
 end

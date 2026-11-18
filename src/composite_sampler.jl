@@ -312,9 +312,9 @@ end
 
 function initialize_adaptive_state(
         sampler::AbstractDEMCompositeSampler,
-        model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
+        model_wrapper::LogDensityModel, n_chains::Int, n_tries::Int, ::Type{T}
     ) where {T <: Real}
-    adaptive_states = map(s -> initialize_adaptive_state(s, model_wrapper, n_chains, T), sampler.updates)
+    adaptive_states = map(s -> initialize_adaptive_state(s, model_wrapper, n_chains, n_tries, T), sampler.updates)
 
     if all(s -> s isa DEMAdaptiveStatic, adaptive_states)
         return DEMAdaptiveStatic{T}()

@@ -1,27 +1,26 @@
-# Mutable so the state holds a pointer to the buffers rather than storing their fields inline
-mutable struct DEMMultiTryBuffers{T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, E <: Tuple}
-    const forward::Array{V, 2}
-    const forward_ld::Array{T, 2}
+struct DEMMultiTryBuffers{T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, E <: Tuple}
+    forward::Array{V, 2}
+    forward_ld::Array{T, 2}
     "log Hastings correction of each forward trial"
-    const forward_offset::Array{T, 2}
+    forward_offset::Array{T, 2}
     "cumulative selection weights of the forward trials"
-    const forward_weight::Array{T, 2}
-    const forward_log_weight::Vector{T}
-    const reference::Array{V, 2}
-    const reference_ld::Array{T, 2}
-    const reference_offset::Array{T, 2}
+    forward_weight::Array{T, 2}
+    forward_log_weight::Vector{T}
+    reference::Array{V, 2}
+    reference_ld::Array{T, 2}
+    reference_offset::Array{T, 2}
     "selected forward trial, 0 if every forward trial has zero weight"
-    const selected::Vector{Int}
+    selected::Vector{Int}
     "`current_state` passed to `proposal!` for each trial, the first trial of a chain is passed the chain's index"
-    const current_states::Array{Int, 2}
+    current_states::Array{Int, 2}
     "per-chain columns of the arrays above"
-    const forward_ld_view::Vector{W}
-    const forward_offset_view::Vector{W}
-    const forward_weight_view::Vector{W}
-    const reference_ld_view::Vector{W}
-    const reference_offset_view::Vector{W}
+    forward_ld_view::Vector{W}
+    forward_offset_view::Vector{W}
+    forward_weight_view::Vector{W}
+    reference_ld_view::Vector{W}
+    reference_offset_view::Vector{W}
     "(trial, chain) indices of the forward and reference trials of each ensemble"
-    const ensemble_trials::E
+    ensemble_trials::E
 end
 
 function DEMMultiTryBuffers(x::AbstractVector{V}, n_tries::Int, ensembles::Tuple) where {T <: Real, V <: AbstractVector{T}}
