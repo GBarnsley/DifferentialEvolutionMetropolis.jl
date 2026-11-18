@@ -49,7 +49,7 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 - `step(rng, model, sampler; kwargs...)` initialises: resolves `initial_position`, builds temperature ladder, memory, adaptive state, per-chain model copies, and `DEMState`.
 - `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state; on an adaptive state it calls `fix_sampler_state` and delegates.
   It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` and `update_chain!` (log density + tempered MH accept/reject).
-- `update_chains!` threads over chains when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
+- `update_chains!` runs each chain's update through `foreach_chain`, which threads over chains with `foreach_threaded` (`utilities.jl`) when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
   Chains are updated in the ensembles given by `chain_ensembles(state.memory)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
 - `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` (unexported, documented with the rest of the custom sampler API in `docs/src/custom.md`) freeze adapted parameters.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
@@ -72,7 +72,7 @@ Each implements `proposal!(xₚ, x, state, sampler, i)`, writing the proposal in
 - DE, snooker and subspace are `DEMSamplerSerial` and `DEMSamplerMultipleTry`.
 - `swap_update.jl`: `setup_swap_update` swaps positions between chains at adjacent temperatures with its own `step` (no `proposal!`); the templates append it via `use_parallel_tempering_swaps` (default on when `n_hot_chains > 0`).
   `check_swap_setup` warns for hot chains without swaps and swaps without hot chains.
-- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate forward and reference trials.
+- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate forward and reference trials; they pass `evaluate_trials!` either every (trial, chain) pair of an ensemble or one memoryless chain's trials.
 - `composite_sampler.jl`: `setup_random_order_scheme` weight-samples among updates each step, `setup_fixed_order_scheme` runs its first update `n` times then its second once (cycle position held in `state.order_state`); `setup_sampler_scheme` picks between them from `w`.
   Schemes nest, and collapse to static adaptive state when all components are static.
 - `scratch.jl`: `DEMProposalScratch` per-chain proposal buffers, sized by `prepare_scratch!` and read with `chain_buffers`; also defines `==`/`hash` for samplers, ignoring scratch.

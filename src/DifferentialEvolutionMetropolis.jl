@@ -207,7 +207,7 @@ function DEMState(
         temperature_ladder,
         memory,
         chain_models,
-        multi_try_buffers(x, n_tries),
+        multi_try_buffers(x, n_tries, chain_models, chain_ensembles(memory)),
         xₚ,
         ldₚ,
         x_smpl_view,

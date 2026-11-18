@@ -1,6 +1,6 @@
 # Mutable so the state holds a pointer to the buffers rather than storing their fields inline
 mutable struct DEMMultiTryBuffers{
-        T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, WV <: SubArray{V, 1},
+        T <: Real, V <: AbstractVector{T}, W <: SubArray{T, 1}, WV <: SubArray{V, 1}, WM <: SubArray, E <: Tuple,
     }
     const forward::Array{V, 2}
     const forward_ld::Array{T, 2}
@@ -24,10 +24,15 @@ mutable struct DEMMultiTryBuffers{
     const reference_view::Vector{WV}
     const reference_ld_view::Vector{W}
     const reference_offset_view::Vector{W}
+    "per-chain model copies of each trial, from `chain_models` as an `n_tries × n_chains` matrix"
+    const forward_models_view::Vector{WM}
+    const reference_models_view::Vector{WM}
+    "views of the trials, their log densities and model copies over the chains of each ensemble"
+    const ensemble_views::E
 end
 
 function DEMMultiTryBuffers(
-        x::AbstractVector{V}, n_tries::Int
+        x::AbstractVector{V}, n_tries::Int, chain_models::AbstractVector, ensembles::Tuple
     ) where {T <: Real, V <: AbstractVector{T}}
     n_chains = length(x)
     forward = [similar(first(x)) for _ in 1:n_tries, _ in 1:n_chains]
@@ -37,6 +42,19 @@ function DEMMultiTryBuffers(
     reference = [similar(first(x)) for _ in 1:(n_tries - 1), _ in 1:n_chains]
     reference_ld = Array{T, 2}(undef, n_tries - 1, n_chains)
     reference_offset = Array{T, 2}(undef, n_tries - 1, n_chains)
+    models = reshape(chain_models, n_tries, n_chains)
+    forward_trials = 1:n_tries
+    reference_trials = 1:(n_tries - 1)
+    ensemble_views = map(ensembles) do chains
+        (;
+            forward = view(forward, :, chains),
+            forward_ld = view(forward_ld, :, chains),
+            forward_models = view(models, forward_trials, chains),
+            reference = view(reference, :, chains),
+            reference_ld = view(reference_ld, :, chains),
+            reference_models = view(models, reference_trials, chains),
+        )
+    end
     return DEMMultiTryBuffers(
         forward,
         forward_ld,
@@ -54,11 +72,15 @@ function DEMMultiTryBuffers(
         collect(eachcol(forward_weight)),
         collect(eachcol(reference)),
         collect(eachcol(reference_ld)),
-        collect(eachcol(reference_offset))
+        collect(eachcol(reference_offset)),
+        [view(models, forward_trials, i) for i in 1:n_chains],
+        [view(models, reference_trials, i) for i in 1:n_chains],
+        ensemble_views
     )
 end
 
-multi_try_buffers(x, n_tries::Int) = n_tries > 1 ? DEMMultiTryBuffers(x, n_tries) : nothing
+multi_try_buffers(x, n_tries::Int, chain_models, ensembles) =
+    n_tries > 1 ? DEMMultiTryBuffers(x, n_tries, chain_models, ensembles) : nothing
 
 n_tries(buffers::DEMMultiTryBuffers) = size(buffers.forward, 1)
 n_tries(::Nothing) = 1
@@ -98,26 +120,9 @@ end
 trial_logdensity(model, x, ld) = ld > -Inf ? checked_logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
-function evaluate_trials!(lds::AbstractArray{T}, xs, chain_models, parallel::Bool) where {T <: Real}
-    if parallel
-        Threads.@threads for m in eachindex(xs)
-            lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
-        end
-    else
-        evaluate_trials!(lds, xs, chain_models[1])
-    end
-    return nothing
-end
-
-function evaluate_trials!(lds::AbstractArray{T}, xs, model) where {T <: Real}
-    lds .= trial_logdensity.(Ref(model), xs, lds)
-    return nothing
-end
-
-# Evaluates every (trial, chain) pair of the given chains in parallel
-function evaluate_trials!(lds::AbstractMatrix{T}, xs, chain_models, chains::AbstractRange) where {T <: Real}
-    Threads.@threads for m in CartesianIndices((axes(lds, 1), chains))
-        lds[m] = trial_logdensity(chain_models[LinearIndices(lds)[m]], xs[m], lds[m])
+function evaluate_trials!(lds, xs, models, parallel::Bool)
+    foreach_threaded(eachindex(lds, xs, models), parallel) do m
+        lds[m] = trial_logdensity(models[m], xs[m], lds[m])
     end
     return nothing
 end
@@ -177,34 +182,18 @@ function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
     return false
 end
 
-# For each ensemble, the forward and reference trials are each evaluated in one parallel loop over every (trial, chain)
+# For each ensemble, the forward and reference trials are each evaluated in one loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
         sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
     )
     buffers = state.multi_try
-    if parallel
-        for chains in chain_ensembles(state.memory)
-            Threads.@threads for i in chains
-                propose_forward!(buffers, state, sampler, i)
-            end
-            evaluate_trials!(buffers.forward_ld, buffers.forward, state.chain_models, chains)
-            Threads.@threads for i in chains
-                propose_reference!(buffers, state, sampler, i)
-            end
-            evaluate_trials!(buffers.reference_ld, buffers.reference, state.chain_models, chains)
-            Threads.@threads for i in chains
-                accept_trial!(buffers, state, i)
-            end
-        end
-    else
-        for chains in chain_ensembles(state.memory), i in chains
-            propose_forward!(buffers, state, sampler, i)
-            evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], state.chain_models[i])
-            propose_reference!(buffers, state, sampler, i)
-            evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], state.chain_models[i])
-            accept_trial!(buffers, state, i)
-        end
+    for (chains, views) in zip(chain_ensembles(state.memory), buffers.ensemble_views)
+        foreach_threaded(i -> propose_forward!(buffers, state, sampler, i), chains, parallel)
+        evaluate_trials!(views.forward_ld, views.forward, views.forward_models, parallel)
+        foreach_threaded(i -> propose_reference!(buffers, state, sampler, i), chains, parallel)
+        evaluate_trials!(views.reference_ld, views.reference, views.reference_models, parallel)
+        foreach_threaded(i -> accept_trial!(buffers, state, i), chains, parallel)
     end
     return nothing
 end
@@ -217,9 +206,9 @@ function update_chains!(
     buffers = state.multi_try
     for i in eachindex(state.x)
         propose_forward!(buffers, state, sampler, i)
-        evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], state.chain_models, parallel)
+        evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], buffers.forward_models_view[i], parallel)
         propose_reference!(buffers, state, sampler, i)
-        evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], state.chain_models, parallel)
+        evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], buffers.reference_models_view[i], parallel)
         accept_trial!(buffers, state, i)
     end
     return nothing

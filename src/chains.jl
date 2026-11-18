@@ -266,35 +266,25 @@ function propose_and_update_chain!(state, sampler, i)
     return nothing
 end
 
-function propose_and_update_chains!(state, sampler, chains)
-    for i in chains
-        propose_and_update_chain!(state, sampler, i)
+# Calls f on each chain, ensemble by ensemble, threading within an ensemble when parallel
+function foreach_chain(f, state, sampler, parallel::Bool)
+    for chains in chain_ensembles(state.memory)
+        foreach_threaded(f, chains, parallel)
     end
+    return nothing
+end
+
+# Memoryless chains with a sequential update pick from the updated positions of earlier chains, so they update in turn
+function foreach_chain(
+        f, state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
+        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
+    )
+    foreach(f, eachindex(state.x))
     return nothing
 end
 
 function update_chains!(state, sampler, parallel::Bool)
-    if parallel
-        for chains in chain_ensembles(state.memory)
-            Threads.@threads for i in chains
-                propose_and_update_chain!(state, sampler, i)
-            end
-        end
-    else
-        for chains in chain_ensembles(state.memory)
-            propose_and_update_chains!(state, sampler, chains)
-        end
-    end
-    return nothing
-end
-
-# if we are not using memory and not parallel compatible, we ignore parallel, the multi-try method here is more specific so takes precedence
-function update_chains!(
-        state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
-        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
-    )
-    propose_and_update_chains!(state, sampler, eachindex(state.x))
-
+    foreach_chain(i -> propose_and_update_chain!(state, sampler, i), state, sampler, parallel)
     return nothing
 end
 
@@ -675,13 +665,11 @@ function step(
     end
 
     chain_models = [deepcopy(model) for _ in 1:(length(x) * n_tries)]
-    if parallel
-        ld = Vector{eltype(x[1])}(undef, length(x))
-        Threads.@threads for i in eachindex(x)
+    ld = Vector{T}(undef, length(x))
+    let x = x
+        foreach_threaded(eachindex(x), parallel) do i
             ld[i] = checked_logdensity(chain_models[i], x[i])
         end
-    else
-        ld = T[checked_logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0

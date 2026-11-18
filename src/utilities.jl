@@ -160,3 +160,14 @@ end
 function generate_names(n_params::Int)
     return [Symbol("param_$(i)") for i in 1:n_params]
 end
+
+function foreach_threaded(f, indices, parallel::Bool)
+    if parallel
+        Threads.@threads for i in indices
+            f(i)
+        end
+    else
+        foreach(f, indices)
+    end
+    return nothing
+end
