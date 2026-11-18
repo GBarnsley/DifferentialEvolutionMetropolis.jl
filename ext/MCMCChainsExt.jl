@@ -35,5 +35,13 @@ function DifferentialEvolutionMetropolis.convert(
     return chns
 end
 
+function DifferentialEvolutionMetropolis.convert(
+        ::Type{Chains},
+        samples::Vector{DifferentialEvolutionMetropolis.DEMSample{V, VV}},
+        n_ensembles::Int
+    ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
+    return DifferentialEvolutionMetropolis.convert(Chains, DifferentialEvolutionMetropolis.ensemble_major(samples, n_ensembles))
+end
+
 
 end

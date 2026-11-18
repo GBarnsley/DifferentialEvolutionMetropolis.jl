@@ -18,6 +18,15 @@ mutable struct DEMAdaptiveSubspace{T <: Real} <:
     delta::Vector{T}
     "preallocated variance vector"
     variance::Vector{T}
+    "preallocated crossover probability index for each chain"
+    chain_cr::Vector{Int}
+    "preallocated squared normalised jump for each chain"
+    chain_Δ::Vector{T}
+end
+
+# Squared jump from `x` to `xₚ` normalised by the running variance, without allocating
+function normalised_squared_jump(x, xₚ, variance)
+    return sum(abs2(xᵢ - xₚᵢ) / vᵢ for (xᵢ, xₚᵢ, vᵢ) in zip(x, xₚ, variance))
 end
 
 # Helper function to update running variance using Welford's algorithm
@@ -149,8 +158,6 @@ function step_warmup(
     for i in eachindex(state.rngs)
         reseed!(state.rngs[i], rng)
     end
-    # Extract the wrapped model which implements LogDensityProblems.jl.
-    model = model_wrapper.logdensity
     # Extract the current state
     x = state.x
     adaptive_state = state.adaptive_state
@@ -169,50 +176,28 @@ function step_warmup(
             for i in cold_chains
                 j = buffers.selected[i]
                 j == 0 && continue
-                cr_update = findfirst(==(buffers.forward_cr[j, i]), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_update] += 1
-                adaptive_state.Δ[cr_update] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
+                cr_index = findfirst(==(buffers.forward_cr[j, i]), adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_index] += 1
+                adaptive_state.Δ[cr_index] += normalised_squared_jump(state.x[i], state.xₚ[i], adaptive_state.variance)
             end
         end
-    elseif parallel && !(state.memory isa DEMMemoryless)
+    else
         # thread safe updating
-        Δ_update = zeros(T, length(x))
-        cr_update = Vector{Int}(undef, length(x))
+        Δ_update = fill!(resize!(adaptive_state.chain_Δ, length(x)), zero(T))
+        cr_update = resize!(adaptive_state.chain_cr, length(x))
 
-        Threads.@threads for i in eachindex(x)
+        foreach_chain(state, fixed_sampler, parallel) do i
             prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
             cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
             if accepted
-                Δ_update[i] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
+                Δ_update[i] = normalised_squared_jump(state.x[i], state.xₚ[i], adaptive_state.variance)
             end
         end
         if variance_ready
             for i in cold_chains
                 adaptive_state.L[cr_update[i]] += 1
                 adaptive_state.Δ[cr_update[i]] += Δ_update[i]
-            end
-        end
-    else
-        for i in eachindex(x)
-            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
-            accepted = update_chain!(model, state, prop.offset, i)
-
-            if variance_ready && i in cold_chains
-                cr_index = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_index] += 1
-                if accepted
-                    adaptive_state.Δ[cr_index] += sum(
-                        (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                            adaptive_state.variance
-                    )
-                end
             end
         end
     end
@@ -260,7 +245,7 @@ function initialize_adaptive_state(
         delta = zeros(T, d)
         variance = ones(T, d)
         return DEMAdaptiveSubspace{T}(
-            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance
+            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance, zeros(Int, n_chains), zeros(T, n_chains)
         )
     end
 end

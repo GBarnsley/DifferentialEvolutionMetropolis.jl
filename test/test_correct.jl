@@ -16,6 +16,8 @@
         ("With memory", standard_updates, (; memory = true, n_hot_chains = 0, n_tries = 1)),
         ("Multi-try", standard_updates, (; memory = false, n_hot_chains = 0, n_tries = 3)),
         ("With pt", pt_updates, (; memory = false, n_hot_chains = 3, n_tries = 1)),
+        ("Double ensemble", standard_updates, (; memory = false, n_hot_chains = 0, n_tries = 1, double_ensemble = true)),
+        ("Double ensemble with pt", pt_updates, (; memory = false, n_hot_chains = 3, n_tries = 1, double_ensemble = true)),
     ]
     @test sum(((_, updates, _),) -> length(updates), settings) == N_CORRECTNESS_UPDATES.demc
 

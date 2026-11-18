@@ -334,7 +334,7 @@ cold_chain_indices(ladder::DEM.AbstractDEMTemperatureLadder, state) = copy(ladde
 hot_chain_indices(state, cold) = setdiff(eachindex(state.x), cold)
 
 function run_trajectories!(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, state, κ::AbstractMCMCKernel,
+        rng::AbstractRNG, state, κ::AbstractMCMCKernel,
         chain_metrics::Vector{<:AbstractMetric}, cold::Vector{Int}, hot::Vector{Int}, parallel::Bool
     )
     # Reseed only the advanced chains (mirrors the base DE `step`); untempered this is every chain.
@@ -348,17 +348,9 @@ function run_trajectories!(
     end
     ncold = length(cold)
     α = Vector{eltype(state.ld)}(undef, ncold)
-    if parallel
-        Threads.@threads for k in 1:ncold
-            i = cold[k]
-            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
-        end
-    else
-        ℓ = model_wrapper.logdensity
-        for k in 1:ncold
-            i = cold[k]
-            α[k] = run_trajectory!(state, chain_metrics[i], κ, i, ℓ)
-        end
+    DEM.foreach_threaded(1:ncold, parallel) do k
+        i = cold[k]
+        α[k] = run_trajectory!(state, chain_metrics[i], κ, i, state.chain_models[i])
     end
     return α
 end
@@ -454,7 +446,7 @@ end
 
 # The two state-level requirements shared by every memory-archive strategy.
 function require_memory_untempered(state, who::AbstractString)
-    state.memory isa DEM.DEMMemoryless && error(
+    state.memory isa DEM.AbstractDEMMemoryless && error(
         "$who estimates the HMC mass matrix from the memory archive, but this scheme runs " *
             "memoryless. Enable memory, or use the default stock-adaptor metric."
     )
@@ -1026,7 +1018,7 @@ function step_warmup(
     end
     fill_chain_metrics!(sampler.metric_strategy, astate, state)
     α = run_trajectories!(
-        rng, model_wrapper, state, astate.κ, astate.chain_metrics,
+        rng, state, astate.κ, astate.chain_metrics,
         astate.cold, astate.hot, parallel
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
@@ -1082,7 +1074,7 @@ function step(
     track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
     κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
     cold, hot = sampling_chains(sampler, sampler.astate, state)
-    run_trajectories!(rng, model_wrapper, state, κ, chain_metrics, cold, hot, parallel)
+    run_trajectories!(rng, state, κ, chain_metrics, cold, hot, parallel)
     return DEM.create_sample(state),
         DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
 end

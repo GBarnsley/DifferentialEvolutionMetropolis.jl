@@ -16,7 +16,8 @@ _generic_de_kwargs_1 = """
   through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to update chains, and evaluate initial log-densities, in parallel. Useful for expensive models.
-  Most updates require either `memory = true` or multi-try updates to take advantage of multithreading. Defaults to `false`.
+  Most updates require either `memory = true`, `double_ensemble = true` or multi-try updates (`n_tries > 1`) to take advantage of multithreading. Defaults to `false`.
+- `double_ensemble`: Run two ensembles of `n_chains + n_hot_chains` chains that update in turn, each proposing from the other. Requires `memory = false`. Defaults to `false`.
 - `n_tries`: Number of multiple-try proposals per chain each step.
   Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering) times the square root of its Hastings ratio, then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
   This needs up to `(n_chains + n_hot_chains) * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
@@ -87,7 +88,7 @@ Run the Differential Evolution Markov Chain (DE-MC) sampler proposed by ter Braa
 This sampler uses differential evolution updates with optional switching between two
 scaling factors (`γ₁` and `γ₂`) to enable mode switching.
 
-Without memory, chains are updated in turn, each proposing from the current positions of the
+Without memory or a double ensemble, chains are updated in turn, each proposing from the current positions of the
 other chains, so `parallel = true` only evaluates each chain's multiple-try proposals in parallel.
 
 See doi.org/10.1007/s11222-006-8769-1 for more information.

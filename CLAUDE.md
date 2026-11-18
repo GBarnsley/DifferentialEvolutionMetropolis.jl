@@ -49,10 +49,11 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 - `step(rng, model, sampler; kwargs...)` initialises: resolves `initial_position`, builds temperature ladder, memory, adaptive state, per-chain model copies, and `DEMState`.
 - `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state; on an adaptive state it calls `fix_sampler_state` and delegates.
   It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` and `update_chain!` (log density + tempered MH accept/reject).
-- `update_chains!` threads over chains when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
+- `update_chains!` runs each chain's update through `foreach_chain`, which threads over chains with `foreach_threaded` (`utilities.jl`) when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
+  Chains are updated in the ensembles given by `chain_ensembles(state.memory)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
 - `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` (unexported, documented with the rest of the custom sampler API in `docs/src/custom.md`) freeze adapted parameters.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
-- `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
+- `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless), chains of the other ensemble (double ensemble) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
 ### Core types (`src/DifferentialEvolutionMetropolis.jl`)
 
@@ -71,7 +72,8 @@ Each implements `proposal!(xₚ, x, state, sampler, i)`, writing the proposal in
 - DE, snooker and subspace are `DEMSamplerSerial` and `DEMSamplerMultipleTry`.
 - `swap_update.jl`: `setup_swap_update` swaps positions between chains at adjacent temperatures with its own `step` (no `proposal!`); the templates append it via `use_parallel_tempering_swaps` (default on when `n_hot_chains > 0`).
   `check_swap_setup` warns for hot chains without swaps and swaps without hot chains.
-- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate forward and reference trials.
+- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate the forward, then the reference, trials in one threaded loop each, over every (trial, chain) of an ensemble or one memoryless chain's trials.
+  Each trial is passed its own `current_state` (`current_states`; trial 1 of chain `i` gets `i`), which indexes `rngs`, `chain_models`, scratch and the `pick_chains` index buffers, all sized `n_chains * n_tries`.
 - `composite_sampler.jl`: `setup_random_order_scheme` weight-samples among updates each step, `setup_fixed_order_scheme` runs its first update `n` times then its second once (cycle position held in `state.order_state`); `setup_sampler_scheme` picks between them from `w`.
   Schemes nest, and collapse to static adaptive state when all components are static.
 - `scratch.jl`: `DEMProposalScratch` per-chain proposal buffers, sized by `prepare_scratch!` and read with `chain_buffers`; also defines `==`/`hash` for samplers, ignoring scratch.
@@ -79,6 +81,7 @@ Each implements `proposal!(xₚ, x, state, sampler, i)`, writing the proposal in
 ### Memory (`src/memory.jl`)
 
 `DEMMemoryless` picks from live chains.
+`DEMDoubleEnsemble` (`double_ensemble = true`, both subtypes of `AbstractDEMMemoryless`) splits the chains into odd and even ensembles that pick from each other, so each ensemble updates in parallel; the temperature ladder is repeated so paired chains share temperatures.
 `DEMMemoryFill` picks from a history archive `mem_x`, filled every step (`DEMMemoryFillEvery`) or thinned (`DEMMemoryFillThin`); when full it grows by `memory_size`, or with `memory_refill` becomes a `DEMMemoryRefill` that overwrites from the start.
 `check_memory_size!` warns when the archive will hold fewer positions than `target_memory_size` before sampling.
 
@@ -100,6 +103,7 @@ Metric strategies: stock Stan adaptor, or experimental archive-based strategies 
 `MCMCChainsExt` / `FlexiChainsExt` handle output bundling to those chain types.
 `MCMCDiagnosticToolsExt` implements `r̂_stopping_criteria` (`src/convergence.jl` stubs it) and the epoch-based template methods `deMC(model, epoch_size, epoch_limit)` etc. `PathfinderExt` adds `resolve_initial_position` methods so Pathfinder results supply chain starting positions and initial memory.
 Default output is `DEMOutput` (`samples[iter, chain, param]`, `ld[iter, chain]`), assembled by `bundle_samples` / `chainsstack` in `src/utilities.jl`.
+With `double_ensemble = true` it has an ensemble dimension (`samples[iter, chain, ensemble, param]`, `ld[iter, chain, ensemble]`); `ensemble_major` reorders the interleaved state chains so `Chains`/`VNChain` concatenate the ensembles in the chain dimension.
 
 ### Templates (`src/templates.jl`)
 

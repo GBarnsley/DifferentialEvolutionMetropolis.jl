@@ -101,6 +101,8 @@ Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
 
 Every update must implement this.
 Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
+When `n_tries > 1`, `current_state` is the index of the trial being proposed, not the chain's index.
+Only use `current_state` to index `state.rngs` and to pass to [`DifferentialEvolutionMetropolis.pick_chains`](@ref) and [`DifferentialEvolutionMetropolis.chain_buffers`](@ref).
 
 # Returns
 - A named tuple with at least `offset`, the log Hastings correction `log(q(x | xₚ) / q(xₚ | x))` (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
@@ -194,7 +196,7 @@ function DEMState(
         R <: AbstractRNG, Model,
     }
 
-    rngs = [reseed!(copy(rng), rng) for _ in 1:length(x)]
+    rngs = [reseed!(copy(rng), rng) for _ in 1:(length(x) * n_tries)]
     xₚ = copy.(x)
     ldₚ = copy(ld)
     x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
@@ -207,7 +209,7 @@ function DEMState(
         temperature_ladder,
         memory,
         chain_models,
-        multi_try_buffers(x, n_tries),
+        multi_try_buffers(x, n_tries, chain_ensembles(memory)),
         xₚ,
         ldₚ,
         x_smpl_view,
@@ -224,12 +226,11 @@ end
 Container for differential evolution MCMC sampling results.
 
 # Fields
-- `samples::Array{T, 3}`: Three-dimensional array of parameter samples with dimensions
-  (iterations, chains, parameters). Each sample represents a point in parameter space
-  from the MCMC chain.
-- `ld::Matrix{T}`: Two-dimensional matrix of log-density values with dimensions
-  (iterations, chains). Contains the log-probability density evaluated at each
-  corresponding sample point.
+- `samples::Array{T}`: Array of parameter samples with dimensions (iterations, chains, parameters),
+  or (iterations, chains, ensembles, parameters) with `double_ensemble = true`.
+- `ld::Array{T}`: Array of log-density values with dimensions (iterations, chains),
+  or (iterations, chains, ensembles) with `double_ensemble = true`.
+  Contains the log-probability density evaluated at each corresponding sample point.
 
 # Type Parameters
 - `T <: Real`: Numeric type for the samples and log-density values (typically `Float64`).
@@ -243,12 +244,17 @@ log_densities = output.ld          # Shape: (n_samples, n_chains)
 
 # Extract samples for a specific chain
 chain_1_samples = output.samples[:, 1, :]  # All samples from chain 1
+
+# With double_ensemble = true, extract samples for chain 1 of the second ensemble
+output.samples[:, 1, 2, :]
 ```
 """
-struct DEMOutput{T <: Real}
-    samples::Array{T, 3}
-    ld::Matrix{T}
+struct DEMOutput{T <: Real, S <: Array{T}, L <: Array{T}}
+    samples::S
+    ld::L
 end
+
+DEMOutput{T}(samples::Array{T}, ld::Array{T}) where {T <: Real} = DEMOutput(samples, ld)
 
 include("docs.jl")
 include("hmc.jl")

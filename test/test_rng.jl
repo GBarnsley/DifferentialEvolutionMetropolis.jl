@@ -72,6 +72,18 @@
         @test all(equality_x)
         @test all(equality_ld)
     end
+    @testset "multi-try with memory" begin
+        model = IsotropicNormalModel([-5.0, 5.0])
+        sampler = setup_sampler_scheme(setup_de_update(), setup_snooker_update(), setup_subspace_sampling())
+        run_sampler(parallel) = sample(
+            backwards_compat_rng(112), AbstractMCMC.LogDensityModel(model), sampler, 200;
+            num_warmup = 200, memory = true, n_tries = 3, parallel, progress = false
+        )
+        output1 = run_sampler(false)
+        output2 = run_sampler(true)
+        @test all(isequal(a.x, b.x) for (a, b) in zip(output1, output2))
+        @test all(isequal(a.ld, b.ld) for (a, b) in zip(output1, output2))
+    end
     @testset "multithreaded" begin
         model = IsotropicNormalModel([-5.0, 5.0])
 

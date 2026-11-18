@@ -60,6 +60,23 @@ function process_outputs(
     )
 end
 
+function process_outputs(samples::Vector{<:DEMSample}, n_ensembles::Int)
+    output = process_outputs(ensemble_major(samples, n_ensembles))
+    n_ensembles == 1 && return output
+    n_iter, n_chains, n_params = size(output.samples)
+    return DEMOutput(
+        reshape(output.samples, n_iter, n_chains ÷ n_ensembles, n_ensembles, n_params),
+        reshape(output.ld, n_iter, n_chains ÷ n_ensembles, n_ensembles)
+    )
+end
+
+function ensemble_major(samples::Vector{<:DEMSample}, n_ensembles::Int)
+    n_ensembles == 1 && return samples
+    n_chains = length(samples[1].x)
+    order = reduce(vcat, (e:n_ensembles:n_chains for e in 1:n_ensembles))
+    return [DEMSample(s.x[order], s.ld[order]) for s in samples]
+end
+
 #code for post-processing outputs from sample()
 function bundle_samples(
         samples::Vector{DEMSample{V, VV}},
@@ -70,7 +87,7 @@ function bundle_samples(
         save_final_state::Bool = false,
         kwargs...
     ) where {T, T2 <: Real, V <: AbstractVector{T2}, VV <: AbstractVector{V}}
-    samples_ = convert(T, samples)
+    samples_ = convert(T, samples, n_ensembles(state.memory))
     if save_final_state
         return (
             samples_,
@@ -81,7 +98,7 @@ function bundle_samples(
     end
 end
 
-function chainsstack(chns::Vector{DEMOutput{T}}) where {
+function chainsstack(chns::Vector{<:DEMOutput{T}}) where {
         T <: Real,
     }
     return DEMOutput{T}(
@@ -117,6 +134,34 @@ function convert(
     return process_outputs(samples)
 end
 
+# Chain types that bundle chains from every ensemble put them in the chain dimension in ensemble-major order
+function convert(
+        ::Type{T},
+        samples::Vector{DEMSample{V, VV}},
+        n_ensembles::Int
+    ) where {T, T2 <: Real, V <: AbstractVector{T2}, VV <: AbstractVector{V}}
+    return convert(T, samples)
+end
+
+function convert(
+        ::Type{DEMOutput},
+        samples::Vector{DEMSample{V, VV}},
+        n_ensembles::Int
+    ) where {T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V}}
+    return process_outputs(samples, n_ensembles)
+end
+
 function generate_names(n_params::Int)
     return [Symbol("param_$(i)") for i in 1:n_params]
+end
+
+function foreach_threaded(f, indices, parallel::Bool)
+    if parallel
+        Threads.@threads for i in indices
+            f(i)
+        end
+    else
+        foreach(f, indices)
+    end
+    return nothing
 end

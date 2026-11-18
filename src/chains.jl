@@ -25,29 +25,31 @@ function create_sample(
 end
 
 """
-    pick_chains(state::DEMState, current_chain::Int, ::Val{N})
+    pick_chains(state::DEMState, current_state::Int, ::Val{N})
 
-Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_chain]`.
+Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_state]`.
 
-Without memory these are other live chains, excluding `current_chain`; with memory they are drawn from the memory archive.
+Without memory these are other live chains, excluding the current chain; with memory they are drawn from the memory archive.
+With `double_ensemble = true` they are chains of the other ensemble: an odd chain picks the current positions of even chains, an even chain picks the updated positions of odd chains.
 If `N` exceeds `n_preallocated_indices` (default 3, see [`deMC`](@ref)) the index buffers are resized with a warning.
 """
 function pick_chains end
 
-# Chains are updated in order, so chains before `current_chain` have their new position in `xₚ`
+# Chains are updated in order, so chains before the current chain have their new position in `xₚ`
 @generated function pick_chains(
         state::DEMState{T, A, L, M},
-        current_chain::Int,
+        current_state::Int,
         ::Val{N}
     ) where {T, A, L, M <: DEMMemoryless, N}
     exprs = [:(indices[$i] < current_chain ? xₚ[indices[$i]] : x[indices[$i]]) for i in 1:N]
     return quote
-        rng = state.rngs[current_chain]
+        rng = state.rngs[current_state]
         x = state.x
         xₚ = state.xₚ
         memory = state.memory
-        indices = memory.indices_INTERNAL[current_chain]
-        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
+        current_chain = mod1(current_state, length(x))
         fast_sample_chains!(
             rng,
             x,
@@ -61,19 +63,46 @@ function pick_chains end
     end
 end
 
+# Odd chains are updated before even chains, so odd chains have their new position in `xₚ`; trials share their chain's parity as the chain count is even
+@generated function pick_chains(
+        state::DEMState{T, A, L, M},
+        current_state::Int,
+        ::Val{N}
+    ) where {T, A, L, M <: DEMDoubleEnsemble, N}
+    exprs = [:(odd_chain ? x[2 * indices[$i]] : xₚ[2 * indices[$i] - 1]) for i in 1:N]
+    return quote
+        rng = state.rngs[current_state]
+        x = state.x
+        xₚ = state.xₚ
+        memory = state.memory
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
+        odd_chain = isodd(current_state)
+        fast_sample_chains!(
+            rng,
+            x,
+            length(x) ÷ 2,
+            $N,
+            indices,
+            ordered_indices
+        )
+        return ($(exprs...),)
+    end
+end
+
 @generated function pick_chains(
         state::DEMState{T, A, L, M, Model, B, V, VV},
-        current_chain::Int,
+        current_state::Int,
         ::Val{N}
     ) where {T, A, L, V, VV, Model, B, M <: AbstractDEMMemoryFormat{T, VV}, N}
     exprs = [:(mem_x[indices[$i]]) for i in 1:N]
     limit_expr = M <: DEMMemoryFill ? :(memory.fill.position) : :(length(mem_x))
     return quote
-        rng = state.rngs[current_chain]
+        rng = state.rngs[current_state]
         memory = state.memory
         mem_x = memory.mem_x
-        indices = memory.indices_INTERNAL[current_chain]
-        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
         fast_sample_chains!(
             rng,
             mem_x,
@@ -131,7 +160,7 @@ function update_state(
             T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
         };
         swap_positions = Val(false),
-        memory::DEMMemoryless{T} = state.memory,
+        memory::AbstractDEMMemoryless{T} = state.memory,
         adaptive_state::AbstractDEMAdaptiveState{T} = state.adaptive_state,
         temperature_ladder::AbstractDEMTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
@@ -146,7 +175,7 @@ function update_state(
         L1 <: AbstractDEMTemperatureLadder{T},
         A2 <: AbstractDEMAdaptiveState{T},
         L2 <: AbstractDEMTemperatureLadder{T},
-        M1 <: DEMMemoryless{T},
+        M1 <: AbstractDEMMemoryless{T},
         M2 <: AbstractDEMMemory{T},
         V1 <: SubArray, V2 <: SubArray,
         R <: AbstractRNG, Model, B,
@@ -195,9 +224,15 @@ cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSing
 cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
 cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerMultiThread}, n_tries::Int) = false
 
-function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory::Bool, n_tries::Int)
-    if parallel && !memory && cannot_use_parallel(sampler, n_tries)
-        @warn "None of the provided samplers can evaluate in parallel, yet `parallel = true`, consider `memory = true` or multi-try updates to use multithreading."
+function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory::Bool, n_tries::Int, double_ensemble::Bool = false)
+    if double_ensemble
+        if memory
+            error("`double_ensemble = true` requires `memory = false`, memory-based samplers already update chains in parallel.")
+        elseif !parallel
+            @warn "`double_ensemble = true` but `parallel = false`, the double ensemble only speeds up sampling when chains update in parallel."
+        end
+    elseif parallel && !memory && cannot_use_parallel(sampler, n_tries)
+        @warn "None of the provided samplers can evaluate in parallel, yet `parallel = true`, consider `memory = true`, `double_ensemble = true` or multi-try updates to use multithreading."
     end
     return nothing
 end
@@ -232,32 +267,25 @@ function propose_and_update_chain!(state, sampler, i)
     return nothing
 end
 
-function propose_and_update_chains!(state, sampler)
-    for i in eachindex(state.x)
-        propose_and_update_chain!(state, sampler, i)
+# Calls f on each chain, ensemble by ensemble, threading within an ensemble when parallel
+function foreach_chain(f, state, sampler, parallel::Bool)
+    for chains in chain_ensembles(state.memory)
+        foreach_threaded(f, chains, parallel)
     end
+    return nothing
+end
+
+# Memoryless chains with a sequential update pick from the updated positions of earlier chains, so they update in turn
+function foreach_chain(
+        f, state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
+        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
+    )
+    foreach(f, eachindex(state.x))
     return nothing
 end
 
 function update_chains!(state, sampler, parallel::Bool)
-    if parallel
-        Threads.@threads for i in eachindex(state.x)
-            propose_and_update_chain!(state, sampler, i)
-        end
-    else
-        propose_and_update_chains!(state, sampler)
-    end
-
-    return nothing
-end
-
-# if we are not using memory and not parallel compatible, we ignore parallel, the multi-try method here is more specific so takes precedence
-function update_chains!(
-        state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
-        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
-    )
-    propose_and_update_chains!(state, sampler)
-
+    foreach_chain(i -> propose_and_update_chain!(state, sampler, i), state, sampler, parallel)
     return nothing
 end
 
@@ -281,7 +309,7 @@ function automatically fixes adaptive parameters before sampling.
 
 # Keyword Arguments
 - `parallel`: Whether to run chains in parallel using threading. Defaults to `false`. Advisable for slow models.
-  With a memoryless state, updates other than HMC update the chains in turn and only evaluate each chain's multiple-try proposals in parallel.
+  With a memoryless state, updates other than HMC update the chains in turn and only evaluate each chain's multiple-try proposals in parallel, unless the state was set up with `double_ensemble = true`, which updates each ensemble's chains in parallel.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Over writes memory options given at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions (see https://turinglang.org/AbstractMCMC.jl/stable/api/#Common-keyword-arguments)
 
@@ -532,6 +560,7 @@ function step(
         T::Union{Nothing, Type{<:AbstractFloat}} = nothing,
         stratify_initial_position::Bool = true,
         parallel::Bool = false,
+        double_ensemble::Bool = false,
         #parallel tempering and annealing parameters
         max_temp_pt::Real = 2.0 * sqrt(dimension(model_wrapper.logdensity)),
         max_temp_sa::Real = max_temp_pt,
@@ -548,10 +577,11 @@ function step(
     )
     model = model_wrapper.logdensity
     n_tries = check_n_tries(sampler, n_tries)
-    check_parallel(sampler, parallel, memory, n_tries)
+    check_parallel(sampler, parallel, memory, n_tries, double_ensemble)
+    n_true_chains = (double_ensemble ? 2 : 1) * (n_chains + n_hot_chains)
     default_N₀ = cld(10 * dimension(model), n_chains + n_hot_chains) * (n_chains + n_hot_chains)
     initial_position = resolve_initial_position(
-        initial_position, rng, n_chains + n_hot_chains,
+        initial_position, rng, n_true_chains,
         memory ? something(N₀, max(default_N₀ - n_chains - n_hot_chains, 0)) : 0;
         stratify = stratify_initial_position
     )
@@ -566,10 +596,11 @@ function step(
     else
         temperature_ladder = [T.(ladder_rung) for ladder_rung in temperature_ladder]
     end
+    if double_ensemble
+        temperature_ladder = [repeat(ladder_rung; inner = 2) for ladder_rung in temperature_ladder]
+    end
 
     log = Vector{String}()
-
-    n_true_chains = n_chains + n_hot_chains
 
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
@@ -614,33 +645,32 @@ function step(
             #shrink initial position
             x = initial_position[1:n_true_chains]
             extra_memory = initial_position[(n_true_chains + 1):end]
-        elseif n_hot_chains == 0
+        elseif n_hot_chains == 0 && (!double_ensemble || iseven(current_N))
             push!(log, "   Assuming initial position size is n_chains. Ignoring extra positions.")
             #assume n_chains is wrong
             n_true_chains = current_N
             x = initial_position
         else
             print_log(log)
-            error("   Initial position size greater than n_chains + n_hot_chains. Cannot resolve mismatch.")
+            error("   Initial position size greater than the number of chains ($n_true_chains). Cannot resolve mismatch.")
         end
     end
 
-    if !memory && n_true_chains < chains_required(sampler)
-        error("Memoryless scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler)) chains, but only $n_true_chains were provided (including hot chains).")
+    n_ensemble_chains = double_ensemble ? n_true_chains ÷ 2 : n_true_chains
+    if !memory && n_ensemble_chains < chains_required(sampler)
+        error("Memoryless scheme with sampler $(typeof(sampler)) requires at least $(chains_required(sampler)) chains, but only $n_ensemble_chains were provided (including hot chains).")
     end
 
-    if length(x) < dimension(model) && !memory
+    if n_ensemble_chains < dimension(model) && !memory
         @warn "In a memoryless model the number of chains should be greater than or equal to the number of parameters"
     end
 
     chain_models = [deepcopy(model) for _ in 1:(length(x) * n_tries)]
-    if parallel
-        ld = Vector{eltype(x[1])}(undef, length(x))
-        Threads.@threads for i in eachindex(x)
+    ld = Vector{T}(undef, length(x))
+    let x = x
+        foreach_threaded(eachindex(x), parallel) do i
             ld[i] = checked_logdensity(chain_models[i], x[i])
         end
-    else
-        ld = T[checked_logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0
@@ -703,14 +733,21 @@ function step(
         end
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
-            true_memory, memory_method, memory_refill, memory_increment,
-            [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
+            (1:n_true_chains,), true_memory, memory_method, memory_refill, memory_increment,
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:(n_true_chains * n_tries)]
+        )
+    elseif double_ensemble
+        memory = DEMDoubleEnsemble{T}(
+            (1:2:n_true_chains, 2:2:n_true_chains),
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:(n_true_chains * n_tries)],
         )
     else
         memory = DEMMemoryless{T}(
-            [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
+            (1:n_true_chains,),
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
         )
     end
 

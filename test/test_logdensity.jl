@@ -46,7 +46,7 @@ end
     end
 
     @testset "$stage" for (stage, nan_at, n_tries) in (
-            ("proposal", 1, 1), ("forward trial", 1, 2), ("reference trial", 3, 2),
+            ("proposal", 1, 1), ("forward trial", 1, 2), ("reference trial", 2, 2),
         )
         rng = backwards_compat_rng(42)
         model = AbstractMCMC.LogDensityModel(CountingNaNAtModel(0, 0, 0.0))

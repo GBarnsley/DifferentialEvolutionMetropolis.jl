@@ -1,9 +1,26 @@
+abstract type AbstractDEMMemoryless{T} <: AbstractDEMMemory{T} end
+
 #no memory
-struct DEMMemoryless{T} <: AbstractDEMMemory{T}
+struct DEMMemoryless{T} <: AbstractDEMMemoryless{T}
+    chain_ensembles::Tuple{UnitRange{Int}}
     #for preallocation only for internal use
     indices_INTERNAL::Vector{Vector{Int}}
     ordered_indices_INTERNAL::Vector{Vector{Int}}
 end
+
+#no memory, odd and even chains form two ensembles that each propose from the other
+struct DEMDoubleEnsemble{T} <: AbstractDEMMemoryless{T}
+    chain_ensembles::NTuple{2, StepRange{Int, Int}}
+    #for preallocation only for internal use
+    indices_INTERNAL::Vector{Vector{Int}}
+    ordered_indices_INTERNAL::Vector{Vector{Int}}
+end
+
+# Ensembles of chains that are updated in turn, chains within an ensemble can be updated in parallel
+chain_ensembles(memory::AbstractDEMMemory) = memory.chain_ensembles
+
+n_ensembles(::AbstractDEMMemory) = 1
+n_ensembles(memory::DEMDoubleEnsemble) = 2
 
 #abstract memory-full type
 abstract type AbstractDEMMemoryFormat{
@@ -17,6 +34,7 @@ abstract type AbstractDEMMemoryFillMethod end
 #full memory, refreshing from the start
 struct DEMMemoryRefill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
     AbstractDEMMemoryFormat{T, VV}
+    chain_ensembles::Tuple{UnitRange{Int}}
     mem_x::VV
     fill::F
     #for preallocation only for internal use
@@ -42,6 +60,7 @@ end
 #non-full memory, filling up to a max size then extending or refilling
 struct DEMMemoryFill{T, VV <: AbstractVector{<:AbstractVector{T}}, F <: AbstractDEMMemoryFillMethod} <:
     AbstractDEMMemoryFormat{T, VV}
+    chain_ensembles::Tuple{UnitRange{Int}}
     mem_x::VV
     fill::F
     refill::Bool
@@ -63,7 +82,7 @@ function update_memory!!(
 
     if memory.fill.position == length(memory.mem_x)
         if memory.refill
-            memory = DEMMemoryRefill(memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
+            memory = DEMMemoryRefill(memory.chain_ensembles, memory.mem_x, memory.fill, memory.indices_INTERNAL, memory.ordered_indices_INTERNAL)
             memory.fill.position = 0
         else
             #increase memory size
