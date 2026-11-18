@@ -53,7 +53,6 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
   Chains are updated in the ensembles given by `chain_ensembles(state.memory)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
 - `step_warmup` runs `step`, then `adapt!(adaptive_state, sampler, state)` with the state the step started from (`x` before, `xₚ` after); the fallback does nothing, so a static state (`adapt = false`) is not adapted.
   Adaptations needing per-proposal values store them in `record_proposal!` (called for each proposal a chain can move to, keyed by `current_state`), sized by `prepare_scratch!(adaptive_state, state)`.
-  HMC defines its own `step_warmup`.
   Sampler schemes pass each selected update its own `adaptive_state` and `order_state` as keywords, so the state passed down is the root state.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
 - `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless), chains of the other ensemble (double ensemble) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
@@ -98,7 +97,7 @@ Null, static (parallel tempering via `n_hot_chains`), and annealing ladders.
 `src/hmc.jl` only contains error stubs with docstrings for `setup_hmc_update`, `memory_metric`, `cluster_pooled_metric` and `per_cluster_metric`.
 The implementation is in `AdvancedHMCExt`.
 `DEMHMCSampler` (`DEMSamplerMultiThread`, `DEMSamplerSingleTry`) decomposes a `NUTS`/`HMC`/`HMCDA` into metric/integrator/kernel/adaptor so it can act as one update in a composite scheme.
-Without warmup it runs the pieces as built, which needs an integrator with an explicit step size.
+With `adapt = true` its `step` sets up the `DEMHMCAdaptiveState` on the update's first step (finding the step size of a symbol integrator) and `adapt!` tunes it during warm-up; with `adapt = false` it runs the pieces as built, which needs an integrator with an explicit step size.
 Metric strategies: stock Stan adaptor, or experimental archive-based strategies (`memory_metric`, `cluster_pooled_metric`, `per_cluster_metric`) that estimate the mass matrix from the memory archive (these require memory and reject parallel tempering).
 
 ### Extensions

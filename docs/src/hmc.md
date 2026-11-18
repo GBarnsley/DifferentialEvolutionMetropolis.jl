@@ -85,8 +85,8 @@ custom_hmc_update = setup_hmc_update(HMCSampler(κ, metric, adaptor))
 ```
 
 During warm-up `NUTS` tunes the step size and mass matrix, `HMCDA` tunes only the step size, and `HMC` tunes nothing.
-A symbol integrator (the default) has its step size found on the first warm-up step, while an explicit step size is kept by `HMC` and is where `NUTS` and `HMCDA` start dual averaging, as in AdvancedHMC.
-Without warm-up (`adapt = false` or `num_warmup = 0`) the update runs the sampler as built, so give it an explicit step size:
+A symbol integrator (the default) has its step size found on the update's first step, while an explicit step size is kept by `HMC` and is where `NUTS` and `HMCDA` start dual averaging, as in AdvancedHMC.
+When `adapt = false` the update runs the sampler as built, so give it an explicit step size:
 
 ```@example HMC
 fixed_hmc_update = setup_hmc_update(HMC(0.1, 10); n_dims = D)

@@ -55,12 +55,10 @@ const HMCExt = Base.get_extension(DifferentialEvolutionMetropolis, :AdvancedHMCE
         )
     end
 
-    @testset "prepare_sampling_metrics! resolves without a warmed adaptive state" begin
-        # Before warmup the step passes `nothing`, and the `Nothing` method must out-specialise the
-        # general one (it would read `astate.chain_metrics`).
+    @testset "prepare_metrics! uses the sampler's own pieces when adapt = false" begin
         s = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
-        @test HMCExt.warmed_state(DifferentialEvolutionMetropolis.DEMAdaptiveStatic{Float64}()) === nothing
-        κ, cm = HMCExt.prepare_sampling_metrics!(s, nothing, (; x = [zeros(length(μ)) for _ in 1:4]))
+        static = DifferentialEvolutionMetropolis.DEMAdaptiveStatic{Float64}()
+        κ, cm = HMCExt.prepare_metrics!(s, static, (; x = [zeros(length(μ)) for _ in 1:4]))
         @test κ === s.κ
         @test cm === s.chain_metrics
         @test length(cm) == 4 && all(m -> m === s.metric, cm)
