@@ -25,30 +25,31 @@ function create_sample(
 end
 
 """
-    pick_chains(state::DEMState, current_chain::Int, ::Val{N})
+    pick_chains(state::DEMState, current_state::Int, ::Val{N})
 
-Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_chain]`.
+Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_state]`.
 
-Without memory these are other live chains, excluding `current_chain`; with memory they are drawn from the memory archive.
+Without memory these are other live chains, excluding the current chain; with memory they are drawn from the memory archive.
 With `double_ensemble = true` they are chains of the other ensemble: an odd chain picks the current positions of even chains, an even chain picks the updated positions of odd chains.
 If `N` exceeds `n_preallocated_indices` (default 3, see [`deMC`](@ref)) the index buffers are resized with a warning.
 """
 function pick_chains end
 
-# Chains are updated in order, so chains before `current_chain` have their new position in `xₚ`
+# Chains are updated in order, so chains before the current chain have their new position in `xₚ`
 @generated function pick_chains(
         state::DEMState{T, A, L, M},
-        current_chain::Int,
+        current_state::Int,
         ::Val{N}
     ) where {T, A, L, M <: DEMMemoryless, N}
     exprs = [:(indices[$i] < current_chain ? xₚ[indices[$i]] : x[indices[$i]]) for i in 1:N]
     return quote
-        rng = state.rngs[current_chain]
+        rng = state.rngs[current_state]
         x = state.x
         xₚ = state.xₚ
         memory = state.memory
-        indices = memory.indices_INTERNAL[current_chain]
-        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
+        current_chain = mod1(current_state, length(x))
         fast_sample_chains!(
             rng,
             x,
@@ -62,21 +63,21 @@ function pick_chains end
     end
 end
 
-# Odd chains are updated before even chains, so odd chains have their new position in `xₚ`
+# Odd chains are updated before even chains, so odd chains have their new position in `xₚ`; trials share their chain's parity as the chain count is even
 @generated function pick_chains(
         state::DEMState{T, A, L, M},
-        current_chain::Int,
+        current_state::Int,
         ::Val{N}
     ) where {T, A, L, M <: DEMDoubleEnsemble, N}
     exprs = [:(odd_chain ? x[2 * indices[$i]] : xₚ[2 * indices[$i] - 1]) for i in 1:N]
     return quote
-        rng = state.rngs[current_chain]
+        rng = state.rngs[current_state]
         x = state.x
         xₚ = state.xₚ
         memory = state.memory
-        indices = memory.indices_INTERNAL[current_chain]
-        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
-        odd_chain = isodd(current_chain)
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
+        odd_chain = isodd(current_state)
         fast_sample_chains!(
             rng,
             x,
@@ -91,17 +92,17 @@ end
 
 @generated function pick_chains(
         state::DEMState{T, A, L, M, Model, B, V, VV},
-        current_chain::Int,
+        current_state::Int,
         ::Val{N}
     ) where {T, A, L, V, VV, Model, B, M <: AbstractDEMMemoryFormat{T, VV}, N}
     exprs = [:(mem_x[indices[$i]]) for i in 1:N]
     limit_expr = M <: DEMMemoryFill ? :(memory.fill.position) : :(length(mem_x))
     return quote
-        rng = state.rngs[current_chain]
+        rng = state.rngs[current_state]
         memory = state.memory
         mem_x = memory.mem_x
-        indices = memory.indices_INTERNAL[current_chain]
-        ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
+        indices = memory.indices_INTERNAL[current_state]
+        ordered_indices = memory.ordered_indices_INTERNAL[current_state]
         fast_sample_chains!(
             rng,
             mem_x,
@@ -733,20 +734,20 @@ function step(
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
             (1:n_true_chains,), true_memory, memory_method, memory_refill, memory_increment,
-            [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:(n_true_chains * n_tries)]
         )
     elseif double_ensemble
         memory = DEMDoubleEnsemble{T}(
             (1:2:n_true_chains, 2:2:n_true_chains),
-            [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains],
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:(n_true_chains * n_tries)],
         )
     else
         memory = DEMMemoryless{T}(
             (1:n_true_chains,),
-            [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
-            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
+            [fill(1, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
+            [Vector{Int}(undef, n_preallocated_indices) for _ in 1:(n_true_chains * n_tries)],
         )
     end
 

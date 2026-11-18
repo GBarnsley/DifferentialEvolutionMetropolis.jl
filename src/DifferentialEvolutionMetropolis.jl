@@ -101,6 +101,8 @@ Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
 
 Every update must implement this.
 Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
+When `n_tries > 1`, `current_state` is the index of the trial being proposed, not the chain's index.
+Only use `current_state` to index `state.rngs` and to pass to [`DifferentialEvolutionMetropolis.pick_chains`](@ref) and [`DifferentialEvolutionMetropolis.chain_buffers`](@ref).
 
 # Returns
 - A named tuple with at least `offset`, the log Hastings correction `log(q(x | xₚ) / q(xₚ | x))` (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
@@ -194,7 +196,7 @@ function DEMState(
         R <: AbstractRNG, Model,
     }
 
-    rngs = [reseed!(copy(rng), rng) for _ in 1:length(x)]
+    rngs = [reseed!(copy(rng), rng) for _ in 1:(length(x) * n_tries)]
     xₚ = copy.(x)
     ldₚ = copy(ld)
     x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
@@ -207,7 +209,7 @@ function DEMState(
         temperature_ladder,
         memory,
         chain_models,
-        multi_try_buffers(x, n_tries, chain_models, chain_ensembles(memory)),
+        multi_try_buffers(x, n_tries, chain_ensembles(memory)),
         xₚ,
         ldₚ,
         x_smpl_view,

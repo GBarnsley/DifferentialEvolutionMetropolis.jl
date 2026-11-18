@@ -72,7 +72,8 @@ Each implements `proposal!(xₚ, x, state, sampler, i)`, writing the proposal in
 - DE, snooker and subspace are `DEMSamplerSerial` and `DEMSamplerMultipleTry`.
 - `swap_update.jl`: `setup_swap_update` swaps positions between chains at adjacent temperatures with its own `step` (no `proposal!`); the templates append it via `use_parallel_tempering_swaps` (default on when `n_hot_chains > 0`).
   `check_swap_setup` warns for hot chains without swaps and swaps without hot chains.
-- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate forward and reference trials; they pass `evaluate_trials!` either every (trial, chain) pair of an ensemble or one memoryless chain's trials.
+- `multi_try.jl`: multiple-try Metropolis for `n_tries > 1` with `DEMSamplerMultipleTry` updates, as `update_chains!` methods that propose and evaluate the forward, then the reference, trials in one threaded loop each, over every (trial, chain) of an ensemble or one memoryless chain's trials.
+  Each trial is passed its own `current_state` (`current_states`; trial 1 of chain `i` gets `i`), which indexes `rngs`, `chain_models`, scratch and the `pick_chains` index buffers, all sized `n_chains * n_tries`.
 - `composite_sampler.jl`: `setup_random_order_scheme` weight-samples among updates each step, `setup_fixed_order_scheme` runs its first update `n` times then its second once (cycle position held in `state.order_state`); `setup_sampler_scheme` picks between them from `w`.
   Schemes nest, and collapse to static adaptive state when all components are static.
 - `scratch.jl`: `DEMProposalScratch` per-chain proposal buffers, sized by `prepare_scratch!` and read with `chain_buffers`; also defines `==`/`hash` for samplers, ignoring scratch.

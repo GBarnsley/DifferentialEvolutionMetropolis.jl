@@ -103,6 +103,9 @@ function proposal!(
 - `sampler`: An instance of your custom sampler struct
 - `current_state`: The index of the chain to be updated
 
+When `n_tries > 1`, `current_state` is actually the index of the trial taking place and not the chains index.
+**Only use `current_state` to index `state.rngs` and to pass to `pick_chains` and `chain_buffers`.**
+
 The function should write the proposed position into `xₚ` (proposing from `x`) and return a named tuple with at least `(offset = hastings_correction,)` where:
 
 - `offset`: Hastings ratio correction in log-space, `log(q(x | xₚ) / q(xₚ | x))` (typically 0.0 for symmetric proposals)

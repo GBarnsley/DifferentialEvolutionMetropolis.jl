@@ -56,7 +56,7 @@ prepare_scratch!(sampler::AbstractDEMMetaSampler, state) = nothing
 
 function prepare_scratch!(scratch::DEMProposalScratch, state)
     x = first(state.x)
-    return ensure_size!(scratch, eltype(x), length(state.x), length(x))
+    return ensure_size!(scratch, eltype(x), length(state.rngs), length(x))
 end
 
 # Scratch buffers hold no sampler state, so updates compare and hash by their other fields
