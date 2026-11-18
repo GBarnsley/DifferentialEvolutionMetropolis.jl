@@ -18,6 +18,15 @@ mutable struct DEMAdaptiveSubspace{T <: Real} <:
     delta::Vector{T}
     "preallocated variance vector"
     variance::Vector{T}
+    "preallocated crossover probability index for each chain"
+    chain_cr::Vector{Int}
+    "preallocated squared normalised jump for each chain"
+    chain_Δ::Vector{T}
+end
+
+# Squared jump from `x` to `xₚ` normalised by the running variance, without allocating
+function normalised_squared_jump(x, xₚ, variance)
+    return sum(abs2(xᵢ - xₚᵢ) / vᵢ for (xᵢ, xₚᵢ, vᵢ) in zip(x, xₚ, variance))
 end
 
 # Helper function to update running variance using Welford's algorithm
@@ -169,26 +178,20 @@ function step_warmup(
                 j == 0 && continue
                 cr_index = findfirst(==(buffers.forward_cr[j, i]), adaptive_state.cr_spl.support)
                 adaptive_state.L[cr_index] += 1
-                adaptive_state.Δ[cr_index] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
+                adaptive_state.Δ[cr_index] += normalised_squared_jump(state.x[i], state.xₚ[i], adaptive_state.variance)
             end
         end
     else
         # thread safe updating
-        Δ_update = zeros(T, length(x))
-        cr_update = Vector{Int}(undef, length(x))
+        Δ_update = fill!(resize!(adaptive_state.chain_Δ, length(x)), zero(T))
+        cr_update = resize!(adaptive_state.chain_cr, length(x))
 
         foreach_chain(state, fixed_sampler, parallel) do i
             prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
             cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
             if accepted
-                Δ_update[i] += sum(
-                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
-                        adaptive_state.variance
-                )
+                Δ_update[i] = normalised_squared_jump(state.x[i], state.xₚ[i], adaptive_state.variance)
             end
         end
         if variance_ready
@@ -242,7 +245,7 @@ function initialize_adaptive_state(
         delta = zeros(T, d)
         variance = ones(T, d)
         return DEMAdaptiveSubspace{T}(
-            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance
+            p, L, Δ, cr_spl, var_count, var_mean, var_m2, delta, variance, zeros(Int, n_chains), zeros(T, n_chains)
         )
     end
 end

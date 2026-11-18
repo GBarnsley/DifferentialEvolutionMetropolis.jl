@@ -411,4 +411,5 @@ DifferentialEvolutionMetropolis.DEMProposalScratch
 DifferentialEvolutionMetropolis.pick_chains
 DifferentialEvolutionMetropolis.fix_sampler_state
 DifferentialEvolutionMetropolis.chain_buffers
+DifferentialEvolutionMetropolis.ensemble_major
 ```
