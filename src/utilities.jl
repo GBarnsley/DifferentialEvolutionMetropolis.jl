@@ -70,12 +70,6 @@ function process_outputs(samples::Vector{<:DEMSample}, n_ensembles::Int)
     )
 end
 
-"""
-    ensemble_major(samples, n_ensembles)
-
-Reorder the chains of each sample from the interleaved order of the state (chain `k` of ensemble `e` at `n_ensembles * (k - 1) + e`)
-to all chains of the first ensemble, then all chains of the second, and so on.
-"""
 function ensemble_major(samples::Vector{<:DEMSample}, n_ensembles::Int)
     n_ensembles == 1 && return samples
     n_chains = length(samples[1].x)
