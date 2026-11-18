@@ -116,8 +116,7 @@ often it has been picked, not the total number of iterations. For updates `A`, `
   where the fixed order branch is picked, e.g. `A, C, C, B, A, C, B, ...`
 
 The position in the cycle is stored in the sampler state, so it carries over from warm-up into
-sampling and through [`fix_sampler_state`](@ref). Each call to `sample` starts a new cycle, unless
-it resumes from an `initial_state`.
+sampling. Each call to `sample` starts a new cycle, unless it resumes from an `initial_state`.
 
 # Arguments
 - `main`: The update run for `n` iterations of each cycle.
@@ -207,15 +206,6 @@ inner_order_states(::Nothing, sampler::AbstractDEMCompositeSampler) = map(_ -> n
 inner_order_states(order_state::DEMOrderState, ::AbstractDEMCompositeSampler) =
     order_state.order_states
 
-# the same state with its order state replaced, used to pass a nested scheme its own position
-function with_order_state(state::DEMState, order_state)
-    return DEMState(
-        state.x, state.ld, state.rngs, state.adaptive_state, state.temperature_ladder, state.memory,
-        state.chain_models, state.multi_try, state.xₚ, state.ldₚ, state.x_smpl_view, state.ld_smpl_view,
-        state.xₚ_smpl_view, state.ldₚ_smpl_view, order_state
-    )
-end
-
 select_update!(rng::AbstractRNG, sampler::DEMCompositeSamplerRandom, order_state) =
     wsample(rng, sampler.update_weights)
 
@@ -229,51 +219,35 @@ end
 
 cannot_use_parallel(s::AbstractDEMCompositeSampler, n_tries::Int) = all(u -> cannot_use_parallel(u, n_tries), s.updates)
 
-# if there are no actually adaptive states, we can just use the static one
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
         sampler::AbstractDEMCompositeSampler,
-        state::DEMState{
-            T, DEMAdaptiveStatic{T},
-        };
+        state::DEMState;
+        adaptive_state::AbstractDEMAdaptiveState = state.adaptive_state,
+        order_state = state.order_state,
         kwargs...
-    ) where {T <: Real}
-    order_state = state.order_state
-    sampler_id = select_update!(rng, sampler, order_state)
-
-    sample, new_substate = step_selected(
-        sampler_id, sampler.updates, inner_order_states(order_state, sampler), rng, model_wrapper, state; kwargs...
     )
-    return sample, with_order_state(new_substate, order_state)
+    update_id = select_update!(rng, sampler, order_state)
+    return step_selected(
+        step, update_id, sampler.updates, inner_adaptive_states(adaptive_state, sampler),
+        inner_order_states(order_state, sampler), rng, model_wrapper, state; kwargs...
+    )
 end
 
 # walk the tuples instead of indexing them, so each call sees a concrete update type
 function step_selected(
-        i::Int, updates::Tuple, order_states::Tuple, rng::AbstractRNG, model_wrapper::LogDensityModel,
-        state::DEMState; kwargs...
-    )
-    if i == 1
-        return step(rng, model_wrapper, first(updates), with_order_state(state, first(order_states)); kwargs...)
-    end
-    return step_selected(
-        i - 1, Base.tail(updates), Base.tail(order_states), rng, model_wrapper, state; kwargs...
-    )
-end
-
-function step_warmup_selected(
-        i::Int, updates::Tuple, adaptive_states::Tuple, order_states::Tuple, rng::AbstractRNG,
+        f, i::Int, updates::Tuple, adaptive_states::Tuple, order_states::Tuple, rng::AbstractRNG,
         model_wrapper::LogDensityModel, state::DEMState; kwargs...
     )
     if i == 1
-        substate = update_state(
-            state; adaptive_state = first(adaptive_states), order_state = first(order_states),
-            temperature_ladder = state.temperature_ladder
+        return f(
+            rng, model_wrapper, first(updates), state;
+            adaptive_state = first(adaptive_states), order_state = first(order_states), kwargs...
         )
-        return step_warmup(rng, model_wrapper, first(updates), substate; kwargs...)
     end
-    return step_warmup_selected(
-        i - 1, Base.tail(updates), Base.tail(adaptive_states), Base.tail(order_states),
+    return step_selected(
+        f, i - 1, Base.tail(updates), Base.tail(adaptive_states), Base.tail(order_states),
         rng, model_wrapper, state; kwargs...
     )
 end
@@ -291,7 +265,11 @@ struct DEMAdaptiveComposite{
     adaptive_states::A
 end
 
-# also need to update the adaptive state
+inner_adaptive_states(adaptive_state::DEMAdaptiveComposite, ::AbstractDEMCompositeSampler) =
+    adaptive_state.adaptive_states
+inner_adaptive_states(adaptive_state::DEMAdaptiveStatic, sampler::AbstractDEMCompositeSampler) =
+    map(_ -> adaptive_state, sampler.updates)
+
 """
     step_warmup(rng, model_wrapper, sampler, state; kwargs...)
 
@@ -308,9 +286,7 @@ that update, and adapts only that update's adaptive state.
 - `state`: Current state with the composite adaptive parameters
 
 # Keyword Arguments
-- `update_memory`: Whether to update the memory with new positions. Defaults to `true`.
-  This is forwarded to the inner step, and the outer state's memory is updated without duplicating writes.
-- `kwargs...`: Additional keyword arguments passed to component update functions
+- `kwargs...`: Keyword arguments passed to the selected update's `step_warmup`, such as `update_memory` and `parallel`
 
 # Returns
 - `sample`: DEMSample containing new positions and log-densities
@@ -322,43 +298,15 @@ function step_warmup(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
         sampler::AbstractDEMCompositeSampler,
-        state::DEMState{
-            T, <:DEMAdaptiveComposite{T},
-        };
-        update_memory::Bool = true,
+        state::DEMState;
+        adaptive_state::AbstractDEMAdaptiveState = state.adaptive_state,
+        order_state = state.order_state,
         kwargs...
-    ) where {T <: Real}
-    sampler_id = select_update!(rng, sampler, state.order_state)
-
-    sample, new_substate = step_warmup_selected(
-        sampler_id, sampler.updates, state.adaptive_state.adaptive_states, inner_order_states(state.order_state, sampler),
-        rng, model_wrapper, state; update_memory = update_memory, kwargs...
     )
-
-    return sample,
-        update_state(
-            state; new_state = new_substate,
-            update_memory = false,
-            memory = new_substate.memory,
-            temperature_ladder = new_substate.temperature_ladder
-        )
-end
-
-function fix_sampler(
-        sampler::DEMCompositeSamplerRandom,
-        adaptive_state::DEMAdaptiveComposite
-    )
-    return DEMCompositeSamplerRandom(
-        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.update_weights
-    )
-end
-
-function fix_sampler(
-        sampler::DEMCompositeSamplerFixedOrder,
-        adaptive_state::DEMAdaptiveComposite
-    )
-    return DEMCompositeSamplerFixedOrder(
-        map(fix_sampler, sampler.updates, adaptive_state.adaptive_states), sampler.n
+    update_id = select_update!(rng, sampler, order_state)
+    return step_selected(
+        step_warmup, update_id, sampler.updates, inner_adaptive_states(adaptive_state, sampler),
+        inner_order_states(order_state, sampler), rng, model_wrapper, state; kwargs...
     )
 end
 

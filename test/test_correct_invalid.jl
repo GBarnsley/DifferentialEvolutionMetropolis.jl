@@ -11,7 +11,7 @@ end
 
 function DifferentialEvolutionMetropolis.proposal!(
         xₚ::V, x::V, state::DifferentialEvolutionMetropolis.DEMState,
-        update::ParallelMemorylessDE, i::Int
+        update::ParallelMemorylessDE, ::DifferentialEvolutionMetropolis.DEMAdaptiveStatic, i::Int
     ) where {V <: AbstractVector}
     rng = state.rngs[i]
     indices = state.memory.indices_INTERNAL[i]

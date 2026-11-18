@@ -1,5 +1,7 @@
 abstract type AbstractDEMMemoryless{T} <: AbstractDEMMemory{T} end
 
+update_memory!!(memory::AbstractDEMMemoryless, x) = memory
+
 #no memory
 struct DEMMemoryless{T} <: AbstractDEMMemoryless{T}
     chain_ensembles::Tuple{UnitRange{Int}}

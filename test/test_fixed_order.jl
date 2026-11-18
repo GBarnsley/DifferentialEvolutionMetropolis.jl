@@ -166,30 +166,28 @@
         @test fixed_order_state.iteration == 4
     end
 
-    @testset "fix_sampler_state keeps the position in the cycle" begin
+    @testset "sampling after warm-up keeps the position in the cycle" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(still_update, setup_subspace_sampling(); n = 2)
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = false)
         _, state = AbstractMCMC.step_warmup(rng, model, scheme, state)
-        fixed_scheme, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(scheme, state)
-        @test fixed_state.order_state === state.order_state
-        @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
-        moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 3)
+        order_state = state.order_state
+        moved, state = record_moves!(rng, scheme, state, 3)
         @test moved == [false, true, false]
+        @test state.order_state === order_state
+        @test state.adaptive_state isa DEM.DEMAdaptiveComposite
     end
 
-    @testset "fix_sampler_state fixes updates inside nested schemes" begin
+    @testset "updates inside nested schemes sample with their own adaptive state" begin
         rng = backwards_compat_rng(1234)
         scheme = setup_fixed_order_scheme(
             still_update, setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update())
         )
         _, state = AbstractMCMC.step(rng, model, scheme; n_chains = 20, memory = true)
         subspace_state = state.adaptive_state.adaptive_states[2].adaptive_states[1]
-        fixed_scheme, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(scheme, state)
-        @test fixed_scheme.updates[2].updates[1].cr_spl === subspace_state.cr_spl
-        @test fixed_state.adaptive_state isa DEM.DEMAdaptiveStatic
-        moved, _ = record_moves!(rng, fixed_scheme, fixed_state, 4)
+        moved, state = record_moves!(rng, scheme, state, 4)
         @test moved == [false, true, false, true]
+        @test state.adaptive_state.adaptive_states[2].adaptive_states[1] === subspace_state
     end
 
     @testset "Type stability (adapt = $adapt)" for adapt in (true, false)

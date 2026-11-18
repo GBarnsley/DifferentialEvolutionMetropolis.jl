@@ -66,12 +66,12 @@ fake_astate(metric) = FakeAState(metric, Matrix{Float64}(undef, size(metric, 1),
         )
     end
 
-    @testset "prepare_sampling_metrics! resolves on an unwarmed (astate === nothing) sampler" begin
-        # The fixed sampler carries the live adaptive state; before warmup it is `nothing`, and the
-        # `Nothing` method must out-specialise the general one (it would read `astate.chain_metrics`).
+    @testset "prepare_sampling_metrics! resolves without a warmed adaptive state" begin
+        # Before warmup the step passes `nothing`, and the `Nothing` method must out-specialise the
+        # general one (it would read `astate.chain_metrics`).
         s = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
-        @test s.astate === nothing
-        κ, cm = HMCExt.prepare_sampling_metrics!(s, s.astate, (; x = [zeros(length(μ)) for _ in 1:4]))
+        @test HMCExt.warmed_state(DifferentialEvolutionMetropolis.DEMAdaptiveStatic{Float64}()) === nothing
+        κ, cm = HMCExt.prepare_sampling_metrics!(s, nothing, (; x = [zeros(length(μ)) for _ in 1:4]))
         @test κ === s.κ
         @test cm === s.chain_metrics
         @test length(cm) == 4 && all(m -> m === s.metric, cm)

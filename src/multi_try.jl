@@ -4,8 +4,6 @@ mutable struct DEMMultiTryBuffers{T <: Real, V <: AbstractVector{T}, W <: SubArr
     const forward_ld::Array{T, 2}
     "log Hastings correction of each forward trial"
     const forward_offset::Array{T, 2}
-    "crossover probability of each forward trial, for adaptive subspace warm-up"
-    const forward_cr::Array{T, 2}
     "cumulative selection weights of the forward trials"
     const forward_weight::Array{T, 2}
     const forward_log_weight::Vector{T}
@@ -40,7 +38,6 @@ function DEMMultiTryBuffers(x::AbstractVector{V}, n_tries::Int, ensembles::Tuple
         [similar(first(x)) for _ in 1:n_tries, _ in 1:n_chains],
         forward_ld,
         forward_offset,
-        Array{T, 2}(undef, n_tries, n_chains),
         forward_weight,
         Vector{T}(undef, n_chains),
         [similar(first(x)) for _ in 1:(n_tries - 1), _ in 1:n_chains],
@@ -78,9 +75,6 @@ sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, DEMSamplerSingleTry
 sampler_supports_multitry(sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}) = true
 sampler_supports_multitry(sampler::AbstractDEMCompositeSampler) = any(update -> sampler_supports_multitry(update), sampler.updates)
 
-trial_cr(proposal) = NaN
-trial_cr(proposal::NamedTuple{(:offset, :cr)}) = proposal.cr
-
 # Log weight of a trial y proposed from x with offset log(q(x | y) / q(y | x))
 trial_log_weight(ld::Real, offset::Real, t::Real) = ld / t + offset / 2
 trial_log_weight(lds::AbstractVector, offsets::AbstractVector, t::Real) =
@@ -99,12 +93,12 @@ end
 trial_logdensity(model, x, offset) = offset > -Inf ? checked_logdensity(model, x) : offset
 
 # Each trial has its own rng, scratch and model copy, so every trial of an ensemble can be proposed and evaluated in parallel
-function forward_trial!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, j::Int, i::Int)
+function forward_trial!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, adaptive_state, j::Int, i::Int)
     current_state = buffers.current_states[j, i]
     xₜ = buffers.forward[j, i]
-    proposal = proposal!(xₜ, state.x[i], state, sampler, current_state)
+    proposal = proposal!(xₜ, state.x[i], state, sampler, adaptive_state, current_state)
     buffers.forward_offset[j, i] = proposal.offset
-    buffers.forward_cr[j, i] = trial_cr(proposal)
+    record_proposal!(adaptive_state, proposal, current_state)
     buffers.forward_ld[j, i] = trial_logdensity(state.chain_models[current_state], xₜ, proposal.offset)
     return nothing
 end
@@ -121,16 +115,20 @@ function select_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
 end
 
 # No reference trials are proposed when every forward trial has zero weight (`selected[i] == 0`), as `accept_trial!` then keeps the current position
-function reference_trial!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, k::Int, i::Int)
+function reference_trial!(buffers::DEMMultiTryBuffers, state, sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, adaptive_state, k::Int, i::Int)
     j = buffers.selected[i]
     j == 0 && return nothing
     current_state = buffers.current_states[k, i]
     xₜ = buffers.reference[k, i]
-    offset = proposal!(xₜ, buffers.forward[j, i], state, sampler, current_state).offset
+    offset = proposal!(xₜ, buffers.forward[j, i], state, sampler, adaptive_state, current_state).offset
     buffers.reference_offset[k, i] = offset
     buffers.reference_ld[k, i] = trial_logdensity(state.chain_models[current_state], xₜ, offset)
     return nothing
 end
+
+# The `current_state` of the proposal chain `i` was updated with, 0 when every multiple-try trial had zero weight
+selected_state(::Nothing, i::Int) = i
+selected_state(buffers::DEMMultiTryBuffers, i::Int) = buffers.selected[i] == 0 ? 0 : buffers.current_states[buffers.selected[i], i]
 
 # The current position is the final reference trial, its offset is the reverse of the selected trial's
 function accept_trial!(buffers::DEMMultiTryBuffers, state, i::Int)
@@ -155,13 +153,13 @@ end
 # For each ensemble, the forward then the reference trials are each proposed and evaluated in one loop over every (trial, chain)
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:Any, <:Any, <:DEMMultiTryBuffers},
-        sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, parallel::Bool
+        sampler::AbstractDEMSampler{<:Any, DEMSamplerMultipleTry}, adaptive_state, parallel::Bool
     )
     buffers = state.multi_try
     for (chains, trials) in zip(chain_ensembles(state.memory), buffers.ensemble_trials)
-        foreach_threaded(t -> forward_trial!(buffers, state, sampler, t[1], t[2]), trials.forward, parallel)
+        foreach_threaded(t -> forward_trial!(buffers, state, sampler, adaptive_state, t[1], t[2]), trials.forward, parallel)
         foreach(i -> select_trial!(buffers, state, i), chains)
-        foreach_threaded(t -> reference_trial!(buffers, state, sampler, t[1], t[2]), trials.reference, parallel)
+        foreach_threaded(t -> reference_trial!(buffers, state, sampler, adaptive_state, t[1], t[2]), trials.reference, parallel)
         foreach(i -> accept_trial!(buffers, state, i), chains)
     end
     return nothing
@@ -170,13 +168,13 @@ end
 # Memoryless chains are updated in turn, so only each chain's trials run in parallel
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless, <:Any, <:DEMMultiTryBuffers},
-        sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, parallel::Bool
+        sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, adaptive_state, parallel::Bool
     )
     buffers = state.multi_try
     for i in eachindex(state.x)
-        foreach_threaded(j -> forward_trial!(buffers, state, sampler, j, i), axes(buffers.forward, 1), parallel)
+        foreach_threaded(j -> forward_trial!(buffers, state, sampler, adaptive_state, j, i), axes(buffers.forward, 1), parallel)
         select_trial!(buffers, state, i)
-        foreach_threaded(k -> reference_trial!(buffers, state, sampler, k, i), axes(buffers.reference, 1), parallel)
+        foreach_threaded(k -> reference_trial!(buffers, state, sampler, adaptive_state, k, i), axes(buffers.reference, 1), parallel)
         accept_trial!(buffers, state, i)
     end
     return nothing

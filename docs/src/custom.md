@@ -93,6 +93,7 @@ function proposal!(
     x::V,
     state::DifferentialEvolutionMetropolis.DEMState,
     sampler::YourSampler,
+    adaptive_state::DifferentialEvolutionMetropolis.DEMAdaptiveStatic,
     current_state::Int
 ) where {V <: AbstractVector}
 ```
@@ -101,6 +102,7 @@ function proposal!(
 - `x`: The position to propose from
 - `state`: The current state containing all chain positions, log-densities, and chain-specific rngs
 - `sampler`: An instance of your custom sampler struct
+- `adaptive_state`: The adaptive state of your sampler, a `DEMAdaptiveStatic` for an update that does not adapt (see [Adaptive Proposals](#Adaptive-Proposals))
 - `current_state`: The index of the chain to be updated
 
 When `n_tries > 1`, `current_state` is actually the index of the trial taking place and not the chains index.
@@ -143,6 +145,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     x::V,
     state::DifferentialEvolutionMetropolis.DEMState,
     sampler::MetropolisHastingsUpdate,
+    ::DifferentialEvolutionMetropolis.DEMAdaptiveStatic,
     current_state::Int
 ) where {V <: AbstractVector}
     # Propose a new point using a random walk
@@ -192,6 +195,7 @@ function DifferentialEvolutionMetropolis.proposal!(
     x::V,
     state::DifferentialEvolutionMetropolis.DEMState,
     sampler::ScratchMetropolisHastingsUpdate,
+    ::DifferentialEvolutionMetropolis.DEMAdaptiveStatic,
     current_state::Int
 ) where {V <: AbstractVector}
     # Draw the random walk step into this chain's buffer rather than a new vector
@@ -208,18 +212,19 @@ end
 DifferentialEvolutionMetropolis.chains_required(::ScratchMetropolisHastingsUpdate) = 1
 ```
 
-### Adaptive Proposals with step_warmup
+### Adaptive Proposals
 
-For proposals that require adaptation during warm-up, you need to implement the `step_warmup` as well.
-This is called for the first `num_warmup` steps, so adaptation stops when the sampling phase begins.
+For proposals that adapt during warm-up, define an `adapt!` method, which `step_warmup` calls after each of the first `num_warmup` steps, so adaptation stops when the sampling phase begins.
 To keep adapting while sampling, set `num_warmup` to the warm-up steps plus the sampling steps that should adapt, and `discard_initial` to the warm-up steps alone.
 
-You'll also need to define adaptive state structures and methods for your sampler.
+You'll also need to define an adaptive state for your sampler, returned by `initialize_adaptive_state`, and a `proposal!` method for it.
+This method is used during warm-up and afterwards, with the adapted values.
+`DEMAdaptiveStatic` still indicates no adaption and `adapt = false` indicates adaption is switched off.
+When the adaptation needs something from each proposal, such as a random draw, define `record_proposal!` to store it and `prepare_scratch!` for the adaptive state to size that storage.
 Here's an example of an adaptive Metropolis-Hastings sampler:
 
 ```@example MHSampler
 using AbstractMCMC, DifferentialEvolutionMetropolis, LinearAlgebra, Statistics, LogDensityProblems
-import AbstractMCMC: step, step_warmup
 # Define adaptive state
 mutable struct AdaptiveMetropolisState{T<:Real} <:DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState{T}
     #values needed for the adaption process
@@ -263,55 +268,54 @@ function DifferentialEvolutionMetropolis.initialize_adaptive_state(sampler::Adap
     )
 end
 
-# Fix sampler (convert adaptive to non-adaptive), here we convert our RW with adaptive proposal covariance to a RW with fixed proposal covariance
-function DifferentialEvolutionMetropolis.fix_sampler(sampler::AdaptiveMetropolisUpdate{T}, adaptive_state::AdaptiveMetropolisState{T}) where {T}
-    return MetropolisHastingsUpdate(MvNormal(zeros(T, size(adaptive_state.proposal_cov, 1)), adaptive_state.proposal_cov))
-end
-
-# Proposal method (same as non-adaptive)
+# Proposal without adaptation (`adapt = false`), using the initial covariance
 function DifferentialEvolutionMetropolis.proposal!(
     xₚ::V,
     x::V,
     state::DifferentialEvolutionMetropolis.DEMState,
     sampler::AdaptiveMetropolisUpdate,
+    ::DifferentialEvolutionMetropolis.DEMAdaptiveStatic,
     current_state::Int
 ) where {V <: AbstractVector}
-    # Use current proposal covariance from adaptive state
-    xₚ .= rand(state.rngs[current_state], MvNormal(x, state.adaptive_state.proposal_cov))
+    xₚ .= rand(state.rngs[current_state], MvNormal(x, sampler.initial_cov))
+    return (offset = 0.0,)
+end
+
+# Proposal with the adapted covariance, used during and after warm-up
+function DifferentialEvolutionMetropolis.proposal!(
+    xₚ::V,
+    x::V,
+    state::DifferentialEvolutionMetropolis.DEMState,
+    sampler::AdaptiveMetropolisUpdate,
+    adaptive_state::AdaptiveMetropolisState,
+    current_state::Int
+) where {V <: AbstractVector}
+    xₚ .= rand(state.rngs[current_state], MvNormal(x, adaptive_state.proposal_cov))
     return (offset = 0.0,)
 end
 
 DifferentialEvolutionMetropolis.chains_required(::AdaptiveMetropolisUpdate) = 1
 
-# Adaptive step during warm-up
-function step_warmup(
-    rng::AbstractRNG,
-    model_wrapper::AbstractMCMC.LogDensityModel,
-    sampler::AdaptiveMetropolisUpdate{T},
-    state::DifferentialEvolutionMetropolis.DEMState{T, <:AdaptiveMetropolisState{T}};
-    parallel::Bool = false,
-    kwargs...
-) where {T<:Real}
-
-    # Perform regular step
-    sample, new_state = step(rng, model_wrapper, sampler, state; parallel = parallel, kwargs...)
-
-    # Update adaptive parameters in-place
-    adapt_state = new_state.adaptive_state
-    adapt_state.adaptation_count += 1
+# Adapt after each warm-up step, `state` is the state the step started from
+function DifferentialEvolutionMetropolis.adapt!(
+    adaptive_state::AdaptiveMetropolisState,
+    sampler::AdaptiveMetropolisUpdate,
+    state::DifferentialEvolutionMetropolis.DEMState
+)
+    adaptive_state.adaptation_count += 1
 
     # Only adapt after burn-in period and at specified intervals
-    if adapt_state.adaptation_count > sampler.adapt_after && adapt_state.adaptation_count % sampler.adapt_every == 0
+    if adaptive_state.adaptation_count > sampler.adapt_after && adaptive_state.adaptation_count % sampler.adapt_every == 0
 
-        # Compute empirical covariance from current chain positions
-        positions = reduce(hcat, new_state.x)'  # Convert to matrix
+        # Compute empirical covariance from the positions after the step
+        positions = reduce(hcat, state.xₚ)'  # Convert to matrix
         empirical_cov = cov(positions)
 
         # Update proposal covariance with regularization in-place
-        adapt_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I(size(empirical_cov, 1))
+        adaptive_state.proposal_cov .= sampler.adapt_scale * empirical_cov + 1e-6 * I(size(empirical_cov, 1))
     end
 
-    return sample, new_state
+    return nothing
 end
 ```
 
@@ -390,8 +394,10 @@ DifferentialEvolutionMetropolis.prepare_scratch!
 
 ```@docs
 DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState
+DifferentialEvolutionMetropolis.DEMAdaptiveStatic
 DifferentialEvolutionMetropolis.initialize_adaptive_state
-DifferentialEvolutionMetropolis.fix_sampler
+DifferentialEvolutionMetropolis.adapt!
+DifferentialEvolutionMetropolis.record_proposal!
 ```
 
 ### Other internals for reference
@@ -409,6 +415,5 @@ DifferentialEvolutionMetropolis.DEMProposalScratch
 
 ```@docs
 DifferentialEvolutionMetropolis.pick_chains
-DifferentialEvolutionMetropolis.fix_sampler_state
 DifferentialEvolutionMetropolis.chain_buffers
 ```

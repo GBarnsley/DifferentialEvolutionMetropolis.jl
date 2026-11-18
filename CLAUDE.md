@@ -47,11 +47,14 @@ DE-MC family samplers (deMC, deMCzs, DREAMz) built on `AbstractMCMC.jl`, with ta
 ### AbstractMCMC integration (`src/chains.jl`)
 
 - `step(rng, model, sampler; kwargs...)` initialises: resolves `initial_position`, builds temperature ladder, memory, adaptive state, per-chain model copies, and `DEMState`.
-- `step(rng, model, sampler, state)` is the post-warmup step, dispatched on a `DEMAdaptiveStatic` state; on an adaptive state it calls `fix_sampler_state` and delegates.
-  It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` and `update_chain!` (log density + tempered MH accept/reject).
+- `step(rng, model, sampler, state)` is the post-warmup step, dispatched on the sampler; the update's adaptive state comes from the `adaptive_state` keyword (default `state.adaptive_state`).
+  It reseeds `state.rngs` from `rng`, calls `prepare_scratch!`, then `update_chains!`, which for each chain calls `proposal!` with that adaptive state and `update_chain!` (log density + tempered MH accept/reject).
 - `update_chains!` runs each chain's update through `foreach_chain`, which threads over chains with `foreach_threaded` (`utilities.jl`) when `parallel = true`, except a memoryless state with a `DEMSamplerSerial` update, which updates chains in turn.
   Chains are updated in the ensembles given by `chain_ensembles(state.memory)`: all chains at once, or the odd then the even chains with `double_ensemble = true`.
-- `step_warmup` also updates adaptive state; `fix_sampler` / `fix_sampler_state` (unexported, documented with the rest of the custom sampler API in `docs/src/custom.md`) freeze adapted parameters.
+- `step_warmup` runs `step`, then `adapt!(adaptive_state, sampler, state)` with the state the step started from (`x` before, `xₚ` after); the fallback does nothing, so a static state (`adapt = false`) is not adapted.
+  Adaptations needing per-proposal values store them in `record_proposal!` (called for each proposal a chain can move to, keyed by `current_state`), sized by `prepare_scratch!(adaptive_state, state)`.
+  HMC defines its own `step_warmup`.
+  Sampler schemes pass each selected update its own `adaptive_state` and `order_state` as keywords, so the state passed down is the root state.
 - `update_state` returns a new immutable state, swapping `x`/`xₚ` buffers and updating memory and ladder (`!!` functions return possibly-new objects).
 - `pick_chains(state, i, Val(N))` draws `N` distinct other chains (memoryless), chains of the other ensemble (double ensemble) or archive positions (memory) for chain `i`, using `fast_sample_chains!` (`fast_sample.jl`) with preallocated index buffers (`n_preallocated_indices`).
 
@@ -64,7 +67,7 @@ An update is an `AbstractDEMSampler{E, T}` with an execution mode `E` (`DEMSampl
 
 ### Update types
 
-Each implements `proposal!(xₚ, x, state, sampler, i)`, writing the proposal into `xₚ` and returning a named tuple with at least `offset`, the log Hastings correction; `-Inf` means auto-reject.
+Each implements `proposal!(xₚ, x, state, sampler, adaptive_state, i)`, dispatching on `adaptive_state` (`DEMAdaptiveStatic` without adaptation), writing the proposal into `xₚ` and returning a named tuple with at least `offset`, the log Hastings correction; `-Inf` means auto-reject.
 
 - `differential_evolution_update.jl`: classic DE-MC.
 - `snooker_update.jl`: snooker update (asymmetric, returns a non-zero offset).

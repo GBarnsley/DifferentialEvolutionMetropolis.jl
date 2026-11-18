@@ -80,7 +80,7 @@ end
 
 function proposal!(
         xₚ::V, x::V, state::DEMState,
-        sampler::DEMSampler, current_state::Int
+        sampler::DEMSampler, ::DEMAdaptiveStatic, current_state::Int
     ) where {V <: AbstractVector}
     x₁, x₂ = pick_chains(state, current_state, Val(2))
     if x₁ == x₂

@@ -95,11 +95,14 @@ chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LIN
 memory_picks(sampler::AbstractDEMSampler) = chains_required(sampler)
 
 """
-    proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSampler, current_state::Int)
+    proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSampler, adaptive_state::AbstractDEMAdaptiveState, current_state::Int)
 
 Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
 
-Every update must implement this.
+Every update must implement this, dispatching on `adaptive_state`, the update's own adaptive state.
+A non-adaptive update, or an adaptive update run with `adapt = false`, is passed a [`DifferentialEvolutionMetropolis.DEMAdaptiveStatic`](@ref).
+An adaptive update also implements a method for its own [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref).
+Inside a sampler scheme `state.adaptive_state` belongs to the scheme, so read the adaptive state from `adaptive_state`.
 Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
 When `n_tries > 1`, `current_state` is the index of the trial being proposed, not the chain's index.
 Only use `current_state` to index `state.rngs` and to pass to [`DifferentialEvolutionMetropolis.pick_chains`](@ref) and [`DifferentialEvolutionMetropolis.chain_buffers`](@ref).

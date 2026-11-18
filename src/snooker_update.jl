@@ -65,7 +65,7 @@ end
 
 function proposal!(
         xₚ::V, x::V, state::DEMState,
-        sampler::DEMSnookerSampler, current_state::Int
+        sampler::DEMSnookerSampler, ::DEMAdaptiveStatic, current_state::Int
     ) where {V <: AbstractVector}
     # Propose a new position.
     x₁, x₂, xₐ = pick_chains(state, current_state, Val(3))

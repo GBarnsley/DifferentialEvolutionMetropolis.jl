@@ -37,36 +37,31 @@ once in `setup_hmc_update` and then discarded.
 
 Immutable, like every sampler in this package. The pieces are built at their final size in
 `setup_hmc_update` (which is why it needs `n_dims`); a symbol integrator gets a zero step size,
-found at the ensemble on the first warmup step. `fix_sampler` returns another
-`DEMHMCSampler` carrying the *adapted* pieces, which is how the adapted
-metric/`κ` reach the post-warmup `step`. That fixed sampler also carries the live
-`DEMHMCAdaptiveState` (`astate`), so the memory-based strategies keep tracking the growing
-archive during sampling. Without warmup `astate` is `nothing` and `step` runs the pieces as
-built, which needs an integrator with an explicit step size.
+found at the ensemble on the first warmup step. After warmup the HMC steps use the adapted
+pieces in the update's `DEMHMCAdaptiveState`, so the memory-based strategies keep tracking the
+growing archive during sampling. Without warmup `step` runs the pieces as built, which needs an
+integrator with an explicit step size.
 """
 struct DEMHMCSampler{
         MS <: AbstractDEMMetricStrategy,
         M <: AbstractMetric, I <: AbstractIntegrator,
-        K <: AbstractMCMCKernel, A <: AbstractAdaptor, AST,
+        K <: AbstractMCMCKernel, A <: AbstractAdaptor,
     } <: DEM.AbstractDEMSampler{DEM.DEMSamplerMultiThread, DEM.DEMSamplerSingleTry}
     metric_strategy::MS
     metric::M
     integrator::I
     κ::K
     adaptor::A
-    # Per-chain metric slots; cold/hot are the chains HMC advances / carries over unchanged.
+    # Per-chain metric slots for stepping without warmup.
     chain_metrics::Vector{M}
-    cold::Vector{Int}
-    hot::Vector{Int}
-    astate::AST
 end
 
 """
     DEMHMCAdaptiveState{T}
 
 The shared, evolving HMC pieces — one set per HMC update, NOT one per chain. This lives in
-the sampler *state* (`state.adaptive_state`); the immutable sampler holds it only by reference,
-threaded through `fix_sampler` so memory-based strategies keep mutating it during sampling.
+the sampler *state* and is passed to each HMC step as the update's adaptive state, so
+memory-based strategies keep mutating it during sampling.
 Concretely parametrised on the AdvancedHMC piece types, which `renew`/`update` preserve across
 adaptation.
 
@@ -135,9 +130,7 @@ function DEM.setup_hmc_update(
     κ = AdvancedHMC.make_kernel(sampler, integrator)
     adaptor = AdvancedHMC.make_adaptor(sampler, metric, integrator)
     validate_adaptor(adaptor)
-    return DEMHMCSampler(
-        metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[], Int[], Int[], nothing
-    )
+    return DEMHMCSampler(metric_strategy, metric, integrator, κ, adaptor, typeof(metric)[])
 end
 
 """
@@ -191,22 +184,9 @@ function validate_target(sampler::DEMHMCSampler, ℓ)
     return d
 end
 
-"""
-    fix_sampler(::DEMHMCSampler, ::DEMHMCAdaptiveState)
-
-Return a `DEMHMCSampler` carrying the adaptive state's current pieces by
-reference (they are immutable, so no copy), plus the live `astate` itself. The sampling
-`step` reads the pieces, and — for memory-based strategies — keeps mutating `astate` to track
-the growing archive (the stock strategy leaves it frozen). An adaptive state that never took a
-warmup step leaves the sampler unchanged, so `step` runs its pieces as built.
-"""
-function DEM.fix_sampler(sampler::DEMHMCSampler, astate::DEMHMCAdaptiveState)
-    astate.initialized || return sampler
-    return DEMHMCSampler(
-        sampler.metric_strategy, astate.metric, astate.integrator, astate.κ, astate.adaptor,
-        astate.chain_metrics, astate.cold, astate.hot, astate
-    )
-end
+# The adaptive state once it has taken a warmup step, otherwise `nothing` so `step` runs the sampler's own pieces
+warmed_state(astate::DEMHMCAdaptiveState) = astate.initialized ? astate : nothing
+warmed_state(::DEM.AbstractDEMAdaptiveState) = nothing
 
 # -----------------------------------------------------------------------------
 # Step-size refinement and metric refresh
@@ -1004,12 +984,14 @@ function adapt_metric!(
 end
 
 function step_warmup(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
-        state::DEM.DEMState{T, <:DEMHMCAdaptiveState};
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler, state::DEM.DEMState;
+        adaptive_state::DEM.AbstractDEMAdaptiveState = state.adaptive_state,
         parallel::Bool = false, update_memory::Bool = true,
         num_warmup::Int = 1000, kwargs...
-    ) where {T <: Real}
-    astate = state.adaptive_state
+    )
+    adaptive_state isa DEMHMCAdaptiveState ||
+        return step(rng, model_wrapper, sampler, state; adaptive_state, parallel, update_memory, kwargs...)
+    astate = adaptive_state
     if !astate.initialized
         validate_metric_state(sampler.metric_strategy, state)
         astate.cold = cold_chain_indices(state)
@@ -1022,11 +1004,7 @@ function step_warmup(
         astate.cold, astate.hot, parallel
     )
     adapt_metric!(sampler.metric_strategy, model_wrapper, state, astate, α)
-    return DEM.create_sample(state),
-        DEM.update_state(
-            state; swap_positions = Val(true),
-            adaptive_state = astate, update_memory = update_memory
-        )
+    return DEM.create_sample(state), DEM.update_state(state; update_memory = update_memory)
 end
 
 track_sampling_metric!(::AbstractDEMMetricStrategy, ::Nothing, state) = nothing
@@ -1036,8 +1014,7 @@ track_sampling_metric!(ms::DEMArchiveMetricStrategy, astate::DEMHMCAdaptiveState
 
 # Fill the trajectory slots and return the kernel + slots for a sampling step. Once warmed these
 # come from the live adaptive state (so sampling-phase recomputes/reassignments are seen); without
-# warmup they come from the sampler's own pieces, with slots sized to the state's chains. Dispatched
-# on the carried adaptive state, whose concrete type is known, so it stays type-stable.
+# warmup they come from the sampler's own pieces, with slots sized to the state's chains.
 function prepare_sampling_metrics!(sampler::DEMHMCSampler, ::Nothing, state)
     resize_chain_metrics!(sampler.chain_metrics, sampler.metric, length(state.x))
     prepare_chain_metrics!(sampler.chain_metrics, sampler.metric)
@@ -1055,14 +1032,15 @@ function sampling_chains(::DEMHMCSampler, ::Nothing, state)
     cold = cold_chain_indices(state)
     return cold, hot_chain_indices(state, cold)
 end
-sampling_chains(sampler::DEMHMCSampler, ::DEMHMCAdaptiveState, state) = sampler.cold, sampler.hot
+sampling_chains(::DEMHMCSampler, astate::DEMHMCAdaptiveState, state) = astate.cold, astate.hot
 
 function step(
-        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler,
-        state::DEM.DEMState{T, DEM.DEMAdaptiveStatic{T}};
+        rng::AbstractRNG, model_wrapper::LogDensityModel, sampler::DEMHMCSampler, state::DEM.DEMState;
+        adaptive_state::DEM.AbstractDEMAdaptiveState = state.adaptive_state,
         parallel::Bool = false, update_memory::Bool = true, kwargs...
-    ) where {T <: Real}
-    if sampler.astate === nothing
+    )
+    astate = warmed_state(adaptive_state)
+    if astate === nothing
         validate_target(sampler, model_wrapper.logdensity)
         has_step_size(sampler.integrator) || error(
             "setup_hmc_update: this HMC update has no step size. A symbol integrator's step " *
@@ -1071,12 +1049,11 @@ function step(
                 "explicit step size, e.g. `HMC(0.1, 10)` or `NUTS(0.8; integrator = Leapfrog(0.1))`."
         )
     end
-    track_sampling_metric!(sampler.metric_strategy, sampler.astate, state)
-    κ, chain_metrics = prepare_sampling_metrics!(sampler, sampler.astate, state)
-    cold, hot = sampling_chains(sampler, sampler.astate, state)
+    track_sampling_metric!(sampler.metric_strategy, astate, state)
+    κ, chain_metrics = prepare_sampling_metrics!(sampler, astate, state)
+    cold, hot = sampling_chains(sampler, astate, state)
     run_trajectories!(rng, state, κ, chain_metrics, cold, hot, parallel)
-    return DEM.create_sample(state),
-        DEM.update_state(state; swap_positions = Val(true), update_memory = update_memory)
+    return DEM.create_sample(state), DEM.update_state(state; update_memory = update_memory)
 end
 
 DEM.chains_required(::DEMHMCSampler) = 1

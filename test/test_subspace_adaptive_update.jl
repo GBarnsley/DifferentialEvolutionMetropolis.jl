@@ -177,19 +177,6 @@
         crs = [state.adaptive_state.cr_spl for state in states_noadapt]
         @test crs[1] == crs[end]
 
-        new_sampler, initial_state2 = DifferentialEvolutionMetropolis.fix_sampler_state(de_sampler, states[end])
-        states_noadapt = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
-        states_noadapt[1] = initial_state2
-        for i in 2:(its + 1)
-            sample_result,
-                state = AbstractMCMC.step_warmup(
-                rng, AbstractMCMC.LogDensityModel(model),
-                new_sampler, states_noadapt[i - 1]
-            )
-            states_noadapt[i] = deepcopy(state)
-        end
-        @test isa(states_noadapt[end], DifferentialEvolutionMetropolis.DEMState)
-
         sample_result,
             initial_state = AbstractMCMC.step(rng, AbstractMCMC.LogDensityModel(model), de_sampler; adapt = false)
         states_noadapt = Vector{DifferentialEvolutionMetropolis.DEMState}(undef, its + 1)
@@ -261,12 +248,21 @@
         @test sum(state.adaptive_state.L) == (its - cld(40, n_chains)) * n_chains
         DifferentialEvolutionMetropolis.adapted_cr_probabilities!(state.adaptive_state, 0.3)
         @test all(state.adaptive_state.p .≥ 0.1 - 1.0e-12)
-        fixed = DifferentialEvolutionMetropolis.fix_sampler(de_sampler, state.adaptive_state)
-        @test fixed.cr_uniform_weight == 0.3
-        @test fixed.min_variance_count == 40
         @test_throws ErrorException setup_subspace_sampling(; cr_uniform_weight = 1.5)
         @test_throws ErrorException setup_subspace_sampling(; cr_uniform_weight = -0.1)
         @test_throws ErrorException setup_subspace_sampling(; min_variance_count = 1)
+    end
+
+    @testset "proposals draw crossover probabilities from the adaptive state" begin
+        update = setup_subspace_sampling()
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
+        _, state = AbstractMCMC.step(backwards_compat_rng(1), model, update; n_chains = 6, memory = false)
+        adaptive_state = state.adaptive_state
+        DifferentialEvolutionMetropolis.set_weights!(adaptive_state.cr_spl, [0.0, 0.0, 1.0])
+        DifferentialEvolutionMetropolis.prepare_scratch!(update, state)
+        draw_cr(a) = DifferentialEvolutionMetropolis.proposal!(state.xₚ[1], state.x[1], state, update, a, 1).cr
+        @test all(==(1.0), [draw_cr(adaptive_state) for _ in 1:50])
+        @test length(unique(draw_cr(DifferentialEvolutionMetropolis.DEMAdaptiveStatic{Float64}()) for _ in 1:50)) > 1
     end
 
     @testset "warn when adapting nonstandard crossover support" begin

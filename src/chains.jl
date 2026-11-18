@@ -1,3 +1,8 @@
+"""
+    DEMAdaptiveStatic{T}
+
+Adaptive state of an update that does not adapt, or of an adaptive update run with `adapt = false`.
+"""
 struct DEMAdaptiveStatic{T} <:
     AbstractDEMAdaptiveState{T} end
 
@@ -115,108 +120,14 @@ end
     end
 end
 
-is_enabled(option::Val{true}) = true
-is_enabled(option::Val{false}) = false
-
-function _update_state(
-        state::DEMState{
-            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
-        },
-        swap_positions,
-        memory::AbstractDEMMemory{T},
-        adaptive_state::AbstractDEMAdaptiveState{T},
-        temperature_ladder::AbstractDEMTemperatureLadder{T},
-        rngs::Vector{<:AbstractRNG},
-        new_state::DEMState{
-            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
-        },
-        order_state,
-    ) where {
-        T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDEMAdaptiveState{T},
-        L1 <: AbstractDEMTemperatureLadder{T},
-        A2 <: AbstractDEMAdaptiveState{T},
-        L2 <: AbstractDEMTemperatureLadder{T},
-        M1 <: AbstractDEMMemory{T},
-        M2 <: AbstractDEMMemory{T},
-        V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model, B,
-    }
-    if is_enabled(swap_positions)
-        #swap over x and xₚ for the next update
-        return DEMState(
-            new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view, order_state
-        )
-    else
-        #already swapped elsewhere
-        return DEMState(
-            new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, order_state
-        )
-    end
-end
-
-function update_state(
-        state::DEMState{
-            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
-        };
-        swap_positions = Val(false),
-        memory::AbstractDEMMemoryless{T} = state.memory,
-        adaptive_state::AbstractDEMAdaptiveState{T} = state.adaptive_state,
-        temperature_ladder::AbstractDEMTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
-        rngs::Vector{<:AbstractRNG} = state.rngs,
-        order_state = state.order_state,
-        new_state::DEMState{
-            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
-        } = state,
-        kwargs...
-    ) where {
-        T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDEMAdaptiveState{T},
-        L1 <: AbstractDEMTemperatureLadder{T},
-        A2 <: AbstractDEMAdaptiveState{T},
-        L2 <: AbstractDEMTemperatureLadder{T},
-        M1 <: AbstractDEMMemoryless{T},
-        M2 <: AbstractDEMMemory{T},
-        V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model, B,
-    }
-    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
-end
-
-function update_state(
-        state::DEMState{
-            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
-        };
-        swap_positions = Val(false),
-        memory::AbstractDEMMemory{T} = state.memory,
-        adaptive_state::AbstractDEMAdaptiveState{T} = state.adaptive_state,
-        temperature_ladder::AbstractDEMTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
-        rngs::Vector{<:AbstractRNG} = state.rngs,
-        order_state = state.order_state,
-        new_state::DEMState{
-            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
-        } = state,
-        update_memory::Bool = false
-    ) where {
-        T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDEMAdaptiveState{T},
-        L1 <: AbstractDEMTemperatureLadder{T},
-        A2 <: AbstractDEMAdaptiveState{T},
-        L2 <: AbstractDEMTemperatureLadder{T},
-        M1 <: AbstractDEMMemoryFormat{T, VV},
-        M2 <: AbstractDEMMemory{T},
-        V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model, B,
-    }
-    if update_memory
-        if is_enabled(swap_positions)
-            memory = update_memory!!(memory, new_state.xₚ)
-        else
-            #already swapped
-            memory = update_memory!!(memory, new_state.x)
-        end
-    end
-    return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
+# The state for the next update: x and xₚ swapped, the ladder advanced and, when `update_memory`, the new positions added to memory
+function update_state(state::DEMState; update_memory::Bool = false)
+    memory = update_memory ? update_memory!!(state.memory, state.xₚ) : state.memory
+    return DEMState(
+        state.xₚ, state.ldₚ, state.rngs, state.adaptive_state, update_ladder!!(state.temperature_ladder), memory,
+        state.chain_models, state.multi_try, state.x, state.ld,
+        state.xₚ_smpl_view, state.ldₚ_smpl_view, state.x_smpl_view, state.ld_smpl_view, state.order_state
+    )
 end
 
 # Sequential updates without multiple tries run one chain at a time even with `parallel = true`
@@ -261,9 +172,10 @@ function update_chain!(model, state, offset, i)
     end
 end
 
-function propose_and_update_chain!(state, sampler, i)
-    offset, = proposal!(state.xₚ[i], state.x[i], state, sampler, i)
-    update_chain!(state.chain_models[i], state, offset, i)
+function propose_and_update_chain!(state, sampler, adaptive_state, i)
+    proposal = proposal!(state.xₚ[i], state.x[i], state, sampler, adaptive_state, i)
+    record_proposal!(adaptive_state, proposal, i)
+    update_chain!(state.chain_models[i], state, proposal.offset, i)
     return nothing
 end
 
@@ -284,22 +196,21 @@ function foreach_chain(
     return nothing
 end
 
-function update_chains!(state, sampler, parallel::Bool)
-    foreach_chain(i -> propose_and_update_chain!(state, sampler, i), state, sampler, parallel)
+function update_chains!(state, sampler, adaptive_state, parallel::Bool)
+    foreach_chain(i -> propose_and_update_chain!(state, sampler, adaptive_state, i), state, sampler, parallel)
     return nothing
 end
 
 # multi-try methods are defined in src/multi_try.jl
 
-# non-adaptive step
 """
     step(rng, model_wrapper, sampler, state; parallel=false, update_memory=true, kwargs...)
 
 Perform a single MCMC step using differential evolution sampling.
 
 This is the core sampling function that proposes new states for all chains and accepts
-or rejects them according to the Metropolis criterion. For adaptive samplers, the
-function automatically fixes adaptive parameters before sampling.
+or rejects them according to the Metropolis criterion. Adaptive updates propose with their
+current adapted values but do not adapt them further, adaptation only happens in [`step_warmup`](@ref).
 
 # Arguments
 - `rng`: Random number generator
@@ -328,13 +239,12 @@ function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
         sampler::AbstractDEMMetaSampler,
-        state::DEMState{
-            T, DEMAdaptiveStatic{T},
-        };
+        state::DEMState;
+        adaptive_state::AbstractDEMAdaptiveState = state.adaptive_state,
         parallel::Bool = false,
         update_memory::Bool = true,
         kwargs...
-    ) where {T <: Real}
+    )
     # Derive per-chain RNGs deterministically from the provided rng for this step.
     # Keep this here so `step` depends only on `rng` and `state`, and can be called in isolation.
     for i in eachindex(state.rngs)
@@ -346,121 +256,91 @@ function step(
     x = state.x
 
     prepare_scratch!(sampler, state)
+    prepare_scratch!(adaptive_state, state)
 
     # loop through chains running the update
-    update_chains!(state, sampler, parallel)
+    update_chains!(state, sampler, adaptive_state, parallel)
 
-    return create_sample(state),
-        update_state(
-            state;
-            swap_positions = Val(true),
-            update_memory = update_memory
-        )
+    return create_sample(state), update_state(state; update_memory = update_memory)
 end
 
-#previously adapted step
 """
-    fix_sampler(sampler::AbstractDEMMetaSampler, adaptive_state::AbstractDEMAdaptiveState)
+    step_warmup(rng, model_wrapper, sampler, state; parallel=false, update_memory=true, kwargs...)
 
-Fix adaptive parameters of a sampler to their current adapted values.
+Perform a single MCMC step during the warm-up (adaptive) phase.
 
-For non-adaptive samplers, returns the sampler unchanged. For adaptive samplers,
-returns a new sampler with the adaptive parameters fixed to their current values
-in the `adaptive_state`. A custom adaptive update should define a method for its adaptive state.
+During warm-up, this function performs the same sampling as [`step`](@ref), then adapts the update's
+adaptive state with [`DifferentialEvolutionMetropolis.adapt!`](@ref). For subspace samplers, it adapts
+crossover probabilities based on the effectiveness of different parameter subsets. Only cold chains
+contribute to the adaptation, and jumps are recorded once the running variance is available.
 
 # Arguments
-- `sampler`: The differential evolution sampler to fix
-- `adaptive_state`: The adaptive state containing current parameter values
+- `rng`: Random number generator
+- `model_wrapper`: LogDensityModel containing the target log-density function
+- `sampler`: Differential evolution sampler from this package
+- `state`: Current state including adaptive parameters
+
+# Keyword Arguments
+- `update_memory`: Whether to update the memory with new positions (for memory-based samplers).
+  Defaults to `true`. Useful if memory has grown too large.
+- `parallel`: Whether to run chains in parallel using threading. Defaults to `false`.
+- `kwargs...`: Additional keyword arguments passed to [`step`](@ref)
 
 # Returns
-- A sampler with fixed (non-adaptive) parameters
+- `sample`: DEMSample containing new positions and log-densities
+- `new_state`: Updated state with adapted parameters for the next iteration
 
 # Example
-```@example fix_sampler
-using DifferentialEvolutionMetropolis, Random, Distributions
+```@example step_warmup
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-# This function is typically used after warmup/adaptation phase
-# fixed_sampler = DifferentialEvolutionMetropolis.fix_sampler(adaptive_sampler, state.adaptive_state)
+# Setup for warmup step example
+rng = Random.default_rng()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_subspace_sampling()
+
+# Initialize state and perform a warmup step
+_, state = AbstractMCMC.step(rng, model_wrapper, sampler)
+sample, new_state = AbstractMCMC.step_warmup(rng, model_wrapper, sampler, state; parallel=false)
 ```
 
-See also [`fix_sampler_state`](@ref).
+See also [`step`](@ref).
 """
-function fix_sampler(
-        sampler::AbstractDEMMetaSampler,
-        adaptive_state::AbstractDEMAdaptiveState
-    )
-    return sampler
-end
-
-"""
-    fix_sampler_state(sampler::AbstractDEMMetaSampler, state::DEMState)
-
-Fix adaptive sampler parameters and return a corresponding non-adaptive state.
-
-Takes an adaptive sampler and state, fixes the sampler's adaptive parameters to their
-current values, and returns both the fixed sampler and a simplified state without
-adaptive components. Adaptive updates inside sampler schemes are fixed as well.
-
-# Arguments
-- `sampler`: The differential evolution sampler (potentially adaptive)
-- `state`: The current sampler state (DEMState)
-
-# Returns
-- `fixed_sampler`: Sampler with adaptive parameters fixed to current values
-- `fixed_state`: State without adaptive components
-
-# Example
-```@example fix_sampler_state
-using DifferentialEvolutionMetropolis, Random, Distributions
-
-# This function is typically used after warmup/adaptation phase
-# fixed_sampler, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(sampler, state)
-```
-
-See also [`fix_sampler`](@ref).
-"""
-function fix_sampler_state(
-        sampler::AbstractDEMMetaSampler,
-        state::DEMState{T}
-    ) where {T <: Real}
-    return fix_sampler(sampler, state.adaptive_state),
-        update_state(
-            state; update_memory = false,
-            adaptive_state = DEMAdaptiveStatic{T}(),
-            temperature_ladder = state.temperature_ladder
-        )
-end
-
-"""
-    step(rng, model_wrapper, sampler, state::DEMState; update_memory=true, kwargs...)
-
-Evaluate an adaptive step. Delegates to the inner step after fixing the sampler state,
-correctly forwarding the `update_memory` flag, and updating the outer state with the
-resulting memory and temperature ladder without duplicating memory writes or temperature ladder advances.
-"""
-function step(
+function step_warmup(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
         sampler::AbstractDEMMetaSampler,
         state::DEMState;
-        update_memory::Bool = true,
+        adaptive_state::AbstractDEMAdaptiveState = state.adaptive_state,
         kwargs...
     )
-
-    fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
-
-    sample, new_state = step(
-        rng, model_wrapper, fixed_sampler, fixed_state;
-        update_memory = update_memory, kwargs...
-    )
-
-    return sample,
-        update_state(
-            state; new_state = new_state, update_memory = false,
-            memory = new_state.memory,
-            temperature_ladder = new_state.temperature_ladder
-        )
+    sample, new_state = step(rng, model_wrapper, sampler, state; adaptive_state, kwargs...)
+    adapt!(adaptive_state, sampler, state)
+    return sample, new_state
 end
+
+"""
+    adapt!(adaptive_state::AbstractDEMAdaptiveState, sampler::AbstractDEMMetaSampler, state::DEMState)
+
+Adapt `adaptive_state` in place after a warm-up step of `sampler`.
+
+`state` is the state the step started from, so `state.x` holds the positions before the step and `state.xₚ` the positions after it.
+The fallback does nothing. An adaptive update defines a method for its own adaptive state.
+"""
+adapt!(adaptive_state::AbstractDEMAdaptiveState, sampler::AbstractDEMMetaSampler, state) = nothing
+
+"""
+    record_proposal!(adaptive_state::AbstractDEMAdaptiveState, proposal::NamedTuple, current_state::Int)
+
+Record what [`DifferentialEvolutionMetropolis.adapt!`](@ref) needs from `proposal`, the named tuple returned by [`DifferentialEvolutionMetropolis.proposal!`](@ref) for `current_state`.
+
+Called for every proposal a chain can move to, but not for the reference trials of multiple tries, and also after warm-up.
+Size any buffer indexed by `current_state` in a [`DifferentialEvolutionMetropolis.prepare_scratch!`](@ref) method for the adaptive state.
+The fallback records nothing.
+"""
+record_proposal!(adaptive_state::AbstractDEMAdaptiveState, proposal, current_state::Int) = nothing
 
 function initialize_adaptive_state(
         sampler::AbstractDEMMetaSampler,
@@ -476,7 +356,7 @@ Create the adaptive state of `sampler` at the start of sampling, with `T` the po
 
 The fallback returns a static (non-adaptive) state.
 An adaptive update defines a method returning its own [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref),
-along with methods for `step_warmup` and [`DifferentialEvolutionMetropolis.fix_sampler`](@ref).
+a [`DifferentialEvolutionMetropolis.proposal!`](@ref) method for that state, and a [`DifferentialEvolutionMetropolis.adapt!`](@ref) method that adapts it.
 """
 function initialize_adaptive_state(
         sampler::AbstractDEMMetaSampler,

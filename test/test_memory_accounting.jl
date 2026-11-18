@@ -94,10 +94,6 @@ using Random, AbstractMCMC, LogDensityProblems
         _, state2 = AbstractMCMC.step(rng, wrapped_model, spl, state1)
         l2 = length(state2.temperature_ladder.temperature_ladder)
         @test l1 - l2 == 1
-
-        # fix_sampler_state leaves it unchanged
-        fixed_spl, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(spl, state1)
-        @test length(fixed_state.temperature_ladder.temperature_ladder) == l1
     end
 
     @testset "memory_size allocation" begin
